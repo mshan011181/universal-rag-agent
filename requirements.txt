@@ -1,0 +1,46 @@
+# Core LLM & Orchestration
+langchain==0.3.25
+langchain-core==0.3.61
+langchain-community==0.3.24
+langchain-groq==0.3.2
+langgraph==0.4.7
+
+# Groq
+groq==0.28.0
+
+# Vector Store
+chromadb==0.6.3
+
+# Embeddings (local, no API key needed)
+sentence-transformers==3.4.1
+
+# Web Search fallback (CRAG)
+tavily-python==0.5.1
+
+# Memory & DB
+# sqlite3 is built-in
+
+# Document loaders
+pypdf==5.4.0
+pdfplumber==0.11.6
+python-docx==1.1.2
+openpyxl==3.1.5
+unstructured==0.17.2
+
+# Reranking
+cohere==5.15.0
+
+# Graph (GraphRAG lightweight)
+networkx==3.4.2
+
+# UI
+streamlit==1.45.1
+streamlit-extras==0.5.2
+
+# Utils
+python-dotenv==1.1.0
+pydantic==2.11.4
+tiktoken==0.9.0
+tenacity==9.1.2
+numpy==2.2.5
+pandas==2.2.3
