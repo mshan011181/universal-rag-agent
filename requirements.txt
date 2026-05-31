@@ -35,7 +35,6 @@ networkx==3.4.2
 
 # UI
 streamlit==1.45.1
-streamlit-extras==0.5.2
 
 # Utils
 python-dotenv==1.1.0

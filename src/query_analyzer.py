@@ -18,7 +18,7 @@ def analyze_query(query: str, session_id: str) -> dict:
     has_pronouns = any(p in query.lower().split() for p in ["it", "that", "they", "this", "those", "these", "he", "she"])
 
     # Dimension 1: Query Length
-    if word_count <= 3:
+    if word_count <= 2:
         length_signal = "very_short"
     elif word_count <= 15:
         length_signal = "short"

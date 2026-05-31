@@ -50,6 +50,10 @@ def grade(answer: str, context: str, query: str) -> dict:
         end = raw.rfind("}") + 1
         data = json.loads(raw[start:end])
         quality = (data.get("relevance", 0.5) + data.get("completeness", 0.5)) / 2 * (1 - data.get("hallucination_risk", 0) * 0.5)
+        # Penalize "no information" answers regardless of grader score
+        no_info_phrases = ["no relevant information", "no information", "context does not", "not enough information", "cannot answer"]
+        if any(p in answer.lower() for p in no_info_phrases):
+            quality = min(quality, 0.3)
         return {"quality_score": round(quality, 3), **data}
     except Exception:
         return {"quality_score": 0.5, "relevance": 0.5, "completeness": 0.5, "hallucination_risk": 0.5}
