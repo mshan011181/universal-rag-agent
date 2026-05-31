@@ -34,7 +34,21 @@ cohere==5.15.0
 networkx==3.4.2
 
 # UI
-streamlit==1.45.1
+streamlit==1.55.0
+
+# Media ingestion (audio / video transcription)
+# Groq Whisper API is built into the groq package above (whisper-large-v3)
+# ffmpeg-python wraps the ffmpeg CLI for non-mp4 video audio extraction
+ffmpeg-python==0.2.0
+
+# Web page ingestion
+trafilatura==2.0.0
+requests>=2.32.4
+
+# YouTube ingestion
+# youtube-transcript-api omitted — v1.0.x fetch() is broken with current YouTube API
+# yt-dlp is used instead: downloads subtitles (no video download) or audio for Whisper fallback
+yt-dlp>=2026.3.17
 
 # Utils
 python-dotenv==1.1.0

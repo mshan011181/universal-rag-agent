@@ -1,11 +1,52 @@
-.env
-data/chroma_db/
-data/uploads/
-data/*.db
-data/*.pkl
-__pycache__/
-*.pyc
+# Virtual environments
 .venv/
 venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment / secrets
+.env
+*.env
+
+# Vector DB data
+chroma_db/
+data/chroma/
+
+# Uploaded files (runtime)
+data/uploads/
+
+# Logs
+*.log
+logs/
+
+# Build / dist
+dist/
+build/
 *.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+
+# SQLite runtime DB
+*.db
+*.sqlite3

@@ -184,10 +184,10 @@ with st.sidebar:
         os.environ["COHERE_API_KEY"] = cohere_key
 
     st.markdown("---")
-    st.markdown("### 📄 Document Ingestion")
+    st.markdown("### 📄 Documents")
 
     uploaded = st.file_uploader(
-        "Upload documents",
+        "PDF / TXT / DOCX",
         type=["pdf", "txt", "docx"],
         accept_multiple_files=True,
     )
@@ -209,6 +209,75 @@ with st.sidebar:
                     st.error(f"✗ {f.name}: {e}")
                 progress.progress((i + 1) / len(uploaded))
             st.info(f"Total: {total_chunks} chunks indexed")
+
+    st.markdown("---")
+    st.markdown("### 🎙️ Audio Files")
+    st.caption("MP3 · WAV · M4A · OGG · FLAC · WEBM  (transcribed via Groq Whisper)")
+
+    audio_files = st.file_uploader(
+        "Upload audio",
+        type=["mp3", "wav", "m4a", "ogg", "flac", "webm", "mpga", "mpeg"],
+        accept_multiple_files=True,
+        key="audio_uploader",
+    )
+    if audio_files:
+        if st.button("Transcribe & Index Audio", type="primary", use_container_width=True):
+            from src.retrieval.media_ingest import ingest_audio_file
+            from src.config import UPLOADS_DIR
+            progress = st.progress(0)
+            for i, f in enumerate(audio_files):
+                save_path = UPLOADS_DIR / f.name
+                save_path.write_bytes(f.read())
+                try:
+                    n, _ = ingest_audio_file(str(save_path))
+                    st.success(f"✓ {f.name} → {n} chunks")
+                except Exception as e:
+                    st.error(f"✗ {f.name}: {e}")
+                progress.progress((i + 1) / len(audio_files))
+
+    st.markdown("---")
+    st.markdown("### 🎬 Video Files")
+    st.caption("MP4 · AVI · MKV · MOV · WMV  (audio extracted → Groq Whisper)")
+
+    video_files = st.file_uploader(
+        "Upload video",
+        type=["mp4", "avi", "mkv", "mov", "wmv"],
+        accept_multiple_files=True,
+        key="video_uploader",
+    )
+    if video_files:
+        if st.button("Transcribe & Index Video", type="primary", use_container_width=True):
+            from src.retrieval.media_ingest import ingest_video_file
+            from src.config import UPLOADS_DIR
+            progress = st.progress(0)
+            for i, f in enumerate(video_files):
+                save_path = UPLOADS_DIR / f.name
+                save_path.write_bytes(f.read())
+                try:
+                    n, _ = ingest_video_file(str(save_path))
+                    st.success(f"✓ {f.name} → {n} chunks")
+                except Exception as e:
+                    st.error(f"✗ {f.name}: {e}")
+                progress.progress((i + 1) / len(video_files))
+
+    st.markdown("---")
+    st.markdown("### 🌐 Web Page / YouTube URL")
+    st.caption("Paste a web page URL or YouTube link")
+
+    url_input = st.text_input("URL", placeholder="https://... or https://youtube.com/watch?v=...")
+    if st.button("Fetch & Index URL", use_container_width=True):
+        if url_input.strip():
+            from src.retrieval.media_ingest import ingest_url
+            with st.spinner("Fetching and indexing..."):
+                try:
+                    n, text = ingest_url(url_input.strip())
+                    st.success(f"Indexed {n} chunks from URL")
+                    with st.expander("Preview extracted text"):
+                        st.text(text[:1000] + ("..." if len(text) > 1000 else ""))
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        else:
+            st.warning("Enter a URL first.")
 
     st.markdown("---")
     st.markdown("### 📚 Paste Text")
