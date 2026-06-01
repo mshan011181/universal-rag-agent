@@ -6,10 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-# Install CPU-only torch first to avoid downloading the 532MB GPU wheel
+# Copy only Streamlit-specific requirements (no API server, no auth, no DB)
+COPY requirements-streamlit.txt .
+
+# Install CPU-only torch first (smaller than GPU version)
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Streamlit requirements
+RUN pip install --no-cache-dir -r requirements-streamlit.txt
 
 COPY . .
 
@@ -17,6 +21,7 @@ COPY . .
 RUN mkdir -p /app/data/uploads /app/data/chroma && \
     useradd -m appuser && \
     chown -R appuser:appuser /app
+
 USER appuser
 
 EXPOSE 8501
