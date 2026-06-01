@@ -1,0 +1,41 @@
+# Virtual environment — largest culprit (1.7 GB)
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data
+chroma_db/
+data/uploads/
+data/chroma/
+*.db
+*.sqlite3
+
+# Secrets
+.env
+
+# Logs
+*.log
+logs/
+
+# Dev/test
+tests/
+*.md
+.git/
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp scripts
+add_media_section.py
+generate_docs.py
