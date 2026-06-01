@@ -15,8 +15,10 @@ RUN pip install --no-cache-dir -r requirements-prod.txt
 
 COPY . .
 
-# Non-root user
-RUN useradd -m appuser && chown -R appuser /app
+# Create required runtime directories and set permissions
+RUN mkdir -p /app/data/uploads /app/data/chroma && \
+    useradd -m appuser && \
+    chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
