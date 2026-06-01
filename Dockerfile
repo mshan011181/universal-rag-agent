@@ -7,10 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt requirements-prod.txt ./
 # Install CPU-only torch first to avoid downloading the 532MB GPU wheel
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements-prod.txt
 
 COPY . .
 
