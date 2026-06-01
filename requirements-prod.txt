@@ -9,6 +9,7 @@ python-multipart==0.0.20
 # Auth
 python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
+email-validator==2.2.0
 
 # DB (production)
 asyncpg==0.30.0
