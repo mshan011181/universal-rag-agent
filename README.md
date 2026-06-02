@@ -201,6 +201,18 @@ Type any question in the chat panel. The agent will:
 
 ## 🏗️ Architecture
 
+### System Architecture
+
+![System Architecture](docs/architecture_system.png)
+
+### RAG Pattern Selection Flow
+
+![RAG Pattern Selection Flow](docs/architecture_rag_patterns.png)
+
+### Docker Services Architecture
+
+![Docker Services Architecture](docs/architecture_docker.png)
+
 ```
 Query Input
      │
