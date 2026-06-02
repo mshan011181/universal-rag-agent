@@ -329,9 +329,22 @@ GROQ_API_KEY=your_groq_key_here
 TAVILY_API_KEY=
 COHERE_API_KEY=
 
-# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+# JWT_SECRET — generate a secure random secret using the command below
 JWT_SECRET=your_generated_secret_here
 ```
+
+**Generate JWT_SECRET** — run this once in your terminal and paste the output:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Example output:
+```
+d435d9ce1e51eb94912ae5586230afed137c0cdf5d2929cf780171f9e20ef509
+```
+
+Copy that value and set it as `JWT_SECRET` in your `.env` file.
 
 ### Step 2 — Build and Start All Services
 
