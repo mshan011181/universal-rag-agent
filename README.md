@@ -399,6 +399,35 @@ universal_rag_agent-grafana-1     Up
 4. Click **Save & Test**
 5. Go to **Dashboards → New** → add panels (see Prometheus section below)
 
+### Step 7 — Push Docker Images to Docker Hub
+
+Once the stack is running and verified locally, push the images to Docker Hub. This lets you deploy the same image to any cloud VM or server without rebuilding from source.
+
+```bash
+# Log in to Docker Hub (one-time — prompts for your Docker Hub username and password)
+docker login
+```
+
+```bash
+# Tag both images with your Docker Hub username
+docker tag universal_rag_agent-api mshan011181/universal-rag-agent-api:v1
+docker tag universal_rag_agent-frontend mshan011181/universal-rag-agent-frontend:v1
+```
+
+```bash
+# Push to Docker Hub
+docker push mshan011181/universal-rag-agent-api:v1
+docker push mshan011181/universal-rag-agent-frontend:v1
+```
+
+> First push takes **10–20 minutes** — images are 3+ GB each. Subsequent pushes only upload changed layers, which is much faster.
+
+After pushing, your images are publicly available at:
+- `https://hub.docker.com/r/mshan011181/universal-rag-agent-api`
+- `https://hub.docker.com/r/mshan011181/universal-rag-agent-frontend`
+
+Any machine (GCP VM, AWS EC2, a colleague's laptop) can now pull and run them with just `docker pull` — no source code or rebuild needed.
+
 ### Useful Commands
 
 ```bash
