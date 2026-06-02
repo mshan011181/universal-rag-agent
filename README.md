@@ -306,21 +306,133 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-## 🐳 Docker
+## 🐳 Production Deployment — Docker Stack
+
+### Prerequisites
+
+- Docker Desktop installed and **running** (whale icon steady in system tray)
+- `.env` file configured (see Environment Variables section)
+- At least 6 GB RAM allocated to Docker / WSL2
+
+### Step 1 — Configure Environment
 
 ```bash
-docker-compose up --build
+cp .env.example .env
 ```
+
+Edit `.env` with your values:
+
+```env
+GROQ_API_KEY=your_groq_key_here
+
+# Optional
+TAVILY_API_KEY=
+COHERE_API_KEY=
+
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET=your_generated_secret_here
+```
+
+### Step 2 — Build and Start All Services
+
+```bash
+docker-compose up -d --build
+```
+
+> First run takes **3–5 minutes** to build images and pull dependencies. Subsequent runs are instant.
+
+### Step 3 — Verify All Services Are Healthy
+
+```bash
+docker-compose ps
+```
+
+Expected output — all 7 services up:
+
+```
+NAME                              STATUS
+universal_rag_agent-api-1         Up (healthy)
+universal_rag_agent-frontend-1    Up
+universal_rag_agent-postgres-1    Up (healthy)
+universal_rag_agent-chromadb-1    Up
+universal_rag_agent-redis-1       Up (healthy)
+universal_rag_agent-prometheus-1  Up
+universal_rag_agent-grafana-1     Up
+```
+
+### Step 4 — Access the Services
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Streamlit UI** | http://localhost:8501 | — |
+| **FastAPI Swagger** | http://localhost:8000/api/docs | — |
+| **Prometheus** | http://localhost:9090 | — |
+| **Grafana** | http://localhost:3001 | admin / admin |
+| **ChromaDB** | http://localhost:8001 | — |
+
+### Step 5 — Test the API
+
+1. Open http://localhost:8000/api/docs
+2. **Register a user** → `POST /api/auth/register`
+3. **Get JWT token** → `POST /api/auth/token`
+4. Click **Authorize** (top right) → paste the token
+5. **Submit a query** → `POST /api/query/`
+
+### Step 6 — Set Up Grafana Dashboard
+
+1. Open http://localhost:3001 → login: `admin` / `admin`
+2. Go to **Connections → Data Sources → Add → Prometheus**
+3. URL: `http://prometheus:9090`
+4. Click **Save & Test**
+5. Go to **Dashboards → New** → add panels (see Prometheus section below)
+
+### Useful Commands
+
+```bash
+# View logs for a specific service
+docker-compose logs -f api
+docker-compose logs -f frontend
+
+# Restart a single service
+docker-compose restart api
+
+# Rebuild a single service only
+docker-compose up -d --build api
+
+# Stop all services
+docker-compose down
+
+# Stop and remove all data volumes (full reset)
+docker-compose down -v
+
+# Check resource usage
+docker stats
+```
+
+### Docker Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| api | 8000 | FastAPI backend |
+| api | 8000 | FastAPI backend + REST API |
 | frontend | 8501 | Streamlit UI |
 | postgres | 5432 | PostgreSQL database |
 | chromadb | 8001 | ChromaDB vector store |
 | redis | 6379 | Cache |
-| prometheus | 9090 | Metrics scraping |
-| grafana | 3000 | Dashboards |
+| prometheus | 9090 | Metrics collection |
+| grafana | 3001 | Monitoring dashboards |
+
+### WSL2 Memory Configuration (Windows)
+
+If Docker Desktop crashes during build, increase WSL2 memory by creating/editing `C:\Users\<username>\.wslconfig`:
+
+```ini
+[wsl2]
+memory=6GB
+processors=4
+swap=4GB
+```
+
+Then restart WSL: `wsl --shutdown` and reopen Docker Desktop.
 
 ---
 
@@ -359,18 +471,63 @@ Coverage gate: **80% minimum** enforced in CI.
 
 ---
 
-## 📊 Observability
+## 📊 Observability — Prometheus & Grafana
 
-Prometheus metrics at `/metrics`:
+Prometheus scrapes the `/metrics` endpoint of the API every 15 seconds and stores time-series data.
 
-| Metric | Description |
-|--------|-------------|
+### Available Metrics
+
+| Metric | What It Tracks |
+|--------|----------------|
 | `rag_queries_total` | Total queries by pattern and status |
-| `rag_query_latency_seconds` | Query latency histogram |
-| `rag_quality_score` | Answer quality score distribution |
-| `rag_fallback_total` | Web search fallback activations |
-| `rag_cache_hits_total` | Verified knowledge cache hits |
+| `rag_query_latency_seconds` | How long each query takes |
+| `rag_quality_score` | Distribution of answer quality scores (0.0–1.0) |
+| `rag_fallback_total` | How many times web search fallback triggered |
+| `rag_cache_hits_total` | Verified knowledge cache hit rate |
 | `rag_chunk_count` | Chunks retrieved per query |
+| `http_requests_total` | All API requests by endpoint and status code |
+| `http_request_duration_seconds` | API response time histogram |
+
+### Prometheus Queries (localhost:9090)
+
+```promql
+# Total queries made
+rag_queries_total
+
+# Average query latency
+rate(rag_query_latency_seconds_sum[5m]) / rate(rag_query_latency_seconds_count[5m])
+
+# Average answer quality score
+rate(rag_quality_score_sum[5m]) / rate(rag_quality_score_count[5m])
+
+# API request rate per second
+rate(http_requests_total[1m])
+
+# Fallback rate (how often web search kicks in)
+rate(rag_fallback_total[5m])
+
+# Cache hit rate
+rate(rag_cache_hits_total[5m])
+```
+
+### Practical Use Cases
+
+| Use Case | Query |
+|----------|-------|
+| Which RAG pattern is used most? | `rag_queries_total` grouped by `pattern` label |
+| Is query quality dropping? | Alert when `rag_quality_score` avg drops below 0.65 |
+| API is slow? | `http_request_duration_seconds` p95/p99 |
+| Cache effectiveness? | `rag_cache_hits_total` over time |
+| Pattern failure rate? | `rag_queries_total` filtered by `status=failed` |
+
+### Grafana Setup
+
+1. Open http://localhost:3001 → login: `admin` / `admin`
+2. **Connections → Data Sources → Add → Prometheus**
+3. URL: `http://prometheus:9090` → **Save & Test**
+4. **Dashboards → New** → add panels using the queries above
+
+This gives real-time graphs of query volume, latency, quality scores, and pattern usage — all updating live as users interact with the RAG agent.
 
 ---
 
