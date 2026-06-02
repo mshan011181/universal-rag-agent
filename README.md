@@ -7,7 +7,7 @@
 [![LangChain](https://img.shields.io/badge/LangChain-0.3.x-green)](https://langchain.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.55-red?logo=streamlit)](https://streamlit.io/)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
 
 ---
 
@@ -810,7 +810,11 @@ push
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+Copyright (c) 2025 Shan. All rights reserved.
+
+Viewing and downloading this code is permitted for reference and educational purposes only. Modification, redistribution, commercial use, and derivative works are strictly prohibited without prior written permission from the author.
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
