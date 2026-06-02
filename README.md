@@ -751,6 +751,10 @@ The images were already pushed to Docker Hub from your Windows machine (see Step
 Run these commands on your **GCP VM**:
 
 ```bash
+# Log in to Docker Hub first (required if your images are private)
+# Enter your Docker Hub password when prompted
+docker login -u mshan011181
+
 # Pull both images from Docker Hub
 docker pull mshan011181/universal-rag-agent-api:v1
 docker pull mshan011181/universal-rag-agent-frontend:v1
@@ -758,6 +762,8 @@ docker pull mshan011181/universal-rag-agent-frontend:v1
 # Verify images are downloaded
 docker images
 ```
+
+> If your Docker Hub repositories are set to **Private**, the `docker login` step is mandatory — skipping it will result in a `pull access denied` error. If they are Public, login is optional.
 
 ---
 
