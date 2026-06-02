@@ -643,7 +643,217 @@ This gives real-time graphs of query volume, latency, quality scores, and patter
 
 ---
 
-## ☸️ Kubernetes Deployment
+## ☁️ Deploy to GCP Cloud VM
+
+The Docker images built on your Windows machine work directly on a GCP Linux VM — no changes to the Dockerfile or docker-compose.yml are needed. This is because Docker Desktop on Windows uses WSL2 (a Linux kernel) to build images, so the output is already a standard `linux/amd64` image, which is the same architecture GCP VMs run on.
+
+**What you do need to transfer to the VM:** only two files — your `.env` and `docker-compose.yml`. Everything else (all code, dependencies, models) is already baked into the images.
+
+---
+
+### Step 1 — Choose and Create a GCP VM
+
+In GCP Console → Compute Engine → Create Instance:
+
+| Setting | Recommended Value |
+|---------|------------------|
+| Machine type | `e2-standard-4` (4 vCPU, 16 GB RAM) |
+| OS | Ubuntu 22.04 LTS |
+| Boot disk | 50 GB SSD |
+| Region | Choose closest to your users |
+| Firewall | Allow HTTP and HTTPS traffic |
+
+> **Why 16 GB RAM?** The API image (3.15 GB) and frontend image (3.5 GB) both load PyTorch and sentence-transformers into memory at runtime. PostgreSQL, Redis, ChromaDB, Prometheus, and Grafana each add overhead. 8 GB RAM is too tight — the VM will OOM-kill containers under load.
+
+---
+
+### Step 2 — Open Required Ports in GCP Firewall
+
+In GCP Console → VPC Network → Firewall → Create Firewall Rule:
+
+| Port | Service | Rule Name |
+|------|---------|-----------|
+| 8000 | FastAPI | allow-rag-api |
+| 8501 | Streamlit UI | allow-rag-ui |
+| 9090 | Prometheus | allow-prometheus |
+| 3001 | Grafana | allow-grafana |
+| 8001 | ChromaDB | allow-chromadb |
+
+Set **Targets** to "All instances" and **Source IP ranges** to `0.0.0.0/0` (or restrict to your IP for security).
+
+---
+
+### Step 3 — Install Docker on the GCP VM
+
+SSH into your VM from GCP Console, then run:
+
+```bash
+# Install Docker
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose
+
+# Allow your user to run Docker without sudo
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verify
+docker --version
+docker-compose --version
+```
+
+---
+
+### Step 4 — Push Your Images to Docker Hub
+
+Run these commands on your **local Windows machine**:
+
+```bash
+# Log in to Docker Hub
+docker login
+
+# Tag the images with your Docker Hub username
+docker tag universal_rag_agent-api mshan011181/universal-rag-agent-api:v1
+docker tag universal_rag_agent-frontend mshan011181/universal-rag-agent-frontend:v1
+
+# Push to Docker Hub
+docker push mshan011181/universal-rag-agent-api:v1
+docker push mshan011181/universal-rag-agent-frontend:v1
+```
+
+> First push will take 10–20 minutes — the images are 3+ GB each. Subsequent pushes only upload changed layers (much faster).
+
+---
+
+### Step 5 — Update docker-compose.yml for the VM
+
+On the GCP VM, you need a slightly modified `docker-compose.yml` that **pulls from Docker Hub** instead of building from source (there is no source code on the VM — only the images):
+
+```bash
+# On your GCP VM — create the project directory
+mkdir ~/universal-rag-agent && cd ~/universal-rag-agent
+```
+
+Create `docker-compose.yml` on the VM with these two services changed:
+
+```yaml
+services:
+  api:
+    image: mshan011181/universal-rag-agent-api:v1   # pull from Docker Hub
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - DATABASE_URL=postgresql://raguser:ragpass@postgres:5432/ragdb
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8001
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    volumes:
+      - uploads:/app/data/uploads
+    restart: unless-stopped
+
+  frontend:
+    image: mshan011181/universal-rag-agent-frontend:v1   # pull from Docker Hub
+    ports:
+      - "8501:8501"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+    volumes:
+      - uploads:/app/data/uploads
+    restart: unless-stopped
+
+  # postgres, chromadb, redis, prometheus, grafana remain exactly the same
+  # as your local docker-compose.yml — copy them unchanged
+```
+
+> **The only change:** `build: .` is replaced with `image: mshan011181/...` for the api and frontend services. All other services (postgres, redis, chromadb, prometheus, grafana) use public images and stay identical.
+
+---
+
+### Step 6 — Copy Your .env to the VM
+
+```bash
+# From your local machine — copy .env to the VM
+# Replace <vm-external-ip> with your GCP VM's external IP
+scp .env username@<vm-external-ip>:~/universal-rag-agent/.env
+```
+
+Or paste the contents manually via the GCP SSH browser terminal.
+
+---
+
+### Step 7 — Start All Services on the VM
+
+```bash
+cd ~/universal-rag-agent
+
+# Pull all images (Docker Hub for api/frontend, public registries for the rest)
+docker-compose pull
+
+# Start all 7 services
+docker-compose up -d
+
+# Verify all are running
+docker-compose ps
+```
+
+---
+
+### Step 8 — Access the Running Services
+
+Replace `<vm-external-ip>` with your GCP VM's External IP (found in Compute Engine → VM instances):
+
+| Service | URL |
+|---------|-----|
+| Streamlit UI | `http://<vm-external-ip>:8501` |
+| FastAPI Swagger | `http://<vm-external-ip>:8000/api/docs` |
+| Prometheus | `http://<vm-external-ip>:9090` |
+| Grafana | `http://<vm-external-ip>:3001` |
+
+---
+
+### No Changes Needed in Dockerfile
+
+| Concern | Answer |
+|---------|--------|
+| Built on Windows, runs on Linux? | Yes — WSL2 builds `linux/amd64` images, same as GCP VMs |
+| OS-specific paths? | No — all paths use `/app/...` (Linux-style), already correct |
+| CPU-only PyTorch? | Yes — GCP VMs are CPU-only by default, this is the right build |
+| Environment variables? | Passed via `.env` and `docker-compose.yml`, no hardcoding |
+| Data persistence? | Docker named volumes (`pgdata`, `chromadata`, etc.) work the same on Linux |
+
+---
+
+### Updating the App on the VM (When You Release a New Version)
+
+```bash
+# On your local machine — rebuild and push new version
+docker-compose build
+docker tag universal_rag_agent-api mshan011181/universal-rag-agent-api:v2
+docker tag universal_rag_agent-frontend mshan011181/universal-rag-agent-frontend:v2
+docker push mshan011181/universal-rag-agent-api:v2
+docker push mshan011181/universal-rag-agent-frontend:v2
+
+# On the GCP VM — pull and restart
+docker-compose pull
+docker-compose up -d
+```
+
+Only the changed layers are downloaded — not the full 3 GB image each time.
+
+---
 
 Kubernetes takes the Docker Compose stack and makes it production-grade: self-healing pods, horizontal auto-scaling, rolling zero-downtime deploys, and liveness/readiness probes that Kubernetes uses to restart unhealthy containers automatically.
 
