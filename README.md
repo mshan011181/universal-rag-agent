@@ -536,19 +536,50 @@ Then restart WSL: `wsl --shutdown` and reopen Docker Desktop.
 
 ## 🧪 Testing
 
+The test suite validates that the core logic of the RAG agent works correctly before any code change is merged or deployed. Tests run automatically in the CI/CD pipeline on every push — if they fail, the Docker build and deployment are blocked.
+
+### What Is Being Tested
+
+| Test File | What It Covers |
+|-----------|----------------|
+| `test_security.py` | Prompt injection detection, PII masking, input sanitization — ensures malicious inputs are caught before reaching the LLM |
+| `test_query_analyzer.py` | The 5-dimension query analyzer — verifies that a given query is correctly classified by length, ambiguity, complexity, data type, and conversation state |
+| `test_api.py` | FastAPI endpoints — registers a test user, obtains a JWT token, submits queries, uploads files, and checks that auth, rate limits, and responses behave as expected |
+
+### Why This Matters
+
+Without tests, a code change to the query analyzer could silently break pattern routing — and you would only discover it when users get wrong answers. The tests catch regressions early, in seconds, before anything reaches production.
+
+### Running the Tests
+
 ```bash
+# Install test dependencies (pytest, coverage tools)
 pip install -r requirements-dev.txt
 
-# Run all tests with coverage report
+# Run all tests with a coverage report
 pytest tests/ --cov=src --cov-report=term-missing
 
-# Individual suites
+# Run individual test files
 pytest tests/test_security.py
 pytest tests/test_query_analyzer.py
 pytest tests/test_api.py
 ```
 
-Coverage gate: **80% minimum** enforced in CI.
+The coverage report shows which lines of code in `src/` are exercised by tests and which are not. Example output:
+
+```
+Name                          Stmts   Miss  Cover
+-------------------------------------------------
+src/query_analyzer.py            85      6    93%
+src/security.py                  62      4    94%
+src/agent.py                    140     28    80%
+-------------------------------------------------
+TOTAL                           287     38    87%
+```
+
+### Coverage Gate
+
+**80% minimum** is enforced in CI. If a new code change drops total coverage below 80%, the pipeline fails and the change cannot be merged. This ensures that as the codebase grows, test coverage keeps pace with new features.
 
 ---
 
