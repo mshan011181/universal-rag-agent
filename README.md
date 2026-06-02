@@ -880,6 +880,8 @@ Only the changed layers are downloaded — not the full 3 GB image each time.
 
 ---
 
+## ☸️ Kubernetes Deployment
+
 Kubernetes takes the Docker Compose stack and makes it production-grade: self-healing pods, horizontal auto-scaling, rolling zero-downtime deploys, and liveness/readiness probes that Kubernetes uses to restart unhealthy containers automatically.
 
 **When to use Kubernetes instead of Docker Compose:**
