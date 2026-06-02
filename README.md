@@ -732,24 +732,20 @@ docker-compose --version
 
 ---
 
-### Step 4 — Push Your Images to Docker Hub
+### Step 4 — Pull Your Images from Docker Hub
 
-Run these commands on your **local Windows machine**:
+The images were already pushed to Docker Hub from your Windows machine (see Step 7 in the Docker Stack section above). On the GCP VM, you just pull them — no source code or rebuild needed.
+
+Run these commands on your **GCP VM**:
 
 ```bash
-# Log in to Docker Hub
-docker login
+# Pull both images from Docker Hub
+docker pull mshan011181/universal-rag-agent-api:v1
+docker pull mshan011181/universal-rag-agent-frontend:v1
 
-# Tag the images with your Docker Hub username
-docker tag universal_rag_agent-api mshan011181/universal-rag-agent-api:v1
-docker tag universal_rag_agent-frontend mshan011181/universal-rag-agent-frontend:v1
-
-# Push to Docker Hub
-docker push mshan011181/universal-rag-agent-api:v1
-docker push mshan011181/universal-rag-agent-frontend:v1
+# Verify images are downloaded
+docker images
 ```
-
-> First push will take 10–20 minutes — the images are 3+ GB each. Subsequent pushes only upload changed layers (much faster).
 
 ---
 
