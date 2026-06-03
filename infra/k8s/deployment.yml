@@ -1,14 +1,27 @@
+# ─────────────────────────────────────────────────────────────
+# Namespace
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rag-agent
+
+---
+# ─────────────────────────────────────────────────────────────
+# API Deployment
+# ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: universal-rag-agent
+  name: rag-api
+  namespace: rag-agent
   labels:
-    app: universal-rag-agent
+    app: rag-api
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
-      app: universal-rag-agent
+      app: rag-api
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -17,14 +30,11 @@ spec:
   template:
     metadata:
       labels:
-        app: universal-rag-agent
+        app: rag-api
     spec:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
       containers:
         - name: api
-          image: ghcr.io/your-org/universal-rag-agent:latest
+          image: mshan011181/universal-rag-agent-api:v1
           ports:
             - containerPort: 8000
           env:
@@ -43,12 +53,18 @@ spec:
                 secretKeyRef:
                   name: rag-secrets
                   key: database-url
+            - name: REDIS_URL
+              value: "redis://rag-redis:6379/0"
+            - name: CHROMA_HOST
+              value: "rag-chromadb"
+            - name: CHROMA_PORT
+              value: "8001"
             - name: ENVIRONMENT
               value: "production"
           resources:
             requests:
               cpu: "500m"
-              memory: "1Gi"
+              memory: "2Gi"
             limits:
               cpu: "2000m"
               memory: "4Gi"
@@ -56,43 +72,44 @@ spec:
             httpGet:
               path: /api/health
               port: 8000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /api/health/ready
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 3
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
+
 ---
+# API Service — exposes API inside the cluster
 apiVersion: v1
 kind: Service
 metadata:
-  name: universal-rag-agent-svc
+  name: rag-api-svc
+  namespace: rag-agent
 spec:
   selector:
-    app: universal-rag-agent
+    app: rag-api
   ports:
-    - port: 80
+    - port: 8000
       targetPort: 8000
   type: ClusterIP
+
 ---
+# API HPA — auto-scales API pods
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: rag-agent-hpa
+  name: rag-api-hpa
+  namespace: rag-agent
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: universal-rag-agent
+    name: rag-api
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -108,3 +125,212 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
+
+---
+# ─────────────────────────────────────────────────────────────
+# Frontend Deployment (Streamlit)
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-frontend
+  namespace: rag-agent
+  labels:
+    app: rag-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rag-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: mshan011181/universal-rag-agent-frontend:v1
+          ports:
+            - containerPort: 8501
+          env:
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: groq-api-key
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+---
+# Frontend Service — LoadBalancer gives a public IP
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-frontend-svc
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-frontend
+  ports:
+    - port: 80
+      targetPort: 8501
+  type: LoadBalancer
+
+---
+# API External Service — LoadBalancer for API access
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api-external
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: LoadBalancer
+
+---
+# Frontend HPA — auto-scales frontend pods
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rag-frontend-hpa
+  namespace: rag-agent
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rag-frontend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# ─────────────────────────────────────────────────────────────
+# Redis Deployment
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-redis
+  namespace: rag-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-redis
+  template:
+    metadata:
+      labels:
+        app: rag-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-redis
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+  type: ClusterIP
+
+---
+# ─────────────────────────────────────────────────────────────
+# ChromaDB Deployment
+# ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-chromadb
+  namespace: rag-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-chromadb
+  template:
+    metadata:
+      labels:
+        app: rag-chromadb
+    spec:
+      containers:
+        - name: chromadb
+          image: chromadb/chroma:0.6.3
+          ports:
+            - containerPort: 8001
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-chromadb
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-chromadb
+  ports:
+    - port: 8001
+      targetPort: 8001
+  type: ClusterIP
