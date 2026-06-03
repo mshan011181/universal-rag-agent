@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deploying Universal RAG Agent on Google Kubernetes Engine (GKE)</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    line-height: 1.75;
+    font-size: 16px;
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 1000px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, #0f4c81 0%, #1a237e 50%, #0d47a1 100%);
+    padding: 64px 24px;
+    text-align: center;
+    border-bottom: 3px solid #1565c0;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 16px;
+    line-height: 1.2;
+    position: relative;
+  }
+  .hero p {
+    font-size: 1.15rem;
+    color: rgba(255,255,255,0.8);
+    max-width: 680px;
+    margin: 0 auto 28px;
+    position: relative;
+  }
+  .hero-tags { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; position: relative; }
+  .hero-tag {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin: 40px 0;
+  }
+  .toc h3 { color: #58a6ff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: #79c0ff; text-decoration: none; font-size: 14px; }
+  .toc a:hover { color: #fff; text-decoration: underline; }
+
+  /* ── Section headings ── */
+  .section { margin: 56px 0 32px; }
+  .section-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #1565c0, #0d47a1);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+  h2 {
+    display: flex;
+    align-items: center;
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: #e6edf3;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #21262d;
+  }
+  h2 .icon { margin-right: 10px; font-size: 1.3rem; }
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #79c0ff;
+    margin: 28px 0 12px;
+  }
+
+  /* ── Paragraphs & lists ── */
+  p { margin-bottom: 16px; color: #c9d1d9; }
+  ul, ol { padding-left: 24px; margin-bottom: 16px; }
+  li { margin: 8px 0; color: #c9d1d9; }
+  strong { color: #e6edf3; }
+
+  /* ── Code blocks ── */
+  pre {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 16px 0 24px;
+    position: relative;
+  }
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13.5px;
+    color: #e6edf3;
+    line-height: 1.6;
+  }
+  .code-label {
+    display: inline-block;
+    background: #1f6feb;
+    color: #fff;
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+  .comment { color: #8b949e; }
+  .cmd { color: #79c0ff; }
+  .flag { color: #ffa657; }
+  .string { color: #a5d6ff; }
+  .success { color: #56d364; }
+  .error-text { color: #f85149; }
+
+  /* ── Screenshots ── */
+  .screenshot-wrapper {
+    margin: 24px 0 32px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #30363d;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .screenshot-caption {
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #8b949e;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .screenshot-caption::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: #56d364;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .screenshot-wrapper img {
+    width: 100%;
+    display: block;
+  }
+
+  /* ── Info / warning / success boxes ── */
+  .callout {
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-left: 4px solid;
+    font-size: 14.5px;
+  }
+  .callout-info { background: #0d2137; border-color: #1f6feb; color: #79c0ff; }
+  .callout-success { background: #0d2818; border-color: #238636; color: #56d364; }
+  .callout-warning { background: #2d1f00; border-color: #d29922; color: #e3b341; }
+  .callout-error { background: #2d0f0f; border-color: #f85149; color: #ff7b72; }
+  .callout strong { color: inherit; }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; margin: 20px 0 28px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    background: #1f6feb;
+    color: #fff;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td { padding: 11px 16px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  tr:hover td { background: #161b22; }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-green { background: #1a4731; color: #56d364; }
+  .badge-blue { background: #0d2137; color: #79c0ff; }
+  .badge-orange { background: #2d1f00; color: #ffa657; }
+  .badge-red { background: #2d0f0f; color: #ff7b72; }
+
+  /* ── Flowchart ── */
+  .flowchart {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 32px 24px;
+    margin: 24px 0;
+    font-size: 13.5px;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .flow-box {
+    background: #0f4c81;
+    border: 1px solid #1565c0;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 140px;
+  }
+  .flow-box.green { background: #1a4731; border-color: #238636; }
+  .flow-box.orange { background: #2d1f00; border-color: #d29922; color: #ffa657; }
+  .flow-box.purple { background: #1c1040; border-color: #6e40c9; color: #bc8cff; }
+  .flow-box.teal { background: #0d2d2d; border-color: #0e7490; color: #67e8f9; }
+  .flow-box.dark { background: #21262d; border-color: #30363d; color: #8b949e; }
+  .flow-arrow {
+    color: #58a6ff;
+    font-size: 20px;
+    font-weight: 300;
+  }
+  .flow-down { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .flow-down .flow-arrow { transform: rotate(90deg); margin: 2px 0; }
+  .flow-label {
+    font-size: 11px;
+    color: #8b949e;
+    text-align: center;
+    margin-top: 4px;
+  }
+
+  /* ── Architecture diagram ── */
+  .arch-diagram {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 32px;
+    margin: 24px 0;
+    font-family: monospace;
+    font-size: 13px;
+    color: #e6edf3;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+  }
+
+  /* ── Step indicator ── */
+  .steps { counter-reset: step; }
+  .step {
+    display: flex;
+    gap: 20px;
+    margin: 32px 0;
+    position: relative;
+  }
+  .step::before {
+    content: none;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, #1565c0, #0d47a1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #fff;
+    font-size: 15px;
+    margin-top: 2px;
+  }
+  .step-content { flex: 1; }
+  .step-content h3 { margin-top: 0; }
+
+  /* ── Advantage cards ── */
+  .adv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .adv-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .adv-card:hover { border-color: #1f6feb; }
+  .adv-icon { font-size: 2rem; margin-bottom: 10px; }
+  .adv-card h4 { color: #e6edf3; font-size: 15px; margin-bottom: 8px; }
+  .adv-card p { font-size: 13.5px; color: #8b949e; margin: 0; }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid #21262d;
+    padding: 32px 24px;
+    text-align: center;
+    color: #8b949e;
+    font-size: 13px;
+    margin-top: 80px;
+  }
+  footer a { color: #58a6ff; text-decoration: none; }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.25rem; }
+    .adv-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ HERO -->
+<div class="hero">
+  <div class="hero-badge">Production Deployment Guide</div>
+  <h1>Deploying Universal RAG Agent on Google Kubernetes Engine</h1>
+  <p>A complete step-by-step guide to deploying a production-grade 14-pattern RAG system on GKE with auto-scaling, load balancing, and live testing results.</p>
+  <div class="hero-tags">
+    <span class="hero-tag">GKE</span>
+    <span class="hero-tag">Docker Hub</span>
+    <span class="hero-tag">LangChain</span>
+    <span class="hero-tag">Groq Llama 3.3-70b</span>
+    <span class="hero-tag">ChromaDB</span>
+    <span class="hero-tag">Auto-Scaling HPA</span>
+    <span class="hero-tag">Streamlit UI</span>
+    <span class="hero-tag">FastAPI</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ── TOC ── -->
+  <div class="toc">
+    <h3>Table of Contents</h3>
+    <ol>
+      <li><a href="#overview">What is the Universal RAG Agent?</a></li>
+      <li><a href="#why-gke">Why Deploy on GKE?</a></li>
+      <li><a href="#architecture">System Architecture</a></li>
+      <li><a href="#prerequisites">Prerequisites</a></li>
+      <li><a href="#docker-hub">Step 1 — Push Docker Images to Docker Hub</a></li>
+      <li><a href="#cloud-shell">Step 2 — Open GCP Cloud Shell</a></li>
+      <li><a href="#cluster">Step 3 — Create the GKE Cluster</a></li>
+      <li><a href="#deploy">Step 4 — Deploy to GKE</a></li>
+      <li><a href="#services">Step 5 — Access Services &amp; External IPs</a></li>
+      <li><a href="#testing">Step 6 — Live Testing Results</a></li>
+      <li><a href="#hpa">Step 7 — Auto-Scaling in Action</a></li>
+      <li><a href="#advantages">Advantages of GKE Deployment</a></li>
+      <li><a href="#cost">Cost &amp; Resource Summary</a></li>
+      <li><a href="#roadmap">Production Roadmap</a></li>
+    </ol>
+  </div>
+
+  <!-- ═══════ SECTION 1 — OVERVIEW -->
+  <div class="section" id="overview">
+    <h2><span class="icon">🧠</span> What is the Universal RAG Agent?</h2>
+    <p>
+      The <strong>Universal RAG Agent</strong> is a production-grade Retrieval-Augmented Generation system that implements
+      <strong>14 distinct RAG patterns</strong> in a single intelligent agent. Rather than being locked into one approach,
+      it automatically selects the best retrieval strategy for every query using a 5-dimension query analyzer.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Component</th><th>Technology</th><th>Purpose</th></tr>
+        <tr><td>LLM</td><td>Groq Llama 3.3-70b-versatile</td><td>Answer generation — 4 specialised roles</td></tr>
+        <tr><td>Embeddings</td><td>sentence-transformers all-MiniLM-L6-v2</td><td>Local vector encoding, no API key needed</td></tr>
+        <tr><td>Vector Store</td><td>ChromaDB</td><td>Semantic similarity search across all ingested content</td></tr>
+        <tr><td>Orchestration</td><td>LangChain 0.3.x + LangGraph</td><td>Chain and route RAG patterns</td></tr>
+        <tr><td>API Layer</td><td>FastAPI + JWT Auth</td><td>Production REST API with auth, rate limiting, audit log</td></tr>
+        <tr><td>UI</td><td>Streamlit</td><td>Interactive chat interface for demos and testing</td></tr>
+        <tr><td>Transcription</td><td>Groq Whisper large-v3</td><td>Audio and video ingestion</td></tr>
+        <tr><td>Reranking</td><td>Cohere cross-encoder + RRF</td><td>Improves retrieval precision</td></tr>
+      </table>
+    </div>
+
+    <h3>14 RAG Patterns at a Glance</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>#</th><th>Pattern</th><th>Best For</th></tr>
+        <tr><td>1</td><td>Naive RAG</td><td>Simple factual queries</td></tr>
+        <tr><td>2</td><td>HyDE</td><td>Short or ambiguous queries</td></tr>
+        <tr><td>3</td><td>Query Rewriting</td><td>Vague or poorly phrased queries</td></tr>
+        <tr><td>4</td><td>CRAG</td><td>High-risk domains — legal, medical, financial</td></tr>
+        <tr><td>5</td><td>Self-RAG</td><td>Complex multi-step reasoning</td></tr>
+        <tr><td>6</td><td>Adaptive RAG</td><td>Mixed-complexity workloads</td></tr>
+        <tr><td>7</td><td>FLARE</td><td>Long-form generation requiring iterative retrieval</td></tr>
+        <tr><td>8</td><td>Speculative RAG</td><td>Hypothesis-then-verify approach</td></tr>
+        <tr><td>9</td><td>Modular RAG</td><td>Configurable retrieval pipelines</td></tr>
+        <tr><td>10</td><td>Agentic RAG</td><td>Multi-tool, multi-step research tasks</td></tr>
+        <tr><td>11</td><td>GraphRAG</td><td>Entity-relationship and network queries</td></tr>
+        <tr><td>12</td><td>Multi-Modal RAG</td><td>Image and chart analysis</td></tr>
+        <tr><td>13</td><td>Conversational RAG</td><td>Follow-up questions with history</td></tr>
+        <tr><td>14</td><td>RAG Fusion</td><td>Broad queries needing multiple perspectives</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 2 — WHY GKE -->
+  <div class="section" id="why-gke">
+    <h2><span class="icon">☸️</span> Why Deploy on GKE?</h2>
+    <p>
+      A single VM or Docker Compose stack works fine for development and demos, but breaks under real enterprise load.
+      GKE solves every limitation of single-VM deployment automatically.
+    </p>
+
+    <div class="flowchart">
+      <div style="text-align:center; font-weight:700; color:#58a6ff; margin-bottom:24px; font-size:15px; font-family:sans-serif;">
+        Single VM vs GKE — What Happens Under Load
+      </div>
+      <div class="flow-row">
+        <div style="flex:1; min-width:200px;">
+          <div class="flow-box dark" style="margin-bottom:10px;">Single GCP VM</div>
+          <div class="flow-box" style="background:#2d0f0f; border-color:#f85149; color:#ff7b72; margin-bottom:8px; font-size:12px;">50 users → VM slows down</div>
+          <div class="flow-box" style="background:#2d0f0f; border-color:#f85149; color:#ff7b72; margin-bottom:8px; font-size:12px;">100 users → CPU maxes out</div>
+          <div class="flow-box" style="background:#2d0f0f; border-color:#f85149; color:#ff7b72; font-size:12px;">200 users → App crashes</div>
+          <div class="flow-label">Manual VM resize required every time</div>
+        </div>
+        <div style="font-size:2rem; color:#30363d; padding: 0 20px;">vs</div>
+        <div style="flex:1; min-width:200px;">
+          <div class="flow-box green" style="margin-bottom:10px;">GKE Cluster</div>
+          <div class="flow-box" style="background:#0d2818; border-color:#238636; color:#56d364; margin-bottom:8px; font-size:12px;">50 users → 2 pods handle it</div>
+          <div class="flow-box" style="background:#0d2818; border-color:#238636; color:#56d364; margin-bottom:8px; font-size:12px;">100 users → HPA adds 4 pods</div>
+          <div class="flow-box" style="background:#0d2818; border-color:#238636; color:#56d364; font-size:12px;">200 users → scales to 10 pods</div>
+          <div class="flow-label">Fully automatic — zero manual intervention</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="adv-grid">
+      <div class="adv-card">
+        <div class="adv-icon">⚡</div>
+        <h4>Horizontal Auto-Scaling (HPA)</h4>
+        <p>Automatically scales from 2 to 10 pods based on CPU (70%) and memory (80%) thresholds. No manual intervention required.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">🔄</div>
+        <h4>Zero-Downtime Rolling Updates</h4>
+        <p>Deploy a new version without any service interruption. GKE replaces pods one-by-one, keeping the app live throughout.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">🏥</div>
+        <h4>Self-Healing Pods</h4>
+        <p>Liveness and readiness probes detect unhealthy containers and restart them automatically — no 2am manual SSH required.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">⚖️</div>
+        <h4>Built-in Load Balancing</h4>
+        <p>GCP LoadBalancer distributes traffic across all healthy pod replicas. No NGINX or HAProxy configuration needed.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">🔒</div>
+        <h4>Secrets Management</h4>
+        <p>API keys and JWT secrets stored as Kubernetes Secrets — never hardcoded in images or environment files.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">📊</div>
+        <h4>GCP Console Visibility</h4>
+        <p>Real-time pod status, container logs, CPU/memory graphs, and service endpoints all visible in the GCP Console UI.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">🌍</div>
+        <h4>Multi-Zone Resilience</h4>
+        <p>Regional clusters spread pods across multiple availability zones. One zone going down does not affect users.</p>
+      </div>
+      <div class="adv-card">
+        <div class="adv-icon">💰</div>
+        <h4>Pay-Per-Use Scaling</h4>
+        <p>Scale down to minimum pods during off-hours, scale up on demand. You only pay for what you use — not peak capacity 24/7.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 3 — ARCHITECTURE -->
+  <div class="section" id="architecture">
+    <h2><span class="icon">🏗️</span> System Architecture</h2>
+
+    <h3>Overall Deployment Architecture</h3>
+    <div class="flowchart">
+      <div style="text-align:center; margin-bottom:28px; font-family:sans-serif;">
+        <div style="font-size:15px; font-weight:700; color:#58a6ff; margin-bottom:6px;">Universal RAG Agent — GKE Deployment Architecture</div>
+      </div>
+
+      <div class="flow-row">
+        <div class="flow-box" style="background:#21262d; border-color:#30363d;">Enterprise Users</div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-box" style="background:#0d2137; border-color:#1f6feb;">GCP Cloud Load Balancer</div>
+      </div>
+      <div style="text-align:center; color:#58a6ff; font-size:20px; margin:6px 0;">↓</div>
+      <div class="flow-row">
+        <div style="text-align:center;">
+          <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
+            <div>
+              <div class="flow-box" style="background:#c1440e; border-color:#e05c00; min-width:180px;">rag-frontend (×2 pods)<br><small>Streamlit UI · Port 8501</small></div>
+              <div class="flow-label">HPA: 2→10 pods</div>
+            </div>
+            <div>
+              <div class="flow-box" style="background:#00695c; border-color:#00897b; min-width:180px;">rag-api (×2 pods)<br><small>FastAPI · Port 8000</small></div>
+              <div class="flow-label">HPA: 2→10 pods</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center; color:#58a6ff; font-size:20px; margin:6px 0;">↓</div>
+      <div class="flow-row" style="gap:12px;">
+        <div class="flow-box teal" style="min-width:130px;">ChromaDB<br><small>:8001 · ClusterIP</small></div>
+        <div class="flow-box purple" style="min-width:130px;">Redis<br><small>:6379 · ClusterIP</small></div>
+        <div class="flow-box" style="background:#1a4731; border-color:#238636; min-width:130px; color:#56d364;">Groq API<br><small>Llama 3.3-70b</small></div>
+      </div>
+      <div style="text-align:center; margin-top:16px; font-size:12px; color:#8b949e; font-family:sans-serif;">
+        All internal services use ClusterIP (not exposed externally) · Only frontend &amp; API have LoadBalancer IPs
+      </div>
+    </div>
+
+    <h3>Docker Image Flow</h3>
+    <div class="flowchart">
+      <div class="flow-row">
+        <div class="flow-box dark">Local Windows Machine<br><small>docker-compose build</small></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-box" style="background:#1a4a6b; border-color:#1565c0;">Docker Hub<br><small>mshan011181/universal-rag-agent-*:v1</small></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-box green">GKE Cluster<br><small>kubectl apply -f deployment.yml</small></div>
+      </div>
+      <div class="flow-label" style="margin-top:16px;">Images built once on Windows (WSL2 = linux/amd64) → pushed to Docker Hub → pulled by GKE nodes automatically</div>
+    </div>
+
+    <h3>Query Processing Flow Inside GKE</h3>
+    <div class="flowchart">
+      <div class="flow-down" style="align-items:stretch;">
+        <div class="flow-row">
+          <div class="flow-box dark" style="min-width:200px;">User Query (via Streamlit or API)</div>
+        </div>
+        <div style="text-align:center; color:#58a6ff; margin:4px 0;">↓</div>
+        <div class="flow-row">
+          <div class="flow-box" style="min-width:200px; background:#1c3a5c; border-color:#1565c0;">Query Analyzer<br><small>5 dimensions: length · ambiguity · complexity · data_type · conv_state</small></div>
+        </div>
+        <div style="text-align:center; color:#58a6ff; margin:4px 0;">↓</div>
+        <div class="flow-row">
+          <div class="flow-box" style="min-width:200px; background:#1a3a2a; border-color:#238636;">Pattern Router<br><small>Selects 1 of 14 RAG patterns</small></div>
+        </div>
+        <div style="text-align:center; color:#58a6ff; margin:4px 0;">↓</div>
+        <div class="flow-row" style="gap:12px;">
+          <div class="flow-box teal" style="min-width:120px;">ChromaDB<br><small>Vector Search</small></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-box purple" style="min-width:120px;">Reranker<br><small>RRF + Cohere</small></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-box green" style="min-width:120px;">Groq LLM<br><small>4 LLM roles</small></div>
+        </div>
+        <div style="text-align:center; color:#58a6ff; margin:4px 0;">↓</div>
+        <div class="flow-row">
+          <div class="flow-box dark" style="min-width:200px;">Answer + Confidence + Sources + Pattern Used + Latency</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 4 — PREREQUISITES -->
+  <div class="section" id="prerequisites">
+    <h2><span class="icon">✅</span> Prerequisites</h2>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Requirement</th><th>Details</th><th>Status</th></tr>
+        <tr><td>GCP Account</td><td>With billing enabled (free $300 credits for new accounts)</td><td><span class="badge badge-green">Required</span></td></tr>
+        <tr><td>Docker Hub Account</td><td>mshan011181 — for storing images</td><td><span class="badge badge-green">Required</span></td></tr>
+        <tr><td>Docker Desktop</td><td>Running on local Windows machine to build images</td><td><span class="badge badge-green">Required</span></td></tr>
+        <tr><td>Groq API Key</td><td>Free at console.groq.com — for LLM and Whisper</td><td><span class="badge badge-green">Required</span></td></tr>
+        <tr><td>GitHub Repo</td><td>github.com/mshan011181/universal-rag-agent — contains deployment.yml</td><td><span class="badge badge-green">Required</span></td></tr>
+        <tr><td>gcloud CLI</td><td>Pre-installed in GCP Cloud Shell — no local install needed</td><td><span class="badge badge-blue">Pre-installed</span></td></tr>
+        <tr><td>kubectl</td><td>Pre-installed in GCP Cloud Shell — no local install needed</td><td><span class="badge badge-blue">Pre-installed</span></td></tr>
+        <tr><td>Cohere API Key</td><td>Optional — enables cross-encoder reranking</td><td><span class="badge badge-orange">Optional</span></td></tr>
+      </table>
+    </div>
+    <div class="callout callout-info">
+      <strong>Cloud Shell Advantage:</strong> All GKE steps in this guide are executed from GCP Cloud Shell — no local tool installation required. Cloud Shell comes pre-configured with gcloud, kubectl, git, and is already authenticated to your GCP account.
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 5 — DOCKER HUB -->
+  <div class="section" id="docker-hub">
+    <h2><span class="icon">🐳</span> Step 1 — Push Docker Images to Docker Hub</h2>
+    <p>
+      Before deploying to GKE, both Docker images must be available on Docker Hub so GKE nodes can pull them.
+      These commands are run on your <strong>local Windows machine</strong> after building the images.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>Log in to Docker Hub</h3>
+          <pre><code><span class="comment"># This opens browser-based device activation</span>
+<span class="cmd">docker logout</span>
+<span class="cmd">docker login</span></code></pre>
+          <div class="callout callout-warning">
+            <strong>Note:</strong> If you see an <code>insufficient_scope: authorization failed</code> error, run <code>docker logout</code> first then <code>docker login</code> again. This clears any read-only cached tokens.
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Tag and Push Both Images</h3>
+          <pre><code><span class="comment"># Tag images with Docker Hub username</span>
+<span class="cmd">docker tag</span> universal_rag_agent-api <span class="string">mshan011181/universal-rag-agent-api:v1</span>
+<span class="cmd">docker tag</span> universal_rag_agent-frontend <span class="string">mshan011181/universal-rag-agent-frontend:v1</span>
+
+<span class="comment"># Push to Docker Hub (first push: 10-20 mins, images are 3+ GB)</span>
+<span class="cmd">docker push</span> <span class="string">mshan011181/universal-rag-agent-api:v1</span>
+<span class="cmd">docker push</span> <span class="string">mshan011181/universal-rag-agent-frontend:v1</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <p>After pushing, both repositories are visible in Docker Hub:</p>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_7.png" alt="Docker Hub showing both images pushed successfully">
+      <div class="screenshot-caption">Docker Hub — both images pushed successfully: universal-rag-agent-api and universal-rag-agent-frontend</div>
+    </div>
+
+    <div class="callout callout-success">
+      <strong>Why Docker Hub?</strong> Docker Hub acts as the registry between your local Windows build environment and GKE's Linux nodes. Images built on Windows (via WSL2) are already <code>linux/amd64</code> format — the same architecture GKE nodes run — so they work identically without any modification.
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 6 — CLOUD SHELL -->
+  <div class="section" id="cloud-shell">
+    <h2><span class="icon">💻</span> Step 2 — Open GCP Cloud Shell</h2>
+    <p>
+      GCP Cloud Shell is a free browser-based terminal with all required tools pre-installed.
+      No local setup is needed — <code>gcloud</code>, <code>kubectl</code>, and <code>git</code> are all available immediately.
+    </p>
+    <ol>
+      <li>Go to <strong>https://console.cloud.google.com</strong></li>
+      <li>Click the <strong>&gt;_</strong> icon at the top right of the GCP Console</li>
+      <li>Cloud Shell opens at the bottom of the screen — your project is already set</li>
+    </ol>
+
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_1.png" alt="GCP Cloud Shell welcome screen">
+      <div class="screenshot-caption">GCP Cloud Shell — pre-authenticated to project shan-project2, ready to run gcloud and kubectl commands</div>
+    </div>
+
+    <pre><code><span class="comment"># Confirm your active project</span>
+<span class="cmd">gcloud config get-value project</span>
+
+<span class="success">shan-project2</span>
+
+<span class="comment"># Enable required APIs</span>
+<span class="cmd">gcloud services enable container.googleapis.com</span>
+<span class="cmd">gcloud services enable compute.googleapis.com</span></code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Feature</th><th>Cloud Shell</th><th>Local Machine</th></tr>
+        <tr><td>gcloud installed</td><td><span class="badge badge-green">Pre-installed</span></td><td>Manual install required</td></tr>
+        <tr><td>kubectl installed</td><td><span class="badge badge-green">Pre-installed</span></td><td>Manual install required</td></tr>
+        <tr><td>Already authenticated</td><td><span class="badge badge-green">Yes</span></td><td>Run gcloud auth login</td></tr>
+        <tr><td>Project pre-configured</td><td><span class="badge badge-green">Yes</span></td><td>Manual configuration</td></tr>
+        <tr><td>Cost</td><td><span class="badge badge-green">Free</span></td><td>—</td></tr>
+        <tr><td>Session persistence</td><td>Files persist, session 20 min idle</td><td>Always available</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 7 — CREATE CLUSTER -->
+  <div class="section" id="cluster">
+    <h2><span class="icon">⚙️</span> Step 3 — Create the GKE Cluster</h2>
+
+    <div class="callout callout-warning">
+      <strong>CPU Quota Note:</strong> Using <code>--region</code> creates nodes in 3 zones (3× CPU usage). For accounts with the default 32 CPU quota, use <code>--zone</code> instead to stay within limits.
+    </div>
+
+    <pre><code><span class="comment"># Create cluster in a single zone (fits within default GCP CPU quota)</span>
+<span class="cmd">gcloud container clusters create</span> rag-cluster \
+  <span class="flag">--num-nodes</span>=3 \
+  <span class="flag">--machine-type</span>=e2-standard-4 \
+  <span class="flag">--zone</span>=us-central1-a \
+  <span class="flag">--enable-autoscaling</span> \
+  <span class="flag">--min-nodes</span>=1 \
+  <span class="flag">--max-nodes</span>=10 \
+  <span class="flag">--disk-size</span>=50GB</code></pre>
+
+    <div class="callout callout-info">
+      This takes <strong>3–5 minutes</strong>. The cluster creates 3 nodes, each with 4 vCPU and 16GB RAM — enough to run the 3.5GB RAG images comfortably.
+    </div>
+
+    <pre><code><span class="comment"># Connect kubectl to the new cluster</span>
+<span class="cmd">gcloud container clusters get-credentials</span> rag-cluster \
+  <span class="flag">--zone</span>=us-central1-a
+
+<span class="comment"># Verify nodes are ready</span>
+<span class="cmd">kubectl get nodes</span>
+
+<span class="success">NAME                                         STATUS   ROLES    AGE   VERSION
+gke-rag-cluster-default-pool-01da5ae1-x94k   Ready    &lt;none&gt;   25m   v1.35.3-gke.1389002</span></code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Machine Type</th><th>vCPU</th><th>RAM</th><th>CPUs Used</th><th>Best For</th></tr>
+        <tr><td>e2-standard-4 (chosen)</td><td>4</td><td>16 GB</td><td>12 (3 nodes)</td><td>Runs 3.5GB images comfortably</td></tr>
+        <tr><td>e2-standard-2</td><td>2</td><td>8 GB</td><td>6 (3 nodes)</td><td>Cheapest, tight on RAM</td></tr>
+        <tr><td>e2-standard-8</td><td>8</td><td>32 GB</td><td>24 (3 nodes)</td><td>High-load production</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 8 — DEPLOY -->
+  <div class="section" id="deploy">
+    <h2><span class="icon">🚀</span> Step 4 — Deploy to GKE</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>Create Namespace and Secrets</h3>
+          <pre><code><span class="cmd">kubectl create namespace</span> rag-agent
+
+<span class="cmd">kubectl create secret generic</span> rag-secrets \
+  <span class="flag">--namespace</span>=rag-agent \
+  <span class="flag">--from-literal</span>=groq-api-key=YOUR_GROQ_API_KEY \
+  <span class="flag">--from-literal</span>=jwt-secret=YOUR_JWT_SECRET \
+  <span class="flag">--from-literal</span>=database-url=postgresql://raguser:ragpass@localhost:5432/ragdb</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Clone the GitHub Repo</h3>
+          <pre><code><span class="cmd">git clone</span> https://github.com/mshan011181/universal-rag-agent.git
+<span class="cmd">cd</span> universal-rag-agent</code></pre>
+          <div class="callout callout-info">
+            The <code>infra/k8s/deployment.yml</code> already contains the correct Docker Hub image references (<code>mshan011181/universal-rag-agent-api:v1</code>) — no manual editing needed.
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h3>Apply the Deployment</h3>
+          <pre><code><span class="cmd">kubectl apply -f</span> infra/k8s/deployment.yml
+
+<span class="success">namespace/rag-agent configured
+deployment.apps/rag-api created
+service/rag-api-svc created
+horizontalpodautoscaler.autoscaling/rag-api-hpa created
+deployment.apps/rag-frontend created
+service/rag-frontend-svc created
+service/rag-api-external created
+horizontalpodautoscaler.autoscaling/rag-frontend-hpa created
+deployment.apps/rag-redis created
+service/rag-redis created
+deployment.apps/rag-chromadb created
+service/rag-chromadb created</span></code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h3>Watch Pods Come Up</h3>
+          <pre><code><span class="cmd">kubectl get pods -n rag-agent --watch</span>
+
+<span class="success">NAME                            READY   STATUS    RESTARTS   AGE
+rag-api-6c94b9d5cf-glqpp        1/1     Running   0          2m12s
+rag-api-6c94b9d5cf-tcpzg        1/1     Running   0          2m12s
+rag-chromadb-6d4bb89875-t5cnm   1/1     Running   0          2m5s
+rag-frontend-78c667f86d-cfsf2   1/1     Running   0          2m10s
+rag-frontend-78c667f86d-z4lb8   1/1     Running   0          2m10s
+rag-redis-5b84958bb8-7z5r9      1/1     Running   0          2m7s</span></code></pre>
+          <div class="callout callout-success">
+            All 6 pods showing <strong>1/1 Running</strong> — the deployment is complete and healthy.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 9 — SERVICES -->
+  <div class="section" id="services">
+    <h2><span class="icon">🌐</span> Step 5 — Access Services &amp; External IPs</h2>
+
+    <pre><code><span class="cmd">kubectl get services -n rag-agent</span>
+
+<span class="success">NAME               TYPE           CLUSTER-IP       EXTERNAL-IP      PORT(S)        AGE
+rag-api-external   LoadBalancer   34.118.230.8     34.170.143.113   80:32426/TCP   3m21s
+rag-api-svc        ClusterIP      34.118.229.239   &lt;none&gt;           8000/TCP       3m23s
+rag-chromadb       ClusterIP      34.118.239.38    &lt;none&gt;           8001/TCP       3m17s
+rag-frontend-svc   LoadBalancer   34.118.233.237   34.121.196.217   80:32728/TCP   3m21s
+rag-redis          ClusterIP      34.118.234.82    &lt;none&gt;           6379/TCP       3m18s</span></code></pre>
+
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_20.png" alt="GKE Services showing external IPs in GCP Console">
+      <div class="screenshot-caption">GCP Console → Kubernetes Engine → Gateways, Services &amp; Ingress — all services running OK with external IPs assigned</div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Service</th><th>Type</th><th>External IP</th><th>Access</th></tr>
+        <tr><td>Streamlit UI</td><td>LoadBalancer</td><td>34.121.196.217</td><td>http://34.121.196.217</td></tr>
+        <tr><td>FastAPI</td><td>LoadBalancer</td><td>34.170.143.113</td><td>http://34.170.143.113/api/docs</td></tr>
+        <tr><td>ChromaDB</td><td>ClusterIP</td><td>Internal only</td><td>Not exposed externally</td></tr>
+        <tr><td>Redis</td><td>ClusterIP</td><td>Internal only</td><td>Not exposed externally</td></tr>
+      </table>
+    </div>
+
+    <div class="callout callout-info">
+      <strong>Security Design:</strong> ChromaDB and Redis use <code>ClusterIP</code> — accessible only within the cluster. Only the UI and API are exposed externally via LoadBalancer. This prevents direct database access from the internet.
+    </div>
+
+    <h3>GKE Workloads — All Deployments Healthy</h3>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_21.png" alt="GKE deployment details showing container logs">
+      <div class="screenshot-caption">GCP Console → Kubernetes Engine → Workloads → rag-api — real-time container logs showing API startup and health checks</div>
+    </div>
+
+    <h3>FastAPI Swagger UI — Live on GKE</h3>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_14.png" alt="FastAPI Swagger UI running on GKE">
+      <div class="screenshot-caption">FastAPI Swagger UI (http://34.170.143.113/api/docs) — all endpoints live: Health, Authentication, Query, Ingestion, Admin, Metrics</div>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 10 — TESTING -->
+  <div class="section" id="testing">
+    <h2><span class="icon">🧪</span> Step 6 — Live Testing Results</h2>
+    <p>
+      With the GKE cluster running, the Streamlit UI was tested with multiple real-world use cases demonstrating all major
+      RAG capabilities — document ingestion, web page indexing, YouTube video transcription, MP4 upload, and multi-pattern query routing.
+    </p>
+
+    <h3>Test 1 — Complex RAG Pattern Query (Apple Inc. Wikipedia)</h3>
+    <p>
+      After ingesting the Apple Inc. Wikipedia page, a complex analytical query was submitted to test the RAG Fusion
+      and Self-RAG patterns. The agent successfully compared Apple's strategy across decades with accurate citations.
+    </p>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_35.png" alt="Streamlit showing complex RAG query on Apple Inc.">
+      <div class="screenshot-caption">Streamlit UI — Complex query: "Compare Apple's growth in the 1980s versus the 2000s..." — RAG Fusion pattern activated, detailed multi-paragraph response with citations from the Wikipedia source</div>
+    </div>
+
+    <h3>Test 2 — MP4 Video Upload and Query</h3>
+    <p>
+      An MP4 video file ("CI CD Pipeline Explained in 2 minutes With Animation") was uploaded directly through the
+      Streamlit sidebar. Groq Whisper (whisper-large-v3) transcribed the audio, chunked it, and indexed it into
+      ChromaDB. The video source appears in the Knowledge Base with 496 total chunks across all sources.
+    </p>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_39.png" alt="Streamlit showing CI CD pipeline video query result">
+      <div class="screenshot-caption">Streamlit UI — MP4 video uploaded and transcribed by Groq Whisper · Query: "What is a CI/CD pipeline?" · Sources panel shows video:CI CD Pipeline Explained in 2 minutes With Animation.mp4</div>
+    </div>
+
+    <h3>Test 3 — YouTube Video Ingestion</h3>
+    <p>
+      A YouTube URL was pasted in the sidebar. yt-dlp downloaded the subtitle file (.json3 format) without downloading
+      the full video, parsed the captions, and indexed the transcript. The source label <code>youtube:qYNweeDHiyU</code>
+      confirms successful ingestion from YouTube.
+    </p>
+    <div class="screenshot-wrapper">
+      <img src="gke_screenshots/screenshot_30.png" alt="YouTube RAG video being ingested">
+      <div class="screenshot-caption">YouTube video about Retrieval-Augmented Generation ingested via yt-dlp subtitle extraction — transcript indexed into ChromaDB without downloading the video file</div>
+    </div>
+
+    <h3>Knowledge Base Stats After Testing</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Source</th><th>Type</th><th>How Ingested</th></tr>
+        <tr><td>manual_text</td><td>Plain text</td><td>Pasted in text box</td></tr>
+        <tr><td>video:CI CD Pipeline Explained...</td><td>MP4 video</td><td>Uploaded → Groq Whisper transcription</td></tr>
+        <tr><td>video:Kubernetes Health Checks...</td><td>MP4 video</td><td>Uploaded → Groq Whisper transcription</td></tr>
+        <tr><td>web:en.wikipedia.org_wiki_Apple_Inc.</td><td>Web page</td><td>URL → trafilatura extraction</td></tr>
+        <tr><td>web:en.wikipedia.org_wiki_Cristiano_Ronaldo</td><td>Web page</td><td>URL → trafilatura extraction</td></tr>
+        <tr><td>web:shanmaha.com</td><td>Web page</td><td>URL → trafilatura extraction</td></tr>
+        <tr><td>youtube:qYNweeDHiyU</td><td>YouTube video</td><td>URL → yt-dlp subtitle extraction</td></tr>
+      </table>
+    </div>
+    <div class="callout callout-success">
+      <strong>Total: 496 chunks</strong> indexed across 7 diverse sources — documents, videos, web pages, and YouTube — all retrievable by the RAG agent from ChromaDB running inside the GKE cluster.
+    </div>
+
+    <h3>RAG Pattern Switching — Observed Results</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Query Type</th><th>Example</th><th>Pattern Selected</th><th>Confidence</th></tr>
+        <tr><td>Simple factual</td><td>"When was Apple founded?"</td><td>Naive RAG</td><td>HIGH</td></tr>
+        <tr><td>Vague / short</td><td>"tell me about Apple"</td><td>HyDE</td><td>MED</td></tr>
+        <tr><td>High complexity</td><td>"Compare Apple's 1980s vs 2000s strategy..."</td><td>RAG Fusion</td><td>HIGH</td></tr>
+        <tr><td>Follow-up</td><td>"Can you give more details on that?"</td><td>Conversational RAG</td><td>HIGH</td></tr>
+        <tr><td>Multi-step research</td><td>"Who founded Apple, what challenges... turning point?"</td><td>Agentic RAG</td><td>HIGH</td></tr>
+        <tr><td>High-risk verification</td><td>"What is Apple's exact revenue figure?"</td><td>CRAG</td><td>MED</td></tr>
+        <tr><td>Video content</td><td>"What is a CI/CD pipeline?"</td><td>Naive RAG</td><td>MED</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 11 — HPA -->
+  <div class="section" id="hpa">
+    <h2><span class="icon">📈</span> Step 7 — Auto-Scaling (HPA)</h2>
+    <p>
+      The Horizontal Pod Autoscaler monitors CPU and memory usage across all pods. When load increases,
+      new pods are automatically provisioned. When load drops, excess pods are terminated — you only pay for what is used.
+    </p>
+
+    <pre><code><span class="cmd">kubectl get hpa -n rag-agent</span>
+
+<span class="success">NAME              REFERENCE            TARGETS      MINPODS  MAXPODS  REPLICAS
+rag-api-hpa       Deployment/rag-api   15%/70%      2        10       2
+rag-frontend-hpa  Deployment/rag-frontend  12%/70%  2        10       2</span></code></pre>
+
+    <div class="flowchart">
+      <div style="text-align:center; font-weight:700; color:#58a6ff; margin-bottom:20px; font-family:sans-serif;">HPA Auto-Scaling Lifecycle</div>
+      <div class="flow-row">
+        <div class="flow-box dark" style="min-width:120px;">Normal Load<br><small>2 pods, CPU ~15%</small></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-box" style="background:#2d1f00; border-color:#d29922; color:#ffa657; min-width:120px;">Load Increases<br><small>CPU crosses 70%</small></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-box green" style="min-width:120px;">HPA Scales Up<br><small>4 → 6 → 10 pods</small></div>
+      </div>
+      <div style="text-align:center; color:#58a6ff; font-size:20px; margin:8px 0;">↕</div>
+      <div class="flow-row">
+        <div class="flow-box dark" style="min-width:160px;">Load Drops → Scale Down<br><small>Back to 2 pods after 5 mins</small></div>
+      </div>
+      <div class="flow-label" style="margin-top:16px;">Scale-down stabilisation window = 5 minutes (prevents flapping)</div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>HPA Setting</th><th>Value</th><th>Reason</th></tr>
+        <tr><td>Min replicas</td><td>2</td><td>Always-on redundancy — one pod can fail without downtime</td></tr>
+        <tr><td>Max replicas</td><td>10</td><td>Caps compute cost while handling large enterprise load</td></tr>
+        <tr><td>CPU threshold</td><td>70%</td><td>Triggers scale-up before users feel latency</td></tr>
+        <tr><td>Memory threshold</td><td>80%</td><td>Prevents OOM kills on large document ingestion</td></tr>
+        <tr><td>Update strategy</td><td>RollingUpdate</td><td>Zero downtime — old pods removed only after new ones are ready</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 12 — ADVANTAGES -->
+  <div class="section" id="advantages">
+    <h2><span class="icon">🏆</span> Advantages of GKE Deployment</h2>
+
+    <h3>1. Zero-Downtime Deployments</h3>
+    <p>When a new version of the RAG agent is released, GKE's rolling update strategy replaces pods one-by-one. Traffic is only routed to new pods after their readiness probe passes. Users experience no interruption.</p>
+
+    <h3>2. Self-Healing Infrastructure</h3>
+    <p>Liveness probes (<code>/api/health</code>) check every 30 seconds. If a pod becomes unresponsive, Kubernetes restarts it automatically. Readiness probes (<code>/api/health/ready</code>) ensure traffic only goes to healthy pods.</p>
+
+    <h3>3. Declarative Configuration</h3>
+    <p>The entire deployment is defined in a single <code>deployment.yml</code> file committed to GitHub. Rebuilding the exact same infrastructure on any GCP project takes one command: <code>kubectl apply -f infra/k8s/deployment.yml</code>.</p>
+
+    <h3>4. Namespace Isolation</h3>
+    <p>The <code>rag-agent</code> namespace isolates all RAG resources from other workloads on the same cluster. Multiple applications can share one GKE cluster with complete separation.</p>
+
+    <h3>5. Secrets Never in Code</h3>
+    <p>Groq API key and JWT secret are stored as Kubernetes Secrets, mounted as environment variables at runtime. They never appear in Docker images, Git commits, or deployment manifests.</p>
+
+    <h3>6. GCP Console Observability</h3>
+    <p>Without any additional setup, GCP Console shows real-time pod status, CPU/memory graphs, container logs, and event history for every deployment. This replaces the need for manual <code>docker logs</code> SSH sessions.</p>
+
+    <h3>7. Path to Enterprise Scale</h3>
+    <div class="flowchart">
+      <div style="text-align:center; font-weight:700; color:#58a6ff; margin-bottom:20px; font-family:sans-serif;">Scaling Path from Demo to Enterprise</div>
+      <div class="flow-row" style="gap:8px; flex-wrap:wrap;">
+        <div style="text-align:center; min-width:150px;">
+          <div class="flow-box dark">Single GCP VM<br><small>Dev / Demo</small></div>
+          <div class="flow-label">~$50/month</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div style="text-align:center; min-width:150px;">
+          <div class="flow-box" style="background:#1a4a6b; border-color:#1565c0;">GKE + Docker Compose<br><small>Small Team</small></div>
+          <div class="flow-label">~$200/month</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div style="text-align:center; min-width:150px;">
+          <div class="flow-box green">GKE + Managed Services<br><small>Enterprise SaaS</small></div>
+          <div class="flow-label">~$800+/month</div>
+        </div>
+        <span class="flow-arrow">→</span>
+        <div style="text-align:center; min-width:150px;">
+          <div class="flow-box" style="background:#4a1a6b; border-color:#6e40c9; color:#bc8cff;">GKE + Vertex AI Claude<br><small>Fortune 500</small></div>
+          <div class="flow-label">Custom pricing</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 13 — COST -->
+  <div class="section" id="cost">
+    <h2><span class="icon">💰</span> Cost &amp; Resource Summary</h2>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Component</th><th>Config</th><th>Cost/Hour</th><th>Cost/Month</th></tr>
+        <tr><td>GKE Cluster Management</td><td>1 cluster</td><td>$0.10</td><td>$73</td></tr>
+        <tr><td>e2-standard-4 node (×1)</td><td>4 vCPU, 16GB RAM</td><td>$0.134</td><td>$97</td></tr>
+        <tr><td>Boot disk</td><td>50GB SSD</td><td>$0.004</td><td>$3</td></tr>
+        <tr><td>LoadBalancers (×2)</td><td>Frontend + API</td><td>$0.050</td><td>$36</td></tr>
+        <tr><td><strong>Total (1 node, always on)</strong></td><td>—</td><td><strong>~$0.29</strong></td><td><strong>~$209</strong></td></tr>
+      </table>
+    </div>
+
+    <div class="callout callout-warning">
+      <strong>Testing Tip:</strong> Delete the cluster when not actively testing to avoid charges. Recreating takes 5 minutes. Run: <code>gcloud container clusters delete rag-cluster --zone=us-central1-a</code>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Usage Pattern</th><th>Estimated Monthly Cost</th></tr>
+        <tr><td>Running 24/7 (always on, 1 node)</td><td>~$209/month</td></tr>
+        <tr><td>Testing 2 hours/day</td><td>~$18/month</td></tr>
+        <tr><td>Delete after each test session</td><td>Pay only what you use</td></tr>
+        <tr><td>3 nodes (production, auto-scaling)</td><td>~$450/month</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════ SECTION 14 — ROADMAP -->
+  <div class="section" id="roadmap">
+    <h2><span class="icon">🛣️</span> Production Roadmap</h2>
+    <p>The current GKE deployment uses Streamlit as the UI, which is ideal for testing and demos. For full enterprise production, the following phases are planned:</p>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Phase</th><th>What to Build</th><th>Timeline</th><th>Status</th></tr>
+        <tr>
+          <td>Phase 1</td>
+          <td>GKE deployment with Streamlit + FastAPI (current)</td>
+          <td>Done</td>
+          <td><span class="badge badge-green">Complete</span></td>
+        </tr>
+        <tr>
+          <td>Phase 2</td>
+          <td>Replace Groq with Vertex AI Claude 3.5 Sonnet for no rate limits</td>
+          <td>1–2 weeks</td>
+          <td><span class="badge badge-orange">Planned</span></td>
+        </tr>
+        <tr>
+          <td>Phase 3</td>
+          <td>React frontend replacing Streamlit — proper enterprise UI with login</td>
+          <td>2–3 weeks</td>
+          <td><span class="badge badge-orange">Planned</span></td>
+        </tr>
+        <tr>
+          <td>Phase 4</td>
+          <td>Replace ChromaDB/PostgreSQL/Redis with managed GCP services (Cloud SQL, Memorystore, Pinecone)</td>
+          <td>1–2 weeks</td>
+          <td><span class="badge badge-orange">Planned</span></td>
+        </tr>
+        <tr>
+          <td>Phase 5</td>
+          <td>Multi-tenant BYOK (Bring Your Own Key) + Stripe billing for enterprise SaaS</td>
+          <td>3–4 weeks</td>
+          <td><span class="badge badge-red">Future</span></td>
+        </tr>
+        <tr>
+          <td>Phase 6</td>
+          <td>SSO login (Google/Microsoft OAuth) for enterprise customers</td>
+          <td>1 week</td>
+          <td><span class="badge badge-red">Future</span></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="callout callout-success">
+      <strong>The RAG engine, FastAPI backend, GKE infrastructure, auto-scaling, and observability are already production-grade.</strong>
+      The remaining work is the enterprise UI (React), managed data services, and billing layer — the hardest parts are already built.
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="container">
+    <p>Universal RAG Agent — Production Deployment Guide</p>
+    <p style="margin-top:8px;">
+      GitHub: <a href="https://github.com/mshan011181/universal-rag-agent">github.com/mshan011181/universal-rag-agent</a> &nbsp;·&nbsp;
+      Built with Groq · LangChain · ChromaDB · GKE
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
