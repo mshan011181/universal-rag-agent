@@ -73,10 +73,12 @@ _prompt_key() {
   export "$secret_name"="$value"
 }
 
-_prompt_key PINECONE_API_KEY  "PINECONE_API_KEY "
-_prompt_key GROQ_API_KEY      "GROQ_API_KEY     "
-_prompt_key TAVILY_API_KEY    "TAVILY_API_KEY   "
-_prompt_key COHERE_API_KEY    "COHERE_API_KEY   "
+_prompt_key PINECONE_API_KEY   "PINECONE_API_KEY  "
+_prompt_key ANTHROPIC_API_KEY  "ANTHROPIC_API_KEY "
+_prompt_key LANGSMITH_API_KEY  "LANGSMITH_API_KEY "
+_prompt_key GROQ_API_KEY       "GROQ_API_KEY      "
+_prompt_key TAVILY_API_KEY     "TAVILY_API_KEY    "
+_prompt_key COHERE_API_KEY     "COHERE_API_KEY    "
 
 echo ""
 echo "All keys collected. Starting provisioning..."
@@ -241,10 +243,12 @@ _upsert_secret "db-password"    "$DB_PASS"         # persisted so re-runs re-use
 _upsert_secret "database-url"   "$DATABASE_URL"
 _upsert_secret "redis-url"      "$REDIS_URL"
 _upsert_secret "jwt-secret"     "$JWT_SECRET"
-_upsert_secret "pinecone-api-key" "$PINECONE_API_KEY"
-_upsert_secret "groq-api-key"   "$GROQ_API_KEY"
-_upsert_secret "tavily-api-key" "$TAVILY_API_KEY"
-_upsert_secret "cohere-api-key" "$COHERE_API_KEY"
+_upsert_secret "pinecone-api-key"   "$PINECONE_API_KEY"
+_upsert_secret "anthropic-api-key"  "$ANTHROPIC_API_KEY"
+_upsert_secret "langsmith-api-key"  "$LANGSMITH_API_KEY"
+_upsert_secret "groq-api-key"       "$GROQ_API_KEY"
+_upsert_secret "tavily-api-key"     "$TAVILY_API_KEY"
+_upsert_secret "cohere-api-key"     "$COHERE_API_KEY"
 
 # Grant Cloud Build SA access to secrets
 CB_PROJECT_NUM=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
@@ -275,8 +279,8 @@ echo "  Pushing images..."
 docker push --all-tags "${API_IMAGE%:*}"
 docker push --all-tags "${FRONTEND_IMAGE%:*}"
 
-COMMON_ENV="LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=${PROJECT_ID},VERTEXAI_LOCATION=${REGION},VERTEXAI_MODEL=claude-sonnet-4-5@20251205,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production"
-COMMON_SECRETS="PINECONE_API_KEY=pinecone-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest"
+COMMON_ENV="LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production"
+COMMON_SECRETS="PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest"
 
 echo "  Deploying API to Cloud Run..."
 gcloud run deploy rag-api \

@@ -17,10 +17,22 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "universal-rag")
 
+# Anthropic Claude — direct API (recommended for production enterprise)
+# LLM_PROVIDER=anthropic  →  uses this key + model
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+
 # Vertex AI Claude — production LLM on Cloud Run (ADC, no API key required)
+# LLM_PROVIDER=vertexai  →  uses ADC from the Cloud Run service account
 VERTEXAI_PROJECT = os.getenv("VERTEXAI_PROJECT", "")
 VERTEXAI_LOCATION = os.getenv("VERTEXAI_LOCATION", "us-east5")
 VERTEXAI_MODEL = os.getenv("VERTEXAI_MODEL", "claude-sonnet-4-5@20251205")
+
+# LangSmith — observability / tracing for all LLM providers in production
+# Set LANGCHAIN_TRACING_V2=true to enable; all LangChain calls are traced automatically.
+LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "universal-rag-enterprise")
+LANGSMITH_ENDPOINT = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

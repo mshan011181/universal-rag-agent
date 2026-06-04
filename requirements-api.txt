@@ -7,12 +7,19 @@ langchain-community==0.3.24
 langchain-groq==0.3.2
 langgraph==0.4.7
 
-# Groq (local dev / fallback)
+# Groq (local dev / CI fallback — LLM_PROVIDER=groq)
 groq==0.28.0
 
-# Vertex AI Claude (production LLM on Cloud Run — LLM_PROVIDER=vertexai)
+# Anthropic Claude — direct API (recommended production enterprise — LLM_PROVIDER=anthropic)
+langchain-anthropic==0.3.15
+anthropic>=0.40.0
+
+# Vertex AI Claude — GCP-native production via ADC (LLM_PROVIDER=vertexai)
 langchain-google-vertexai==2.0.14
 google-cloud-aiplatform>=1.60.0
+
+# LangSmith — LLM observability, tracing, and monitoring for all providers
+langsmith>=0.2.0
 
 # Vector Store — managed Pinecone (replaces self-hosted ChromaDB)
 pinecone>=3.0.0

@@ -1,23 +1,82 @@
 """
-LLM provider abstraction.
+LLM provider abstraction with LangSmith tracing.
 
-LLM_PROVIDER=groq      → Groq Llama (local dev / default)
-LLM_PROVIDER=vertexai  → Vertex AI Claude (production on Cloud Run)
+LLM_PROVIDER=groq        → Groq Llama (local dev / CI)
+LLM_PROVIDER=anthropic   → Anthropic Claude direct API (recommended for production enterprise)
+LLM_PROVIDER=vertexai    → Vertex AI Claude via ADC (GCP-native production)
 
-Cloud Run uses Application Default Credentials automatically — no API key needed
-when the Cloud Run service account has roles/aiplatform.user.
+LangSmith tracing is enabled automatically when LANGCHAIN_TRACING_V2=true is set.
+All providers route through LangChain, so every chain, retrieval, and grading call
+is captured in LangSmith with full token counts, latency, and cost per run.
+
+Tracing env vars (set in Secret Manager / Cloud Run):
+  LANGCHAIN_TRACING_V2=true
+  LANGCHAIN_API_KEY=<langsmith-api-key>
+  LANGCHAIN_PROJECT=universal-rag-enterprise
+  LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
 """
 
 import os
 import json
+import logging
+
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.config import GROQ_API_KEY, GROQ_MODEL, VERTEXAI_PROJECT, VERTEXAI_LOCATION, VERTEXAI_MODEL
+from src.config import (
+    GROQ_API_KEY, GROQ_MODEL,
+    ANTHROPIC_API_KEY, ANTHROPIC_MODEL,
+    VERTEXAI_PROJECT, VERTEXAI_LOCATION, VERTEXAI_MODEL,
+    LANGSMITH_API_KEY, LANGSMITH_PROJECT, LANGSMITH_ENDPOINT,
+)
+
+logger = logging.getLogger(__name__)
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
 
+# ---------------------------------------------------------------------------
+# LangSmith bootstrap
+# ---------------------------------------------------------------------------
+# LangChain reads these four env vars automatically — no extra code needed.
+# We set them here so any provider (groq / anthropic / vertexai) is covered
+# without modifying individual chain files.
+
+def _configure_langsmith() -> None:
+    """Push LangSmith config into env if the key is available."""
+    if not LANGSMITH_API_KEY:
+        return
+    # Only enable if not already forced off by the caller
+    if os.getenv("LANGCHAIN_TRACING_V2", "").lower() not in ("false", "0"):
+        os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+        os.environ.setdefault("LANGCHAIN_API_KEY", LANGSMITH_API_KEY)
+        os.environ.setdefault("LANGCHAIN_PROJECT", LANGSMITH_PROJECT)
+        os.environ.setdefault("LANGCHAIN_ENDPOINT", LANGSMITH_ENDPOINT)
+        logger.info("LangSmith tracing enabled → project=%s", LANGSMITH_PROJECT)
+
+
+_configure_langsmith()
+
+
+# ---------------------------------------------------------------------------
+# Provider factory
+# ---------------------------------------------------------------------------
 
 def get_llm(temperature: float = 0.1, streaming: bool = False):
+    """Return a LangChain chat model for the configured provider.
+
+    All returned models are automatically traced by LangSmith when
+    LANGCHAIN_TRACING_V2=true is set.
+    """
+    if LLM_PROVIDER == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            api_key=ANTHROPIC_API_KEY,
+            model=ANTHROPIC_MODEL,
+            temperature=temperature,
+            streaming=streaming,
+            # max_tokens required by Anthropic API; 4096 covers all RAG responses
+            max_tokens=4096,
+        )
+
     if LLM_PROVIDER == "vertexai":
         from langchain_google_vertexai import ChatVertexAI
         return ChatVertexAI(
@@ -27,6 +86,8 @@ def get_llm(temperature: float = 0.1, streaming: bool = False):
             temperature=temperature,
             streaming=streaming,
         )
+
+    # Default: Groq (local dev / CI)
     from langchain_groq import ChatGroq
     return ChatGroq(
         api_key=GROQ_API_KEY,
@@ -36,10 +97,18 @@ def get_llm(temperature: float = 0.1, streaming: bool = False):
     )
 
 
+# ---------------------------------------------------------------------------
+# Retry wrapper
+# ---------------------------------------------------------------------------
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
 def safe_invoke(llm, messages: list) -> str:
     return llm.invoke(messages).content
 
+
+# ---------------------------------------------------------------------------
+# RAG chain functions — all calls are traced in LangSmith automatically
+# ---------------------------------------------------------------------------
 
 def synthesize(context: str, query: str) -> str:
     from langchain_core.messages import SystemMessage, HumanMessage
