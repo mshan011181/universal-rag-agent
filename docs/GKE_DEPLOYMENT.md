@@ -36,10 +36,11 @@ GKE Cluster (rag-cluster)
         |-- rag-frontend    (2 pods, port 8501)
         |-- rag-redis       (1 pod,  port 6379)
         |-- rag-chromadb    (1 pod,  port 8001)
+        |-- rag-postgres    (1 pod,  port 5432)
 ```
 
 **Your images** (`api`, `frontend`) come from your Docker Hub account.  
-**Public images** (`redis:7-alpine`, `chromadb/chroma:0.6.3`) are pulled directly from official Docker Hub repos — no build needed.
+**Public images** (`redis:7-alpine`, `chromadb/chroma:0.6.3`, `postgres:16-alpine`) are pulled directly from official Docker Hub repos — no build needed.
 
 ---
 
@@ -140,11 +141,14 @@ Secrets store sensitive credentials. Never hardcode them in `deployment.yml`.
 kubectl create secret generic rag-secrets \
   --namespace=rag-agent \
   --from-literal=groq-api-key=YOUR_GROQ_API_KEY \
-  --from-literal=jwt-secret=YOUR_JWT_SECRET \
-  --from-literal=database-url=postgresql://raguser:ragpass@rag-postgres:5432/ragdb
+  --from-literal=jwt-secret=YOUR_JWT_SECRET
 ```
 
 Replace `YOUR_GROQ_API_KEY` and `YOUR_JWT_SECRET` with actual values.
+
+> The `DATABASE_URL` is no longer a secret — it is set directly in `deployment.yml` as:
+> `postgresql://raguser:ragpass@rag-postgres:5432/ragdb`
+> `rag-postgres` is the Kubernetes internal DNS name of the PostgreSQL ClusterIP service. All pods in the `rag-agent` namespace resolve it automatically.
 
 ---
 
@@ -224,6 +228,7 @@ rag-chromadb       ClusterIP      10.x.x.x       <none>           8001/TCP
 | Frontend (Streamlit) | `mshan011181/universal-rag-agent-frontend:v1` | 2 (min) | LoadBalancer (external) |
 | Redis | `redis:7-alpine` (public) | 1 | ClusterIP (internal only) |
 | ChromaDB | `chromadb/chroma:0.6.3` (public) | 1 | ClusterIP (internal only) |
+| PostgreSQL | `postgres:16-alpine` (public) | 1 | ClusterIP (internal only) |
 
 ---
 
@@ -253,6 +258,7 @@ kubectl get hpa -n rag-agent
 | Frontend | 500m | 2000m | 2Gi | 4Gi |
 | Redis | 100m | 500m | 256Mi | 512Mi |
 | ChromaDB | 200m | 1000m | 512Mi | 2Gi |
+| PostgreSQL | 200m | 1000m | 512Mi | 2Gi |
 
 ---
 

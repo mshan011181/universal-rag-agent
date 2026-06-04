@@ -49,10 +49,7 @@ spec:
                   name: rag-secrets
                   key: jwt-secret
             - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: rag-secrets
-                  key: database-url
+              value: "postgresql://raguser:ragpass@rag-postgres:5432/ragdb"
             - name: REDIS_URL
               value: "redis://rag-redis:6379/0"
             - name: CHROMA_HOST
@@ -333,4 +330,101 @@ spec:
   ports:
     - port: 8001
       targetPort: 8001
+  type: ClusterIP
+
+---
+# ─────────────────────────────────────────────────────────────
+# PostgreSQL — PersistentVolumeClaim (data survives pod restarts)
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-postgres-pvc
+  namespace: rag-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-postgres
+  namespace: rag-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-postgres
+  template:
+    metadata:
+      labels:
+        app: rag-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "raguser"
+            - name: POSTGRES_PASSWORD
+              value: "ragpass"
+            - name: POSTGRES_DB
+              value: "ragdb"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - raguser
+                - -d
+                - ragdb
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - raguser
+                - -d
+                - ragdb
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: rag-postgres-pvc
+
+---
+# PostgreSQL Service — ClusterIP (internal only, not exposed externally)
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-postgres
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
   type: ClusterIP
