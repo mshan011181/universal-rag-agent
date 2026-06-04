@@ -8,8 +8,8 @@ langgraph==0.4.7
 # Groq
 groq==0.28.0
 
-# Vector Store
-chromadb==0.6.3
+# Vector Store — managed Pinecone (replaces self-hosted ChromaDB)
+pinecone>=3.0.0
 
 # Embeddings (local, no API key needed)
 sentence-transformers==3.4.1
@@ -19,6 +19,7 @@ tavily-python==0.5.1
 
 # Memory & DB
 # sqlite3 is built-in
+redis[asyncio]>=5.0.0
 
 # Document loaders
 pypdf==5.4.0

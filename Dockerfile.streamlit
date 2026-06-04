@@ -6,24 +6,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only Streamlit-specific requirements (no API server, no auth, no DB)
 COPY requirements-streamlit.txt .
 
-# Install CPU-only torch first (smaller than GPU version)
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# Install Streamlit requirements
 RUN pip install --no-cache-dir -r requirements-streamlit.txt
 
 COPY . .
 
-# Create required runtime directories and set permissions
-RUN mkdir -p /app/data/uploads /app/data/chroma && \
+RUN mkdir -p /app/data/uploads && \
     useradd -m appuser && \
     chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 8501
+# Cloud Run injects PORT; fall back to 8501 for local docker-compose
+ENV PORT=8501
+EXPOSE ${PORT}
 
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]

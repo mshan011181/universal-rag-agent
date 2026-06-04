@@ -1,31 +1,59 @@
-import chromadb
-from chromadb.utils import embedding_functions
+import time
+from pathlib import Path
+from sentence_transformers import SentenceTransformer
+from pinecone import Pinecone, ServerlessSpec
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from src.config import CHROMA_PATH, EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
-from pathlib import Path
+from src.config import (
+    EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K,
+    PINECONE_API_KEY, PINECONE_INDEX_NAME,
+)
 
-_client = None
-_collection = None
-_ef = None
+_PINECONE_CLOUD = "aws"
+_PINECONE_REGION = "us-east-1"
 
-
-def _get_ef():
-    global _ef
-    if _ef is None:
-        _ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
-    return _ef
+_pc: Pinecone | None = None
+_index = None
+_embedder: SentenceTransformer | None = None
 
 
-def get_collection(name: str = "universal_rag"):
-    global _client, _collection
-    if _collection is None:
-        _client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-        _collection = _client.get_or_create_collection(name=name, embedding_function=_get_ef())
-    return _collection
+def _get_embedder() -> SentenceTransformer:
+    global _embedder
+    if _embedder is None:
+        _embedder = SentenceTransformer(EMBEDDING_MODEL)
+    return _embedder
 
 
-def ingest_file(file_path: str) -> int:
+def _ensure_index(pc: Pinecone) -> None:
+    existing = [idx.name for idx in pc.list_indexes()]
+    if PINECONE_INDEX_NAME in existing:
+        return
+    pc.create_index(
+        name=PINECONE_INDEX_NAME,
+        dimension=EMBEDDING_DIM,
+        metric="cosine",
+        spec=ServerlessSpec(cloud=_PINECONE_CLOUD, region=_PINECONE_REGION),
+    )
+    for _ in range(60):
+        if pc.describe_index(PINECONE_INDEX_NAME).status.get("ready", False):
+            return
+        time.sleep(2)
+
+
+def _get_index():
+    global _pc, _index
+    if _index is None:
+        _pc = Pinecone(api_key=PINECONE_API_KEY)
+        _ensure_index(_pc)
+        _index = _pc.Index(PINECONE_INDEX_NAME)
+    return _index
+
+
+def _embed(texts: list[str]) -> list[list[float]]:
+    return _get_embedder().encode(texts, show_progress_bar=False).tolist()
+
+
+def ingest_file(file_path: str, namespace: str = "default") -> int:
     path = Path(file_path)
     suffix = path.suffix.lower()
 
@@ -42,56 +70,71 @@ def ingest_file(file_path: str) -> int:
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
 
-    col = get_collection()
-    ids, texts, metas = [], [], []
-    for i, chunk in enumerate(chunks):
-        chunk_id = f"{path.stem}_{i}"
-        ids.append(chunk_id)
-        texts.append(chunk.page_content)
-        metas.append({"source": path.name, "chunk_idx": i, "page": chunk.metadata.get("page", 0)})
+    if not chunks:
+        return 0
 
-    if ids:
-        col.upsert(ids=ids, documents=texts, metadatas=metas)
+    texts = [c.page_content for c in chunks]
+    embeddings = _embed(texts)
+    vectors = [
+        {
+            "id": f"{path.stem}_{i}",
+            "values": emb,
+            "metadata": {
+                "content": chunk.page_content,
+                "source": path.name,
+                "chunk_idx": i,
+                "page": chunk.metadata.get("page", 0),
+            },
+        }
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
+    ]
+    _get_index().upsert(vectors=vectors, namespace=namespace)
+    return len(vectors)
 
-    return len(ids)
 
-
-def ingest_text(text: str, source: str = "manual") -> int:
+def ingest_text(text: str, source: str = "manual", namespace: str = "default") -> int:
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_text(text)
-    col = get_collection()
-    ids = [f"{source}_{i}" for i in range(len(chunks))]
-    metas = [{"source": source, "chunk_idx": i} for i in range(len(chunks))]
-    if ids:
-        col.upsert(ids=ids, documents=chunks, metadatas=metas)
-    return len(ids)
+    if not chunks:
+        return 0
+    embeddings = _embed(chunks)
+    vectors = [
+        {
+            "id": f"{source}_{i}",
+            "values": emb,
+            "metadata": {"content": chunk, "source": source, "chunk_idx": i},
+        }
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
+    ]
+    _get_index().upsert(vectors=vectors, namespace=namespace)
+    return len(vectors)
 
 
-def retrieve(query: str, k: int = TOP_K) -> list[dict]:
-    col = get_collection()
-    results = col.query(query_texts=[query], n_results=min(k, col.count() or 1))
+def retrieve(query: str, k: int = TOP_K, namespace: str = "default") -> list[dict]:
+    emb = _embed([query])[0]
+    results = _get_index().query(vector=emb, top_k=k, namespace=namespace, include_metadata=True)
     chunks = []
-    docs = results.get("documents", [[]])[0]
-    metas = results.get("metadatas", [[]])[0]
-    dists = results.get("distances", [[]])[0]
-    for doc, meta, dist in zip(docs, metas, dists):
-        score = max(0.0, 1.0 - dist)
-        chunks.append({"content": doc, "metadata": meta, "score": round(score, 4)})
+    for match in results.get("matches", []):
+        meta = dict(match.get("metadata", {}))
+        content = meta.pop("content", "")
+        chunks.append({"content": content, "metadata": meta, "score": round(match.get("score", 0.0), 4)})
     return chunks
 
 
-def collection_count() -> int:
+def collection_count(namespace: str = "default") -> int:
     try:
-        return get_collection().count()
+        stats = _get_index().describe_index_stats()
+        ns = stats.get("namespaces", {}).get(namespace, {})
+        return ns.get("vector_count", 0)
     except Exception:
         return 0
 
 
-def list_sources() -> list[str]:
+def list_sources(namespace: str = "default") -> list[str]:
+    # Pinecone does not support full metadata enumeration without a fetch;
+    # returning the active namespace as a proxy for source listing.
     try:
-        col = get_collection()
-        results = col.get(include=["metadatas"])
-        sources = list({m.get("source", "unknown") for m in results.get("metadatas", [])})
-        return sorted(sources)
+        stats = _get_index().describe_index_stats()
+        return sorted(stats.get("namespaces", {}).keys())
     except Exception:
         return []

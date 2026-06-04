@@ -1,7 +1,102 @@
+"""
+Shared test fixtures.
+
+All external services (Pinecone, Redis, LLM) are mocked — tests run with zero
+network calls and no credentials required.
+"""
+
 import os
 import pytest
 
-# Set test environment before any imports
-os.environ.setdefault("GROQ_API_KEY", "test-key")
-os.environ.setdefault("JWT_SECRET", "test-secret-for-ci")
+# Set env before any app imports so config.py picks them up
+os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
+os.environ.setdefault("PINECONE_API_KEY", "test-pinecone-key")
+os.environ.setdefault("PINECONE_INDEX_NAME", "test-index")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-ci-only")
 os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("LLM_PROVIDER", "groq")
+
+from unittest.mock import AsyncMock, MagicMock, patch
+from fastapi.testclient import TestClient
+
+
+# ── LLM mock ──────────────────────────────────────────────────────────────────
+LLM_JSON_RESPONSE = (
+    '{"ambiguity": "low", "complexity": "simple", "data_type": "text", '
+    '"domain_risk": false, "has_multi_angles": false, "query_class": "factual", '
+    '"relevance": 0.9, "completeness": 0.8, "hallucination_risk": 0.1, '
+    '"reasoning": "test", "citation_map": {}, "all_supported": true}'
+)
+
+
+@pytest.fixture(autouse=True)
+def mock_llm():
+    mock = MagicMock()
+    mock.invoke.return_value = MagicMock(content=LLM_JSON_RESPONSE)
+    with patch("src.generation.llm.get_llm", return_value=mock):
+        yield mock
+
+
+# ── Pinecone mock ──────────────────────────────────────────────────────────────
+@pytest.fixture(autouse=True)
+def mock_pinecone():
+    mock_index = MagicMock()
+    mock_index.query.return_value = {
+        "matches": [{
+            "id": "doc_0",
+            "score": 0.92,
+            "metadata": {"content": "Test chunk content.", "source": "test.pdf", "chunk_idx": 0},
+        }]
+    }
+    mock_index.upsert.return_value = {"upserted_count": 1}
+    mock_index.describe_index_stats.return_value = {
+        "namespaces": {"default": {"vector_count": 42}},
+        "total_vector_count": 42,
+        "dimension": 384,
+    }
+
+    mock_pc = MagicMock()
+    mock_pc.Index.return_value = mock_index
+    mock_pc.list_indexes.return_value = [MagicMock(name="test-index")]
+    mock_pc.describe_index.return_value = MagicMock(status={"ready": True})
+
+    mock_embedder = MagicMock()
+    mock_embedder.encode.return_value = [[0.1] * 384]
+
+    with patch("src.retrieval.vector_store.Pinecone", return_value=mock_pc), \
+         patch("src.retrieval.vector_store.SentenceTransformer", return_value=mock_embedder):
+        yield mock_index
+
+
+# ── Redis mock ─────────────────────────────────────────────────────────────────
+@pytest.fixture(autouse=True)
+def mock_redis():
+    mock_r = AsyncMock()
+    mock_r.incr.return_value = 1
+    mock_r.expire.return_value = True
+    with patch("api.middleware.rate_limit._get_redis", return_value=mock_r):
+        yield mock_r
+
+
+# ── FastAPI sync test client ───────────────────────────────────────────────────
+@pytest.fixture
+def client():
+    from api.main import app
+    return TestClient(app)
+
+
+# ── Authenticated client fixture ───────────────────────────────────────────────
+@pytest.fixture
+def auth_client(client):
+    client.post("/api/auth/register", json={
+        "email": "fixture@example.com",
+        "password": "FixturePass1!",
+        "org_name": "fixture-org",
+    })
+    resp = client.post("/api/auth/token", data={
+        "username": "fixture@example.com",
+        "password": "FixturePass1!",
+    })
+    token = resp.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {token}"
+    return client

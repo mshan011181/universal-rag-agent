@@ -1,5 +1,10 @@
 version: "3.9"
 
+# Local dev uses containerised postgres + redis.
+# Production: set DATABASE_URL, REDIS_URL, and PINECONE_* in your environment
+# or a .env file — the containers below are skipped automatically when those
+# env vars already point to managed services (Cloud SQL / Memorystore / Pinecone).
+
 services:
   api:
     build: .
@@ -9,10 +14,10 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - COHERE_API_KEY=${COHERE_API_KEY}
-      - DATABASE_URL=postgresql://raguser:ragpass@postgres:5432/ragdb
-      - REDIS_URL=redis://redis:6379/0
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8001
+      - DATABASE_URL=${DATABASE_URL:-postgresql://raguser:ragpass@postgres:5432/ragdb}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME:-universal-rag}
       - JWT_SECRET=${JWT_SECRET}
       - ENVIRONMENT=production
     depends_on:
@@ -20,8 +25,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      chromadb:
-        condition: service_started
     volumes:
       - uploads:/app/data/uploads
     restart: unless-stopped
@@ -36,10 +39,13 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - COHERE_API_KEY=${COHERE_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME:-universal-rag}
     volumes:
       - uploads:/app/data/uploads
     restart: unless-stopped
 
+  # ── Local-dev only — replace with Cloud SQL in production ────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -56,14 +62,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  chromadb:
-    image: chromadb/chroma:0.6.3
-    ports:
-      - "8001:8001"
-    volumes:
-      - chromadata:/chroma/chroma
-    restart: unless-stopped
-
+  # ── Local-dev only — replace with Memorystore in production ─────────────────
   redis:
     image: redis:7-alpine
     volumes:
@@ -97,7 +96,6 @@ services:
 
 volumes:
   pgdata:
-  chromadata:
   redisdata:
   grafanadata:
   uploads:

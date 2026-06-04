@@ -1,0 +1,72 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rag-frontend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "100"
+    spec:
+      serviceAccountName: rag-cloudrun-sa@${PROJECT_ID}.iam.gserviceaccount.com
+      containerConcurrency: 20
+      timeoutSeconds: 300
+      containers:
+        - image: ${REGION}-docker.pkg.dev/${PROJECT_ID}/rag-repo/rag-frontend:latest
+          ports:
+            - containerPort: 8501
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          env:
+            - name: LLM_PROVIDER
+              value: vertexai
+            - name: VERTEXAI_PROJECT
+              value: "${PROJECT_ID}"
+            - name: VERTEXAI_LOCATION
+              value: "${REGION}"
+            - name: VERTEXAI_MODEL
+              value: "claude-sonnet-4-5@20251205"
+
+            - name: PINECONE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pinecone-api-key
+                  key: latest
+            - name: PINECONE_INDEX_NAME
+              value: universal-rag
+
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: groq-api-key
+                  key: latest
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tavily-api-key
+                  key: latest
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cohere-api-key
+                  key: latest
+
+          startupProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 12
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            periodSeconds: 30
+            failureThreshold: 3

@@ -7,13 +7,17 @@ langchain-community==0.3.24
 langchain-groq==0.3.2
 langgraph==0.4.7
 
-# Groq
+# Groq (local dev / fallback)
 groq==0.28.0
 
-# Vector Store
-chromadb==0.6.3
+# Vertex AI Claude (production LLM on Cloud Run — LLM_PROVIDER=vertexai)
+langchain-google-vertexai==2.0.14
+google-cloud-aiplatform>=1.60.0
 
-# Embeddings (local)
+# Vector Store — managed Pinecone (replaces self-hosted ChromaDB)
+pinecone>=3.0.0
+
+# Embeddings (local — no API key needed)
 sentence-transformers==3.4.1
 
 # Web Search fallback
@@ -41,12 +45,12 @@ python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 email-validator==2.2.0
 
-# DB
+# DB — Cloud SQL (same asyncpg driver; only the connection string changes)
 asyncpg==0.30.0
 sqlalchemy[asyncio]==2.0.41
 
-# Cache
-redis==5.2.1
+# Cache — Memorystore / Redis (same protocol; only the URL changes)
+redis[asyncio]>=5.0.0
 
 # Observability
 structlog==25.3.0

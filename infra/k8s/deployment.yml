@@ -1,15 +1,28 @@
-# ─────────────────────────────────────────────────────────────
-# Namespace
-# ─────────────────────────────────────────────────────────────
+# =============================================================================
+# Kubernetes manifests — AFTER managed-services migration
+#
+# Removed from BEFORE:
+#   ✗ ChromaDB Deployment + Service   → Pinecone (managed)
+#   ✗ PostgreSQL Deployment + PVC     → Cloud SQL (managed)
+#   ✗ Redis Deployment + Service      → Memorystore (managed)
+#
+# Kept / updated:
+#   ✓ API Deployment + HPA            → Cloud Run preferred; K8s as alternative
+#   ✓ Frontend Deployment + HPA       → Cloud Run preferred; K8s as alternative
+#
+# All managed-service credentials come from the "rag-secrets" K8s Secret,
+# which should be populated from GCP Secret Manager via External Secrets
+# Operator or equivalent before applying this manifest.
+# =============================================================================
+
+# ── Namespace ─────────────────────────────────────────────────────────────────
 apiVersion: v1
 kind: Namespace
 metadata:
   name: rag-agent
 
 ---
-# ─────────────────────────────────────────────────────────────
-# API Deployment
-# ─────────────────────────────────────────────────────────────
+# ── API Deployment ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,35 +45,72 @@ spec:
       labels:
         app: rag-api
     spec:
+      serviceAccountName: rag-workload-sa   # Must have Workload Identity → GCP SA with aiplatform.user
       containers:
         - name: api
-          image: mshan011181/universal-rag-agent-api:v1
+          image: REGION-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:latest
           ports:
             - containerPort: 8000
           env:
-            - name: GROQ_API_KEY
+            # LLM — Vertex AI Claude via Workload Identity (no API key)
+            - name: LLM_PROVIDER
+              value: vertexai
+            - name: VERTEXAI_PROJECT
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
-                  key: groq-api-key
-            - name: JWT_SECRET
+                  key: vertexai-project
+            - name: VERTEXAI_LOCATION
+              value: us-central1
+            - name: VERTEXAI_MODEL
+              value: claude-sonnet-4-5@20251205
+
+            # Vector DB — Pinecone (replaces ChromaDB pod)
+            - name: PINECONE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
-                  key: jwt-secret
+                  key: pinecone-api-key
+            - name: PINECONE_INDEX_NAME
+              value: universal-rag
+
+            # Relational DB — Cloud SQL (replaces PostgreSQL pod)
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
                   key: database-url
+
+            # Cache — Memorystore (replaces Redis pod)
             - name: REDIS_URL
-              value: "redis://rag-redis:6379/0"
-            - name: CHROMA_HOST
-              value: "rag-chromadb"
-            - name: CHROMA_PORT
-              value: "8001"
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: redis-url
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: jwt-secret
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: groq-api-key
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: tavily-api-key
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: cohere-api-key
             - name: ENVIRONMENT
-              value: "production"
+              value: production
+
           resources:
             requests:
               cpu: "500m"
@@ -68,6 +118,7 @@ spec:
             limits:
               cpu: "2000m"
               memory: "4Gi"
+
           livenessProbe:
             httpGet:
               path: /api/health
@@ -84,7 +135,6 @@ spec:
             failureThreshold: 3
 
 ---
-# API Service — exposes API inside the cluster
 apiVersion: v1
 kind: Service
 metadata:
@@ -99,7 +149,20 @@ spec:
   type: ClusterIP
 
 ---
-# API HPA — auto-scales API pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api-external
+  namespace: rag-agent
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: LoadBalancer
+
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -111,7 +174,7 @@ spec:
     kind: Deployment
     name: rag-api
   minReplicas: 2
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
     - type: Resource
       resource:
@@ -127,9 +190,7 @@ spec:
           averageUtilization: 80
 
 ---
-# ─────────────────────────────────────────────────────────────
-# Frontend Deployment (Streamlit)
-# ─────────────────────────────────────────────────────────────
+# ── Frontend Deployment ────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -152,17 +213,47 @@ spec:
       labels:
         app: rag-frontend
     spec:
+      serviceAccountName: rag-workload-sa
       containers:
         - name: frontend
-          image: mshan011181/universal-rag-agent-frontend:v1
+          image: REGION-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:latest
           ports:
             - containerPort: 8501
           env:
+            - name: LLM_PROVIDER
+              value: vertexai
+            - name: VERTEXAI_PROJECT
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: vertexai-project
+            - name: VERTEXAI_LOCATION
+              value: us-central1
+            - name: VERTEXAI_MODEL
+              value: claude-sonnet-4-5@20251205
+            - name: PINECONE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: pinecone-api-key
+            - name: PINECONE_INDEX_NAME
+              value: universal-rag
             - name: GROQ_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
                   key: groq-api-key
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: tavily-api-key
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: cohere-api-key
+
           resources:
             requests:
               cpu: "500m"
@@ -170,6 +261,7 @@ spec:
             limits:
               cpu: "2000m"
               memory: "4Gi"
+
           livenessProbe:
             httpGet:
               path: /
@@ -186,7 +278,6 @@ spec:
             failureThreshold: 3
 
 ---
-# Frontend Service — LoadBalancer gives a public IP
 apiVersion: v1
 kind: Service
 metadata:
@@ -201,22 +292,6 @@ spec:
   type: LoadBalancer
 
 ---
-# API External Service — LoadBalancer for API access
-apiVersion: v1
-kind: Service
-metadata:
-  name: rag-api-external
-  namespace: rag-agent
-spec:
-  selector:
-    app: rag-api
-  ports:
-    - port: 80
-      targetPort: 8000
-  type: LoadBalancer
-
----
-# Frontend HPA — auto-scales frontend pods
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -228,7 +303,7 @@ spec:
     kind: Deployment
     name: rag-frontend
   minReplicas: 2
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
     - type: Resource
       resource:
@@ -242,95 +317,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
-
----
-# ─────────────────────────────────────────────────────────────
-# Redis Deployment
-# ─────────────────────────────────────────────────────────────
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: rag-redis
-  namespace: rag-agent
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: rag-redis
-  template:
-    metadata:
-      labels:
-        app: rag-redis
-    spec:
-      containers:
-        - name: redis
-          image: redis:7-alpine
-          ports:
-            - containerPort: 6379
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: rag-redis
-  namespace: rag-agent
-spec:
-  selector:
-    app: rag-redis
-  ports:
-    - port: 6379
-      targetPort: 6379
-  type: ClusterIP
-
----
-# ─────────────────────────────────────────────────────────────
-# ChromaDB Deployment
-# ─────────────────────────────────────────────────────────────
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: rag-chromadb
-  namespace: rag-agent
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: rag-chromadb
-  template:
-    metadata:
-      labels:
-        app: rag-chromadb
-    spec:
-      containers:
-        - name: chromadb
-          image: chromadb/chroma:0.6.3
-          ports:
-            - containerPort: 8001
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "512Mi"
-            limits:
-              cpu: "1000m"
-              memory: "2Gi"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: rag-chromadb
-  namespace: rag-agent
-spec:
-  selector:
-    app: rag-chromadb
-  ports:
-    - port: 8001
-      targetPort: 8001
-  type: ClusterIP

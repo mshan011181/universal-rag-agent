@@ -17,9 +17,14 @@ if [ ! -f .env ]; then
     echo "Created .env — add your GROQ_API_KEY"
 fi
 
+# Create Pinecone index (idempotent — safe to re-run)
+echo ""
+echo "Creating Pinecone index (skipped if it already exists)..."
+python scripts/create_pinecone_index.py
+
 echo ""
 echo "=== Setup complete ==="
 echo "Next steps:"
-echo "  1. Edit .env and add your GROQ_API_KEY"
+echo "  1. Edit .env and add your GROQ_API_KEY and PINECONE_API_KEY"
 echo "  2. Run: source .venv/Scripts/activate"
 echo "  3. Run: streamlit run app.py"

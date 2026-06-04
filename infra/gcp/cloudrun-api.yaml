@@ -1,0 +1,101 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rag-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale 1 → 100 containers automatically
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "100"
+        # Cloud SQL connection via Unix socket (no public IP needed)
+        run.googleapis.com/cloudsql-instances: "${PROJECT_ID}:${REGION}:rag-postgres"
+    spec:
+      # Service account must have: roles/aiplatform.user, roles/cloudsql.client
+      serviceAccountName: rag-cloudrun-sa@${PROJECT_ID}.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: ${REGION}-docker.pkg.dev/${PROJECT_ID}/rag-repo/rag-api:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          env:
+            # LLM — Vertex AI Claude (no API key; uses service account ADC)
+            - name: LLM_PROVIDER
+              value: vertexai
+            - name: VERTEXAI_PROJECT
+              value: "${PROJECT_ID}"
+            - name: VERTEXAI_LOCATION
+              value: "${REGION}"
+            - name: VERTEXAI_MODEL
+              value: "claude-sonnet-4-5@20251205"
+
+            # Vector DB — Pinecone
+            - name: PINECONE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pinecone-api-key
+                  key: latest
+            - name: PINECONE_INDEX_NAME
+              value: universal-rag
+
+            # Relational DB — Cloud SQL (Unix socket path set by cloudsql-instances annotation)
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-url
+                  key: latest
+
+            # Cache — Memorystore (VPC-internal IP set during provisioning)
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: redis-url
+                  key: latest
+
+            # Auth & other API keys
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: latest
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: groq-api-key
+                  key: latest
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tavily-api-key
+                  key: latest
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cohere-api-key
+                  key: latest
+
+            - name: ENVIRONMENT
+              value: production
+
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            periodSeconds: 30
+            failureThreshold: 3

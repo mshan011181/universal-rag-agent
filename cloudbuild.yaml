@@ -1,0 +1,179 @@
+substitutions:
+  _REGION: us-central1
+  _REPO: rag-repo
+
+steps:
+  # ── Stage 1: Install dev + API dependencies ───────────────────────────────────
+  - name: python:3.12-slim
+    id: install-deps
+    entrypoint: pip
+    args: [install, --quiet, -r, requirements-dev.txt, -r, requirements-api.txt]
+
+  # ── Stage 2: Lint (ruff) ──────────────────────────────────────────────────────
+  - name: python:3.12-slim
+    id: lint
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -q ruff
+        ruff check src/ api/ tests/
+    waitFor: [install-deps]
+
+  # ── Stage 3: Type check (mypy) ────────────────────────────────────────────────
+  - name: python:3.12-slim
+    id: typecheck
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -q mypy
+        mypy src/ api/ --ignore-missing-imports --no-error-summary
+    waitFor: [install-deps]
+
+  # ── Stage 4: Security scan (bandit) ───────────────────────────────────────────
+  - name: python:3.12-slim
+    id: security-scan
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -q bandit
+        bandit -r src/ api/ -ll -q
+    waitFor: [install-deps]
+
+  # ── Stage 5: Tests + coverage gate (must all pass before any docker build) ────
+  - name: python:3.12-slim
+    id: test
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -q -r requirements-dev.txt -r requirements-api.txt
+        pytest \
+          --tb=short \
+          --cov=src \
+          --cov=api \
+          --cov-report=term-missing \
+          --cov-report=xml:coverage.xml \
+          --cov-fail-under=70 \
+          -q
+    env:
+      - GROQ_API_KEY=test-key
+      - PINECONE_API_KEY=test-pinecone-key
+      - PINECONE_INDEX_NAME=test-index
+      - JWT_SECRET=test-jwt-secret-for-ci-only
+      - LLM_PROVIDER=groq
+      - ENVIRONMENT=test
+    waitFor: [lint, typecheck, security-scan]
+
+  # ── Stage 6: Build API image (only runs if tests passed) ─────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-api
+    args:
+      - build
+      - -f
+      - Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api:$COMMIT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api:latest
+      - --label
+      - git.sha=$COMMIT_SHA
+      - .
+    waitFor: [test]
+
+  # ── Stage 7: Build Frontend image ────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-frontend
+    args:
+      - build
+      - -f
+      - Dockerfile.streamlit
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:latest
+      - --label
+      - git.sha=$COMMIT_SHA
+      - .
+    waitFor: [test]
+
+  # ── Stage 8: Push API image ───────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-api
+    args: [push, --all-tags, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api]
+    waitFor: [build-api]
+
+  # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-frontend
+    args: [push, --all-tags, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend]
+    waitFor: [build-frontend]
+
+  # ── Stage 10: Deploy API to Cloud Run ────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-api
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rag-api
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-env-vars=LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=$PROJECT_ID,VERTEXAI_LOCATION=${_REGION},VERTEXAI_MODEL=claude-sonnet-4-5@20251205,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production
+      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest
+      - --add-cloudsql-instances=$PROJECT_ID:${_REGION}:rag-postgres
+      - --service-account=rag-cloudrun-sa@$PROJECT_ID.iam.gserviceaccount.com
+      - --min-instances=1
+      - --max-instances=100
+      - --concurrency=80
+      - --memory=4Gi
+      - --cpu=2
+    waitFor: [push-api]
+
+  # ── Stage 11: Deploy Frontend to Cloud Run ────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-frontend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rag-frontend
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-env-vars=LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=$PROJECT_ID,VERTEXAI_LOCATION=${_REGION},VERTEXAI_MODEL=claude-sonnet-4-5@20251205,PINECONE_INDEX_NAME=universal-rag
+      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest
+      - --service-account=rag-cloudrun-sa@$PROJECT_ID.iam.gserviceaccount.com
+      - --min-instances=1
+      - --max-instances=100
+      - --concurrency=20
+      - --memory=4Gi
+      - --cpu=2
+    waitFor: [push-frontend]
+
+  # ── Stage 12: Upload coverage report as build artifact ────────────────────────
+  - name: gcr.io/cloud-builders/gsutil
+    id: upload-coverage
+    args:
+      - cp
+      - coverage.xml
+      - gs://$PROJECT_ID-build-artifacts/rag/$COMMIT_SHA/coverage.xml
+    waitFor: [test]
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA
+
+artifacts:
+  objects:
+    location: gs://$PROJECT_ID-build-artifacts/rag/$COMMIT_SHA/
+    paths: [coverage.xml]
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

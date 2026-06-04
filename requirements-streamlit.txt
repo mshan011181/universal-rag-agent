@@ -7,11 +7,15 @@ langchain-community==0.3.24
 langchain-groq==0.3.2
 langgraph==0.4.7
 
-# Groq (LLM + Whisper transcription)
+# Groq (local dev / fallback)
 groq==0.28.0
 
-# Vector Store
-chromadb==0.6.3
+# Vertex AI Claude (production LLM — LLM_PROVIDER=vertexai)
+langchain-google-vertexai==2.0.14
+google-cloud-aiplatform>=1.60.0
+
+# Vector Store — managed Pinecone (replaces self-hosted ChromaDB)
+pinecone>=3.0.0
 
 # Embeddings (local)
 sentence-transformers==3.4.1

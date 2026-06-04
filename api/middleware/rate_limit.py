@@ -1,5 +1,6 @@
 import os
 import time
+import redis.asyncio as aioredis
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -12,11 +13,18 @@ RATE_LIMITS = {
     "default": 100,
 }
 
-_buckets: dict = {}  # In production: use Redis
+_redis: aioredis.Redis | None = None
+
+
+def _get_redis() -> aioredis.Redis:
+    global _redis
+    if _redis is None:
+        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        _redis = aioredis.from_url(url, decode_responses=True)
+    return _redis
 
 
 def _get_key(request: Request) -> str:
-    # Use user ID if authenticated, else IP
     forwarded = request.headers.get("X-Forwarded-For")
     ip = forwarded.split(",")[0] if forwarded else request.client.host
     return f"{ip}:{request.url.path.split('/')[2] if len(request.url.path.split('/')) > 2 else 'root'}"
@@ -29,20 +37,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         key = _get_key(request)
         now = int(time.time() // 60)  # 1-minute window
-        bucket_key = f"{key}:{now}"
+        bucket_key = f"rate:{key}:{now}"
 
         limit = RATE_LIMITS.get(
             "/" + "/".join(request.url.path.split("/")[:3]),
-            RATE_LIMITS["default"]
+            RATE_LIMITS["default"],
         )
 
-        count = _buckets.get(bucket_key, 0) + 1
-        _buckets[bucket_key] = count
-
-        # Cleanup old buckets periodically
-        if len(_buckets) > 10000:
-            old = int(time.time() // 60) - 2
-            _buckets.clear()
+        try:
+            r = _get_redis()
+            count = await r.incr(bucket_key)
+            if count == 1:
+                # TTL covers current window plus the next so the key cleans itself up
+                await r.expire(bucket_key, 120)
+        except Exception:
+            # Redis unavailable — fail open rather than blocking all traffic
+            count = 1
 
         if count > limit:
             return JSONResponse(
