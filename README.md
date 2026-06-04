@@ -1,11 +1,12 @@
 # Universal RAG Agent Enterprise
 
-> Production-grade Retrieval-Augmented Generation system implementing **14 RAG patterns** in a single intelligent agent — auto-scales from 1 to 100 containers on **Google Cloud Run**, backed by **Pinecone**, **Cloud SQL**, **Memorystore**, and **Vertex AI Claude**.
+> Production-grade Retrieval-Augmented Generation system implementing **14 RAG patterns** in a single intelligent agent — auto-scales from 1 to 100 containers on **Google Cloud Run** or **GKE Autopilot**, backed by **Pinecone**, **Cloud SQL**, **Memorystore**, **Anthropic Claude**, and monitored end-to-end via **LangSmith**.
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://www.python.org/)
 [![Cloud Run](https://img.shields.io/badge/Cloud%20Run-Auto--scaling-4285F4?logo=googlecloud)](https://cloud.google.com/run)
 [![Pinecone](https://img.shields.io/badge/Pinecone-Vector%20DB-green)](https://www.pinecone.io/)
-[![Vertex AI](https://img.shields.io/badge/Vertex%20AI-Claude-orange)](https://cloud.google.com/vertex-ai)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude%20Sonnet-blueviolet)](https://www.anthropic.com/)
+[![LangSmith](https://img.shields.io/badge/LangSmith-Observability-orange)](https://smith.langchain.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.55-red?logo=streamlit)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
@@ -16,24 +17,29 @@
 
 The Universal RAG Agent automatically selects the optimal retrieval strategy for every query using a **5-dimension query analyzer**. Rather than being locked into a single RAG approach, it routes each query through the best-fit pattern — or chains multiple patterns — based on query length, ambiguity, complexity, data type, and conversation state.
 
-### Before vs After — Infrastructure
+---
+
+## Before vs After — Full Infrastructure Migration
 
 ```
 BEFORE (Single VM — breaks at scale)          AFTER (Managed Services — scales automatically)
 
-All Enterprises                               All Enterprises
-      │                                             │
-      ▼                                             ▼
-   GCP VM                                  Cloud Load Balancer
-   ├── FastAPI container    ~50 concurrent         │
-   ├── Streamlit container  ~20 concurrent          ▼
-   ├── ChromaDB container   slows/crashes   Cloud Run (FastAPI)    1 → 100 containers
-   ├── PostgreSQL container hits conn limit  Cloud Run (Streamlit)  1 → 100 containers
-   └── Redis container      runs OOM               │
-                                             ├── Pinecone          unlimited vectors
-                                             ├── Cloud SQL         4000 connections, 64TB
-                                             ├── Memorystore       300GB, sharded
-                                             └── Vertex AI Claude  no rate limits
+All Enterprise Tenants                        All Enterprise Tenants
+         │                                              │
+         ▼                                              ▼
+      GCP VM                                   Cloud Load Balancer
+      ├── FastAPI container   ~50 concurrent            │
+      ├── Streamlit container ~20 concurrent            ▼
+      ├── ChromaDB container  slows/crashes    Cloud Run (FastAPI)     1 → 100 containers
+      ├── PostgreSQL container hits conn limit  Cloud Run (Streamlit)   1 → 100 containers
+      └── Redis container     runs OOM                  │         ─ or ─
+                                               GKE Autopilot           2 → 100 pods
+      LLM: Groq (hardcoded)                            │
+      No monitoring                            ├── Pinecone            unlimited vectors
+                                               ├── Cloud SQL           4000 conns, 64TB
+                                               ├── Memorystore         300GB, sharded
+                                               ├── Anthropic Claude    enterprise SLA
+                                               └── LangSmith           full trace/monitoring
 ```
 
 ---
@@ -45,11 +51,12 @@ All Enterprises                               All Enterprises
 - **Multi-modal Ingestion** — PDF, DOCX, TXT, Audio, Video, Web Pages, YouTube
 - **Groq Whisper** — audio/video transcription (whisper-large-v3)
 - **Self-Improving Memory** — tracks pattern performance, routing signals, verified knowledge
-- **LLM Provider Switching** — `LLM_PROVIDER=groq` for local dev, `LLM_PROVIDER=vertexai` for production
+- **3 LLM Providers** — `anthropic` (production default), `vertexai` (GCP-native), `groq` (local dev/CI)
+- **LangSmith Monitoring** — every LLM call traced with token counts, latency, cost, and quality scores
 - **Production API** — FastAPI with JWT + OAuth2 + API Key auth, Redis-backed rate limiting, audit log
-- **Observability** — Prometheus metrics, Grafana dashboards, structured logging
-- **Cloud Run Auto-scaling** — 1 to 100 containers, zero infrastructure management
-- **Cloud Build CI/CD** — lint → typecheck → security → tests → build → deploy (images only built after green tests)
+- **Observability** — Prometheus metrics, Grafana dashboards, structured logging, LangSmith traces
+- **Two Deployment Targets** — Cloud Run (serverless) or GKE Autopilot (K8s), same images
+- **Cloud Build CI/CD** — lint → typecheck → security → tests → build → push to Artifact Registry → deploy
 
 ---
 
@@ -74,24 +81,168 @@ All Enterprises                               All Enterprises
 
 ---
 
+## Full Architecture
+
+```
+                         ┌─────────────────────────────────────────────────────┐
+                         │              Enterprise Tenants                      │
+                         │   (per-tenant Pinecone namespace + DB schema)        │
+                         └─────────────────────┬───────────────────────────────┘
+                                               │
+                                               ▼
+                               ┌───────────────────────────┐
+                               │     Cloud Load Balancer    │
+                               └──────────┬────────────────┘
+                                          │
+                    ┌─────────────────────┼──────────────────────┐
+                    ▼                                             ▼
+       ┌────────────────────────┐               ┌────────────────────────────┐
+       │  Cloud Run / GKE       │               │  Cloud Run / GKE           │
+       │  FastAPI (rag-api)     │               │  Streamlit (rag-frontend)  │
+       │  1–100 containers      │               │  1–100 containers          │
+       └────────────┬───────────┘               └────────────────────────────┘
+                    │
+                    ▼
+       ┌────────────────────────┐
+       │     Query Analyzer     │  5 dimensions:
+       │     (5-dimension)      │  length · ambiguity · complexity
+       └────────────┬───────────┘  data_type · conversation_state
+                    │
+                    ▼
+       ┌────────────────────────┐
+       │     Pattern Router     │  Sequential chain or parallel fan-out
+       └────────────┬───────────┘  across 14 RAG patterns
+                    │
+         ┌──────────┼──────────┐
+         ▼          ▼          ▼
+   ┌──────────┐ ┌────────┐ ┌──────────────────────────────────────┐
+   │Retrieval │ │Reranker│ │          Generation Layer             │
+   │          │ │        │ │                                       │
+   │Pinecone  │ │Cohere  │ │  ┌────────────┬─────────────────────┐│
+   │namespaced│ │cross-  │ │  │ LLM_PROVIDER switching           ││
+   │vector DB │ │encoder │ │  │                                   ││
+   │+         │ │+       │ │  │ anthropic  → Anthropic Claude API ││  ← Production default
+   │Tavily    │ │RRF     │ │  │ vertexai   → Vertex AI via ADC   ││  ← GCP-native option
+   │web search│ │reranking│ │  │ groq       → Groq Llama          ││  ← Local dev / CI
+   └──────────┘ └────────┘ │  └────────────┴─────────────────────┘│
+                            │                                       │
+                            │  4 LLM Roles per query:               │
+                            │  Synthesizer · Grader                 │
+                            │  Verifier   · Judge                   │
+                            └───────────────────┬───────────────────┘
+                                                │
+                                                ▼
+                            ┌───────────────────────────────────────┐
+                            │         LangSmith Tracing             │
+                            │  Every chain call captured:           │
+                            │  token counts · latency · cost        │
+                            │  quality scores · full prompt traces  │
+                            └───────────────────┬───────────────────┘
+                                                │
+                    ┌───────────────────────────┼───────────────────────────┐
+                    ▼                           ▼                           ▼
+       ┌────────────────────┐   ┌───────────────────────┐   ┌──────────────────────┐
+       │   Pinecone         │   │   Cloud SQL            │   │   Memorystore Redis  │
+       │   Vector DB        │   │   PostgreSQL           │   │   Rate limiting +    │
+       │   namespace per    │   │   10-table multi-      │   │   session cache      │
+       │   tenant           │   │   tenant schema        │   │   VPC-internal       │
+       └────────────────────┘   └───────────────────────┘   └──────────────────────┘
+
+       ┌────────────────────────────────────────────────────────────────────────────┐
+       │                         4-Layer Memory Store                               │
+       │  Conversation History · Pattern Performance · Routing Signals              │
+       │  Verified Knowledge Cache (score ≥ 0.85 → instant reuse)                  │
+       └────────────────────────────────────────────────────────────────────────────┘
+
+       ┌────────────────────────────────────────────────────────────────────────────┐
+       │              GCP Infrastructure (Secret Manager + IAM)                     │
+       │  All API keys stored as secrets · Cloud Run + GKE pull via service account │
+       │  Workload Identity for GKE — no key files on pods                          │
+       └────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Local Dev | Production |
 |-------|-----------|------------|
-| **LLM** | Groq Llama 3.3-70b (`LLM_PROVIDER=groq`) | Vertex AI Claude Sonnet (`LLM_PROVIDER=vertexai`) |
+| **LLM (default)** | Groq Llama 3.3-70b (`LLM_PROVIDER=groq`) | **Anthropic Claude Sonnet** (`LLM_PROVIDER=anthropic`) |
+| **LLM (GCP-native alt)** | — | Vertex AI Claude via ADC (`LLM_PROVIDER=vertexai`) |
+| **LLM Monitoring** | LangSmith (optional) | **LangSmith** — traces all 3 providers automatically |
 | **Vector DB** | Pinecone (same in both) | Pinecone — unlimited, per-tenant namespaces |
 | **Relational DB** | PostgreSQL container | Cloud SQL PostgreSQL — 4000 conns, auto-failover, 64TB |
 | **Cache / Rate limit** | Redis container | Memorystore — 300GB, persistent, sharded |
-| **API** | FastAPI + uvicorn | Cloud Run (1–100 containers auto-scale) |
-| **UI** | Streamlit | Cloud Run (1–100 containers auto-scale) |
+| **API** | FastAPI + uvicorn | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
+| **UI** | Streamlit | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
+| **Container Registry** | Local | **Artifact Registry** (not Docker Hub) |
 | **Embeddings** | sentence-transformers all-MiniLM-L6-v2 (local) | Same — no API key needed |
 | **Transcription** | Groq Whisper large-v3 | Same |
 | **Orchestration** | LangChain 0.3.x + LangGraph | Same |
 | **Auth** | JWT (python-jose) + bcrypt | Same, secrets in Secret Manager |
-| **Observability** | Prometheus + Grafana + structlog | Same + Cloud Logging |
+| **Observability** | Prometheus + Grafana + structlog | Same + Cloud Logging + **LangSmith** |
 | **Reranking** | Cohere cross-encoder + RRF | Same |
-| **CI/CD** | `scripts/build_and_test.sh` (local) | Cloud Build (`cloudbuild.yaml`) |
-| **Container Registry** | Docker Hub | Artifact Registry |
+| **CI/CD** | `scripts/build_and_test.sh` | Cloud Build → Artifact Registry → Cloud Run / GKE |
+
+---
+
+## LLM Provider Switching
+
+All three providers use the same `get_llm()` factory in `src/generation/llm.py`. Switch by setting one env var:
+
+| `LLM_PROVIDER` | Provider | Auth | Recommended For |
+|---|---|---|---|
+| `anthropic` | Anthropic Claude Sonnet direct API | `ANTHROPIC_API_KEY` | **Production enterprise (default)** |
+| `vertexai` | Vertex AI Claude via ADC | GCP service account (no key) | GCP-native, no external API calls |
+| `groq` | Groq Llama 3.3-70b | `GROQ_API_KEY` | Local dev / CI pipelines |
+
+No code changes required to switch providers — only the env var changes.
+
+### Why Anthropic over Groq for production
+
+| | Groq | Anthropic |
+|---|---|---|
+| SLA | None (free tier) | 99.9% uptime guarantee |
+| Rate limits | Strict (tokens/min cap) | High (enterprise tier) |
+| Model quality | Llama 3.3-70b | Claude Sonnet — better reasoning |
+| Support | Community | Dedicated enterprise support |
+| Cost predictability | Variable | Consistent pricing |
+
+---
+
+## LangSmith Monitoring
+
+LangSmith traces every LLM call across all three providers automatically. No additional instrumentation needed in chain files — `_configure_langsmith()` sets the required env vars at startup and LangChain picks them up.
+
+### What gets traced
+
+| Call | Captured |
+|------|---------|
+| `synthesize()` | Full prompt, response, token count, latency |
+| `grade()` | Quality scores per dimension (relevance, completeness, hallucination risk) |
+| `check_faithfulness()` | Citation map, unsupported sentences flagged |
+| `generate_followups()` | Follow-up questions with confidence |
+| Every retrieval chain | Chunks retrieved, reranker scores, pattern used |
+
+### LangSmith dashboard gives you
+
+- **Per-tenant traces** — filter by enterprise, user, or session
+- **Cost per query** — token count × model rate, aggregated by day/week
+- **Latency percentiles** — p50 / p95 / p99 per RAG pattern
+- **Quality score trends** — track hallucination risk over time
+- **Failure analysis** — full prompt replay for any failed query
+
+### Setup
+
+```bash
+# 1. Sign up at smith.langchain.com (free tier available)
+# 2. Create a project named "universal-rag-enterprise"
+# 3. Copy your API key, then:
+
+export LANGSMITH_API_KEY=ls__your_key_here
+
+# Tracing is then enabled automatically when deploy_gcp.sh runs
+```
 
 ---
 
@@ -105,15 +256,15 @@ universal-rag-agent-enterprise/
 ├── docker-compose.yml                # Local dev stack (postgres + redis containers)
 ├── cloudbuild.yaml                   # Cloud Build CI/CD pipeline (12 stages)
 ├── pytest.ini                        # Test config — 70% coverage gate
-├── requirements.txt                  # Core dependencies (pinecone, not chromadb)
-├── requirements-api.txt              # API container deps
+├── requirements.txt                  # Core dependencies
+├── requirements-api.txt              # API container deps (langchain-anthropic, langsmith)
 ├── requirements-streamlit.txt        # Frontend container deps
 ├── requirements-dev.txt              # Test/lint tools
 ├── .env.example                      # Full env template with all variables
 ├── setup.sh                          # One-command local setup
 │
 ├── src/
-│   ├── config.py                     # Paths, models, thresholds + Pinecone + Vertex AI config
+│   ├── config.py                     # All config: Pinecone, Anthropic, Vertex AI, LangSmith
 │   ├── agent.py                      # Main orchestrator
 │   ├── query_analyzer.py             # 5-dimension analyzer
 │   ├── pattern_router.py             # Routes queries to patterns
@@ -126,13 +277,13 @@ universal-rag-agent-enterprise/
 │   │   └── speculative_rag.py, graph_rag.py, multimodal_rag.py
 │   │
 │   ├── retrieval/
-│   │   ├── vector_store.py           # Pinecone (replaces ChromaDB) — namespace per tenant
+│   │   ├── vector_store.py           # Pinecone — namespace per tenant, auto-creates index
 │   │   ├── media_ingest.py           # Audio/video/web/YouTube ingestion
 │   │   ├── web_search.py             # Tavily fallback search
 │   │   └── reranker.py               # Cohere + RRF reranking
 │   │
 │   ├── generation/
-│   │   └── llm.py                    # Groq / Vertex AI Claude switching via LLM_PROVIDER
+│   │   └── llm.py                    # 3-provider factory + LangSmith bootstrap
 │   │
 │   └── memory/
 │       └── sqlite_store.py           # 4-layer local memory store
@@ -144,29 +295,30 @@ universal-rag-agent-enterprise/
 │   │   ├── rate_limit.py             # Redis-backed sliding window (Memorystore in prod)
 │   │   └── audit.py                  # Structured audit logging
 │   └── routers/
-│       ├── auth.py, query.py, ingest.py, health.py, admin.py
+│       └── auth.py, query.py, ingest.py, health.py, admin.py
 │
 ├── infra/
 │   ├── gcp/
 │   │   ├── cloudrun-api.yaml         # Cloud Run service spec — API (1–100 containers)
 │   │   └── cloudrun-frontend.yaml    # Cloud Run service spec — Frontend
 │   ├── k8s/
-│   │   └── deployment.yml            # K8s manifests — no in-cluster DB/Redis/ChromaDB pods
+│   │   └── deployment.yml            # GKE manifests — Anthropic + LangSmith + HPAs
 │   └── postgres/
 │       └── init.sql                  # 10-table multi-tenant schema
 │
 ├── scripts/
-│   ├── deploy_gcp.sh                 # One-command GCP provisioning (9 steps)
-│   ├── preflight_check.sh            # Pre-deploy validation (runs in <5s)
-│   ├── build_and_test.sh             # Local build pipeline: lint→test→build→smoke test
+│   ├── deploy_gcp.sh                 # One-command GCP provisioning (9 steps) → Cloud Run
+│   ├── setup_gke.sh                  # Build → Artifact Registry → GKE Autopilot (8 steps)
+│   ├── preflight_check.sh            # Pre-deploy validation (runs in <5 seconds)
+│   ├── build_and_test.sh             # Local pipeline: lint→test→build→smoke test
 │   └── create_pinecone_index.py      # Auto-creates Pinecone index (dim=384, cosine)
 │
 └── tests/
-    ├── conftest.py                   # Fixtures: mocks Pinecone, Redis, LLM (no network calls)
+    ├── conftest.py                   # Fixtures: mocks Pinecone, Redis, LLM (zero network calls)
     ├── test_api.py                   # Health, auth, protected routes (14 tests)
     ├── test_vector_store.py          # Pinecone ingest/retrieve/namespace (13 tests)
     ├── test_rate_limit.py            # Redis rate limiter, 429, fail-open (8 tests)
-    ├── test_llm.py                   # Groq/Vertex AI switching, grade, retry (11 tests)
+    ├── test_llm.py                   # Provider switching, grade, faithfulness, retry (11 tests)
     ├── test_query_analyzer.py        # 5-dimension routing, pattern selection (15 tests)
     └── test_security.py              # Injection, PII, sanitization, upload validation (20 tests)
 ```
@@ -179,9 +331,11 @@ universal-rag-agent-enterprise/
 
 - Python 3.12+
 - Docker Desktop running
-- [Groq API Key](https://console.groq.com/) — free
+- [Groq API Key](https://console.groq.com/) — free (local dev)
 - [Pinecone API Key](https://www.pinecone.io/) — free Starter plan
-- ffmpeg for video ingestion: `winget install ffmpeg` (Windows) / `brew install ffmpeg` (Mac)
+- [Anthropic API Key](https://console.anthropic.com/) — for production
+- [LangSmith API Key](https://smith.langchain.com/) — free tier available
+- ffmpeg: `winget install ffmpeg` (Windows) / `brew install ffmpeg` (Mac)
 
 ### 1. Clone and Setup
 
@@ -191,35 +345,39 @@ cd universal-rag-agent-enterprise
 bash setup.sh
 ```
 
-`setup.sh` creates the venv, installs dependencies, copies `.env.example` to `.env`, and auto-creates the Pinecone index.
-
 ### 2. Configure Environment
 
 Edit `.env`:
 
 ```env
-# Required
+# LLM — use groq for local dev, anthropic for production
+LLM_PROVIDER=groq
 GROQ_API_KEY=your_groq_key_here
-PINECONE_API_KEY=your_pinecone_key_here
 
-# Optional — enables web search fallback and cross-encoder reranking
+# Vector DB
+PINECONE_API_KEY=your_pinecone_key_here
+PINECONE_INDEX_NAME=universal-rag
+
+# Production LLM (set LLM_PROVIDER=anthropic to use)
+ANTHROPIC_API_KEY=your_anthropic_key_here
+ANTHROPIC_MODEL=claude-sonnet-4-5
+
+# LangSmith monitoring (optional locally, required in production)
+LANGSMITH_API_KEY=your_langsmith_key_here
+LANGSMITH_PROJECT=universal-rag-enterprise
+
+# Optional
 TAVILY_API_KEY=your_tavily_key_here
 COHERE_API_KEY=your_cohere_key_here
-
-# Local dev — LLM_PROVIDER=groq uses Groq; set to vertexai for Vertex AI Claude
-LLM_PROVIDER=groq
 ```
 
 ### 3. Run Locally
 
-**Streamlit UI:**
 ```bash
+# Streamlit UI only
 streamlit run app.py
-```
-Open [http://localhost:8501](http://localhost:8501)
 
-**Full Docker stack** (includes local postgres + redis for dev):
-```bash
+# Full Docker stack (postgres + redis for local dev)
 docker-compose up -d --build
 ```
 
@@ -236,11 +394,16 @@ docker-compose up -d --build
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GROQ_API_KEY` | Yes | Groq API key — LLM and Whisper transcription |
+| `LLM_PROVIDER` | No | `anthropic` (prod default) · `vertexai` · `groq` (local dev) |
+| `ANTHROPIC_API_KEY` | Production | Anthropic Claude direct API key |
+| `ANTHROPIC_MODEL` | No | Model ID (default: `claude-sonnet-4-5`) |
+| `LANGSMITH_API_KEY` | Production | LangSmith API key for tracing |
+| `LANGSMITH_PROJECT` | No | Project name (default: `universal-rag-enterprise`) |
+| `LANGCHAIN_TRACING_V2` | No | Set to `true` to enable tracing (auto-set in deploy scripts) |
+| `GROQ_API_KEY` | Local dev | Groq API key — LLM and Whisper transcription |
 | `PINECONE_API_KEY` | Yes | Pinecone API key — vector database |
 | `PINECONE_INDEX_NAME` | No | Index name (default: `universal-rag`) |
-| `LLM_PROVIDER` | No | `groq` (default) or `vertexai` |
-| `VERTEXAI_PROJECT` | Prod | GCP project ID (set automatically on Cloud Run) |
+| `VERTEXAI_PROJECT` | vertexai only | GCP project ID |
 | `VERTEXAI_LOCATION` | No | Vertex AI region (default: `us-east5`) |
 | `VERTEXAI_MODEL` | No | Model ID (default: `claude-sonnet-4-5@20251205`) |
 | `TAVILY_API_KEY` | Optional | Web search fallback (CRAG pattern) |
@@ -250,145 +413,135 @@ docker-compose up -d --build
 | `REDIS_URL` | Production | Memorystore connection string (auto-set by deploy script) |
 | `ENVIRONMENT` | Production | Set to `production` |
 
-Generate `JWT_SECRET`:
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
 ---
 
-## Pinecone Index Setup
+## Production Deployment
 
-The Pinecone index is created automatically — you never need to do this manually.
+### Option A — Cloud Run (Serverless, Recommended)
 
-**Via setup.sh** (runs during initial setup):
-```bash
-bash setup.sh
-```
+Fully managed — no cluster, no nodes, no infrastructure to maintain.
 
-**Standalone** (if you skipped setup.sh):
-```bash
-python scripts/create_pinecone_index.py
-```
-
-**Automatic on first app start** — if the index doesn't exist when the app first calls `retrieve()` or `ingest_*()`, `vector_store.py` creates it automatically before proceeding.
-
-Index spec: `dimension=384, metric=cosine` — matches `all-MiniLM-L6-v2` output.
-
----
-
-## Architecture
-
-```
-Query Input
-     │
-     ▼
-┌──────────────────────┐
-│    Query Analyzer    │  5 dimensions: length, ambiguity,
-│    (5-dimension)     │  complexity, data_type, conv_state
-└──────────┬───────────┘
-           │
-     Pattern Selection
-           │
-     ┌─────▼──────┐
-     │  Pattern   │  Sequential chaining or parallel fan-out
-     │  Router    │
-     └─────┬──────┘
-           │
-  ┌────────▼────────┐    ┌────────────┐    ┌──────────────────────┐
-  │   Retrieval     │───▶│  Reranker  │───▶│     Generation       │
-  │ (Pinecone +     │    │ (RRF /     │    │  Groq or Vertex AI   │
-  │  Web Search)    │    │  Cohere)   │    │  Claude — 4 roles    │
-  └─────────────────┘    └────────────┘    └──────────┬───────────┘
-                                                      │
-                                             ┌────────▼────────┐
-                                             │     Memory      │
-                                             │   (4 layers)    │
-                                             └─────────────────┘
-```
-
-### 4 LLM Roles
-
-| Role | Responsibility |
-|------|----------------|
-| **Synthesizer** | Generates the final answer from retrieved chunks |
-| **Grader** | Scores answer quality (0.0–1.0) across relevance, completeness, hallucination risk |
-| **Verifier** | Checks faithfulness — every sentence must be supported by a source chunk |
-| **Judge** | Resolves conflicting information across sources |
-
-### 4 Memory Layers
-
-| Layer | Purpose |
-|-------|---------|
-| **Conversation History** | Tracks dialogue context per session |
-| **Pattern Performance** | Learns which patterns work best per query type |
-| **Routing Signals** | Improves future routing decisions |
-| **Verified Knowledge Cache** | Stores high-confidence answers (score ≥ 0.85) for instant reuse |
-
----
-
-## Production Deployment — GCP Managed Services
-
-### Prerequisites
-
-- `gcloud` CLI installed and authenticated
-- Docker Desktop running
-- GCP project with billing enabled
-- Vertex AI Claude enabled: `console.cloud.google.com/vertex-ai/model-garden` → search Claude → Enable
-
-### Step 1 — Pre-flight Check
-
+**Step 1 — Pre-flight check**
 ```bash
 export PROJECT_ID=your-gcp-project-id
 bash scripts/preflight_check.sh
 ```
+Validates tools, credentials, env vars, and ADC. Completes in under 5 seconds.
 
-Checks tools, credentials, env vars, and API keys. Completes in under 5 seconds.
-
-### Step 2 — Deploy Everything
-
+**Step 2 — Deploy everything**
 ```bash
 bash scripts/deploy_gcp.sh
 ```
 
-The script runs 9 steps end-to-end (~15 minutes total):
+The script provisions 9 steps end-to-end (~15 minutes total):
 
 | Step | What It Provisions | Time |
 |------|--------------------|------|
-| 1 | Enable 9 GCP APIs | ~1 min |
+| 1 | Enable 10 GCP APIs | ~1 min |
 | 2 | Artifact Registry repo | ~30s |
-| 3 | Cloud SQL PostgreSQL (db-g1-small, auto-grow, daily backup) | ~5 min |
-| 4 | Serverless VPC Access connector (required for Memorystore) | ~2 min |
+| 3 | Cloud SQL PostgreSQL (auto-grow, daily backup, point-in-time recovery) | ~5 min |
+| 4 | Serverless VPC connector (required for Memorystore access) | ~2 min |
 | 5 | Memorystore Redis 7 (5GB, VPC-internal) | ~2 min |
 | 6 | Pinecone index (idempotent — skips if exists) | ~30s |
 | 7 | Service account + 4 IAM roles | ~30s |
-| 8 | All secrets in Secret Manager | ~30s |
-| 9 | Docker build + push + Cloud Run deploy (API + Frontend) | ~5 min |
+| 8 | All secrets in Secret Manager (Anthropic, LangSmith, Pinecone, DB, Redis, JWT) | ~30s |
+| 9 | Docker build → push to Artifact Registry → Cloud Run deploy (API + Frontend) | ~5 min |
 
-At the end, the script prints your live URLs:
+**What the deploy script prompts for:**
+```
+PINECONE_API_KEY   → pinecone.io dashboard
+ANTHROPIC_API_KEY  → console.anthropic.com
+LANGSMITH_API_KEY  → smith.langchain.com
+GROQ_API_KEY       → console.groq.com
+TAVILY_API_KEY     → tavily.com
+COHERE_API_KEY     → cohere.com
+```
+
+**Step 3 — Run DB schema**
+```bash
+gcloud sql connect rag-postgres --user=raguser --database=ragdb --project=your-project-id
+# At the psql prompt:
+\i infra/postgres/init.sql
+```
+
+Output after deploy:
 ```
   API      : https://rag-api-xxxx-uc.a.run.app
   Frontend : https://rag-frontend-xxxx-uc.a.run.app
 ```
 
-### Step 3 — Run the DB Schema
+---
+
+### Option B — GKE Autopilot (Kubernetes)
+
+Use when you need persistent WebSocket connections, custom sidecars, or an existing K8s workflow. Uses the **same Docker images** pushed to Artifact Registry.
+
+**Prerequisite:** Run `deploy_gcp.sh` first — it provisions Artifact Registry, Secret Manager, Cloud SQL, Memorystore, and the service account that GKE needs.
 
 ```bash
-gcloud sql connect rag-postgres --user=raguser --database=ragdb --project=your-project-id
-# Then at the psql prompt:
-\i infra/postgres/init.sql
+export PROJECT_ID=your-gcp-project-id
+export REGION=us-central1
+bash scripts/setup_gke.sh
 ```
 
-### What Managed Services Replace
+The script runs 8 steps:
 
-| BEFORE (single container) | AFTER (managed) | Benefit |
+| Step | What It Does |
+|------|-------------|
+| 1 | Authenticate Docker → Artifact Registry |
+| 2 | Build API + Frontend Docker images locally |
+| 3 | Push both images to Artifact Registry (not Docker Hub) |
+| 4 | Create GKE Autopilot cluster (auto node management, ~5 min) |
+| 5 | Workload Identity — pods get GCP SA permissions without key files |
+| 6 | Grant cluster image pull access to Artifact Registry |
+| 7 | Pull all secrets from Secret Manager → create `rag-secrets` K8s Secret |
+| 8 | Apply `infra/k8s/deployment.yml` → Deployments + Services + HPAs |
+
+**After deploy:**
+```bash
+kubectl get pods -n rag-agent
+kubectl get svc -n rag-agent        # shows LoadBalancer external IPs
+kubectl get hpa -n rag-agent        # shows autoscaler status
+kubectl logs -n rag-agent deploy/rag-api -f
+```
+
+---
+
+### Artifact Registry — Image Push Flow
+
+All images go to **Artifact Registry** (GCP-private), not Docker Hub.
+
+```bash
+# Image name format: REGION-docker.pkg.dev/PROJECT/REPO/image:tag
+
+# Authenticate once
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+# Build with Artifact Registry tag
+docker build -f Dockerfile \
+  -t us-central1-docker.pkg.dev/MY_PROJECT/rag-repo/rag-api:v1 \
+  -t us-central1-docker.pkg.dev/MY_PROJECT/rag-repo/rag-api:latest \
+  .
+
+# Push
+docker push --all-tags us-central1-docker.pkg.dev/MY_PROJECT/rag-repo/rag-api
+```
+
+The `deploy_gcp.sh` and `setup_gke.sh` scripts handle this automatically.
+
+---
+
+### Cloud Run vs GKE — When to Use Which
+
+| | Cloud Run | GKE Autopilot |
 |---|---|---|
-| ChromaDB container | **Pinecone** | Unlimited vectors, per-tenant namespaces, consistent <100ms |
-| PostgreSQL container | **Cloud SQL** | 4000 connections, auto-failover, 64TB, daily backups |
-| Redis container | **Memorystore** | 300GB, persistent, cluster-sharded, no eviction surprises |
-| Groq Llama (hardcoded) | **Vertex AI Claude** | No rate limits, Google manages infrastructure |
-| FastAPI VM container | **Cloud Run** | 1→100 containers automatically, pay per request |
-| Streamlit VM container | **Cloud Run** | Same auto-scaling |
+| Node management | None | None (Autopilot) |
+| Cold starts | Yes (min-instances=1 avoids) | No |
+| Persistent WebSockets | No | Yes |
+| Custom sidecars | No | Yes |
+| Cost at low traffic | Lower (pay per request) | Higher (min 2 pods always running) |
+| Setup complexity | Simpler | More control |
+| Best for | Most enterprise deployments | Specific K8s requirements |
 
 ---
 
@@ -412,48 +565,62 @@ Stage 6 → docker build Frontend image
 Stage 7 → smoke test (start container → curl /api/health → stop)
 ```
 
-Skip lint for a faster build cycle:
 ```bash
+# Skip lint for faster iteration
 bash scripts/build_and_test.sh --skip-lint
 ```
 
 ### Cloud Build Pipeline (CI/CD)
 
-Triggered automatically on every `git push`. Defined in `cloudbuild.yaml`:
+Triggered on every `git push`. Defined in `cloudbuild.yaml`:
 
 ```
-Steps 1–4  → install deps, lint, typecheck, security (parallel)
-Step  5    → pytest with 70% coverage gate        ← GATE: images only built if green
-Steps 6–7  → docker build API + Frontend          ← waitFor: [test]
+Steps 1–4  → install deps, lint, typecheck, security scan (parallel)
+Step  5    → pytest with 70% coverage gate   ← GATE: images only built if green
+Steps 6–7  → docker build API + Frontend     ← waitFor: [test]
 Steps 8–9  → push to Artifact Registry
-Steps 10–11→ deploy to Cloud Run
+Steps 10–11→ deploy to Cloud Run (LLM_PROVIDER=anthropic, LangSmith tracing enabled)
 Step  12   → upload coverage.xml to GCS
 ```
 
-**If any test fails, the pipeline exits at step 5 — no Docker images are produced.**
+**If tests fail at step 5, the pipeline stops — no Docker images are produced.**
 
-### Running Tests
+### Test Suite
 
 ```bash
 pip install -r requirements-dev.txt -r requirements-api.txt
 pytest
 ```
 
-All external services (Pinecone, Redis, LLM) are mocked in `tests/conftest.py` — tests run with zero network calls and no credentials.
-
-### Test Coverage
+All external services (Pinecone, Redis, LLM) are mocked — zero network calls, no credentials needed in CI.
 
 | File | What It Tests | Tests |
 |------|--------------|-------|
 | `test_api.py` | Health, auth register/login/refresh, protected routes | 14 |
 | `test_vector_store.py` | Pinecone ingest/retrieve, namespace isolation, error handling | 13 |
 | `test_rate_limit.py` | Redis rate limiter, 429 response, fail-open, expire called | 8 |
-| `test_llm.py` | Groq/Vertex AI switching, grade, faithfulness, retry | 11 |
+| `test_llm.py` | All 3 provider switching, grade, faithfulness, retry | 11 |
 | `test_query_analyzer.py` | All 5 dimensions, pattern selection, deduplication, bad JSON | 15 |
 | `test_security.py` | Injection detection, PII redaction, sanitization, upload validation | 20 |
 | **Total** | | **81** |
 
 Coverage gate: **70% minimum** enforced in both local pipeline and Cloud Build.
+
+---
+
+## What Managed Services Replace
+
+| BEFORE (single container) | AFTER (managed) | Benefit |
+|---|---|---|
+| ChromaDB container | **Pinecone** | Unlimited vectors, per-tenant namespaces, <100ms latency |
+| PostgreSQL container | **Cloud SQL** | 4000 connections, auto-failover, 64TB, daily backups |
+| Redis container | **Memorystore** | 300GB, persistent, VPC-internal, no eviction surprises |
+| Groq (hardcoded) | **Anthropic Claude** (`LLM_PROVIDER=anthropic`) | Enterprise SLA, no rate limits |
+| — | **Vertex AI Claude** (`LLM_PROVIDER=vertexai`) | GCP-native, ADC auth, no API key |
+| No monitoring | **LangSmith** | Full LLM trace, cost, latency, quality per query |
+| Docker Hub | **Artifact Registry** | Private GCP registry, IAM-controlled, VPC-native pulls |
+| FastAPI VM container | **Cloud Run / GKE** | 1→100 auto-scale, pay per request |
+| Streamlit VM container | **Cloud Run / GKE** | Same auto-scaling |
 
 ---
 
@@ -481,33 +648,13 @@ Coverage gate: **70% minimum** enforced in both local pipeline and Cloud Build.
 | `/api/auth` | 20 req/min |
 | Default | 100 req/min |
 
-Rate limit state is stored in Redis/Memorystore — consistent across all Cloud Run instances. If Redis is unavailable, the middleware fails open (requests pass through) rather than blocking all traffic.
-
----
-
-## Kubernetes Deployment
-
-The K8s manifest (`infra/k8s/deployment.yml`) has been updated to reflect the managed services migration — **ChromaDB, PostgreSQL, and Redis pods have been removed**. Only the application pods remain; all stateful services are external managed services.
-
-```bash
-# Create secrets from GCP Secret Manager values
-kubectl create secret generic rag-secrets \
-  --from-literal=groq-api-key=<key> \
-  --from-literal=jwt-secret=<secret> \
-  --from-literal=pinecone-api-key=<key> \
-  --from-literal=database-url=<cloud-sql-url> \
-  --from-literal=redis-url=<memorystore-url> \
-  --from-literal=vertexai-project=<project-id>
-
-# Apply manifests
-kubectl apply -f infra/k8s/deployment.yml
-```
-
-HPA scales both API and Frontend deployments from **2 to 100 pods** on CPU (>70%) or memory (>80%).
+Rate limit state is stored in Redis/Memorystore — consistent across all instances. Fails open (requests pass) if Redis is unavailable.
 
 ---
 
 ## Observability
+
+### Prometheus Metrics
 
 Prometheus scrapes `/metrics` every 15 seconds.
 
@@ -521,14 +668,56 @@ Prometheus scrapes `/metrics` every 15 seconds.
 | `http_requests_total` | All API requests by endpoint and status |
 | `http_request_duration_seconds` | API response time histogram |
 
+### LangSmith Traces
+
+| What | Where in LangSmith |
+|------|--------------------|
+| Full prompt + response | Runs → expand any run |
+| Token count + cost | Run detail → Metadata |
+| Latency per pattern | Dashboard → filter by tag |
+| Quality score (grade output) | Runs → Feedback tab |
+| Hallucination flags | Runs → check_faithfulness output |
+
+---
+
+## 4 LLM Roles
+
+| Role | Responsibility |
+|------|----------------|
+| **Synthesizer** | Generates the final answer from retrieved chunks |
+| **Grader** | Scores answer quality (0.0–1.0) across relevance, completeness, hallucination risk |
+| **Verifier** | Checks faithfulness — every sentence must be supported by a source chunk |
+| **Judge** | Resolves conflicting information across sources |
+
+## 4 Memory Layers
+
+| Layer | Purpose |
+|-------|---------|
+| **Conversation History** | Tracks dialogue context per session |
+| **Pattern Performance** | Learns which patterns work best per query type |
+| **Routing Signals** | Improves future routing decisions |
+| **Verified Knowledge Cache** | Stores high-confidence answers (score ≥ 0.85) for instant reuse |
+
+---
+
+## Pinecone Index Setup
+
+Auto-created — no manual step required.
+
+- **Via `setup.sh`** — runs during initial local setup
+- **Via `scripts/create_pinecone_index.py`** — standalone script, idempotent
+- **Via `vector_store.py`** — `_ensure_index()` creates on first `retrieve()` or `ingest()` call if index is missing
+
+Index spec: `dimension=384, metric=cosine` — matches `all-MiniLM-L6-v2` output.
+
 ---
 
 ## Repositories
 
 | Repo | Description |
 |------|-------------|
-| [universal-rag-agent-enterprise](https://github.com/mshan011181/universal-rag-agent-enterprise) | This repo — managed services, Cloud Run, Pinecone |
-| [universal-rag-agent](https://github.com/mshan011181/universal-rag-agent) | Original single-VM version with Docker containers |
+| [universal-rag-agent-enterprise](https://github.com/mshan011181/universal-rag-agent-enterprise) | This repo — managed services, Cloud Run, GKE, Anthropic, LangSmith |
+| [universal-rag-agent](https://github.com/mshan011181/universal-rag-agent) | Original single-VM version with local Docker containers |
 
 ---
 
@@ -544,6 +733,6 @@ Viewing and downloading this code is permitted for reference and educational pur
 
 **Shan** — AI Engineer
 
-Built with Groq, LangChain, Pinecone, Vertex AI Claude, and Google Cloud Run.
+Built with Anthropic Claude, LangSmith, LangChain, Pinecone, Google Cloud Run, GKE, and Artifact Registry.
 
 GitHub: [https://github.com/mshan011181/universal-rag-agent-enterprise](https://github.com/mshan011181/universal-rag-agent-enterprise)
