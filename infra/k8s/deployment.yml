@@ -52,18 +52,30 @@ spec:
           ports:
             - containerPort: 8000
           env:
-            # LLM — Vertex AI Claude via Workload Identity (no API key)
+            # LLM — Anthropic Claude direct API (production enterprise default)
+            # Switch to vertexai or groq by changing LLM_PROVIDER value only.
             - name: LLM_PROVIDER
-              value: vertexai
-            - name: VERTEXAI_PROJECT
+              value: anthropic
+            - name: ANTHROPIC_MODEL
+              value: claude-sonnet-4-5
+            - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
-                  key: vertexai-project
-            - name: VERTEXAI_LOCATION
-              value: us-central1
-            - name: VERTEXAI_MODEL
-              value: claude-sonnet-4-5@20251205
+                  key: anthropic-api-key
+
+            # LangSmith — observability / tracing for all LLM calls
+            - name: LANGCHAIN_TRACING_V2
+              value: "true"
+            - name: LANGCHAIN_PROJECT
+              value: universal-rag-enterprise
+            - name: LANGCHAIN_ENDPOINT
+              value: https://api.smith.langchain.com
+            - name: LANGCHAIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: langsmith-api-key
 
             # Vector DB — Pinecone (replaces ChromaDB pod)
             - name: PINECONE_API_KEY
@@ -221,16 +233,25 @@ spec:
             - containerPort: 8501
           env:
             - name: LLM_PROVIDER
-              value: vertexai
-            - name: VERTEXAI_PROJECT
+              value: anthropic
+            - name: ANTHROPIC_MODEL
+              value: claude-sonnet-4-5
+            - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: rag-secrets
-                  key: vertexai-project
-            - name: VERTEXAI_LOCATION
-              value: us-central1
-            - name: VERTEXAI_MODEL
-              value: claude-sonnet-4-5@20251205
+                  key: anthropic-api-key
+            - name: LANGCHAIN_TRACING_V2
+              value: "true"
+            - name: LANGCHAIN_PROJECT
+              value: universal-rag-enterprise
+            - name: LANGCHAIN_ENDPOINT
+              value: https://api.smith.langchain.com
+            - name: LANGCHAIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rag-secrets
+                  key: langsmith-api-key
             - name: PINECONE_API_KEY
               valueFrom:
                 secretKeyRef:
