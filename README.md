@@ -878,64 +878,232 @@ At high traffic (millions of requests/month), the gap narrows — GKE can be mor
 
 ## Build and Test Pipeline
 
-### Local Pipeline
+The pipeline answers one question before every deployment: **"Is this code safe to ship?"**
+
+It enforces a strict rule — **Docker images are only produced after all tests pass.** You can never accidentally deploy untested code because the build steps are blocked behind the test gate. If any stage fails, the pipeline stops immediately and the remaining stages are skipped.
+
+There are two pipelines that share the same rules:
+
+| Pipeline | When it runs | Script |
+|----------|-------------|--------|
+| **Local** | Before you push — run manually on your machine | `scripts/build_and_test.sh` |
+| **Cloud Build (CI/CD)** | Automatically on every `git push` | `cloudbuild.yaml` |
+
+---
+
+### Local Pipeline (`scripts/build_and_test.sh`)
+
+Run this on your machine before pushing code or deploying manually.
 
 ```bash
 bash scripts/build_and_test.sh
 ```
 
-7 stages — each must pass before the next runs:
+It runs **7 stages in order**. Each stage must pass before the next one starts. If any stage fails the script exits immediately — stages after the failure never run.
 
 ```
-Stage 1 → ruff lint
-Stage 2 → mypy type check
-Stage 3 → bandit security scan (SAST)
-Stage 4 → pytest  ← 70% coverage gate — images only built if this passes
-Stage 5 → docker build API image
-Stage 6 → docker build Frontend image
-Stage 7 → smoke test (start container → curl /api/health → stop)
+Stage 1 → Lint
+Stage 2 → Type check          ← code quality gates
+Stage 3 → Security scan
+         ─────────────────────────────────────────────
+Stage 4 → Tests + coverage    ← THE GATE: nothing below runs unless this is green
+         ─────────────────────────────────────────────
+Stage 5 → Build API image
+Stage 6 → Build Frontend image ← Docker images only produced after green tests
+Stage 7 → Smoke test
 ```
+
+---
+
+**Stage 1 — Lint (`ruff`)**
+
+Checks code style, import ordering, unused variables, and common Python mistakes across `src/`, `api/`, and `tests/`. Ruff catches things like:
+- Unused imports left behind after refactoring
+- Variables defined but never used
+- Wrong string quote style
+- Imports not grouped correctly
 
 ```bash
-# Skip lint for faster iteration
+ruff check src/ api/ tests/
+```
+
+Fast — runs in under 3 seconds. Fails the pipeline on any violation so style debt never accumulates.
+
+---
+
+**Stage 2 — Type check (`mypy`)**
+
+Runs static type analysis on the Python code. Catches type mismatches before they become runtime errors — for example, passing a `str` where an `int` is expected, or calling a method that doesn't exist on an object.
+
+```bash
+mypy src/ api/ --ignore-missing-imports --no-error-summary
+```
+
+This is especially important for the LLM provider switching code — if you add a new provider and forget to handle it in a function, mypy will catch it before it reaches production.
+
+---
+
+**Stage 3 — Security scan (`bandit`)**
+
+Bandit is a SAST (Static Application Security Testing) tool. It scans Python code for known security vulnerabilities such as:
+- Hardcoded passwords or API keys in source code
+- Use of insecure functions (`eval`, `pickle`, `subprocess` without shell=False)
+- SQL injection risks
+- Weak random number generation (using `random` instead of `secrets`)
+
+```bash
+bandit -r src/ api/ -ll -q
+```
+
+The `-ll` flag means only HIGH and MEDIUM severity issues fail the build — low-severity warnings are reported but do not block deployment.
+
+---
+
+**Stage 4 — Tests + coverage gate (`pytest`) ← THE GATE**
+
+This is the most important stage. It runs all 81 tests and measures how much of the codebase the tests actually exercise.
+
+```bash
+pytest --cov=src --cov=api --cov-report=term-missing --cov-fail-under=70 -q
+```
+
+**The 70% coverage gate** means at least 70% of every line in `src/` and `api/` must be executed by the test suite. If coverage drops below 70%, the build fails — even if all individual tests pass. This prevents the codebase from growing untested code silently over time.
+
+**All external services are mocked** — Pinecone, Redis, and the LLM are replaced with fake objects in `tests/conftest.py`. This means:
+- Tests run in seconds, not minutes
+- No API keys or credentials needed in CI
+- Tests are deterministic — they return the same result every time regardless of network conditions
+
+If this stage fails → **Stages 5, 6, and 7 never run. No Docker images are produced.**
+
+---
+
+**Stage 5 — Build API image (Docker)**
+
+Builds the FastAPI backend into a Docker image using `Dockerfile`.
+
+```bash
+docker build -f Dockerfile -t rag-api:TAG .
+```
+
+Tagged with both the current git commit SHA (for traceability) and `latest`. Only runs because Stage 4 passed.
+
+---
+
+**Stage 6 — Build Frontend image (Docker)**
+
+Builds the Next.js UI into a Docker image using `Dockerfile.nextjs`. Uses a multi-stage build — the final image is ~150MB and contains only the compiled output, not the source code or `node_modules`.
+
+```bash
+docker build -f Dockerfile.nextjs -t rag-frontend:TAG .
+```
+
+---
+
+**Stage 7 — Smoke test**
+
+Starts the API container locally, waits for it to be ready, hits the health endpoint, then stops the container.
+
+```bash
+# What the script does internally:
+docker run -d --name rag-smoke -p 18000:8000 -e LLM_PROVIDER=groq ... rag-api:TAG
+# waits up to 40 seconds for the container to be healthy
+curl -sf http://localhost:18000/api/health   # must return {"status": "ok"}
+docker rm -f rag-smoke
+```
+
+This catches problems that pass unit tests but break at startup — missing imports, misconfigured environment variables, port binding errors, or startup exceptions. The container must respond within 40 seconds or the stage fails.
+
+```bash
+# Skip stages 1–3 for faster iteration during development
 bash scripts/build_and_test.sh --skip-lint
 ```
 
-### Cloud Build Pipeline (CI/CD)
+---
 
-Triggered on every `git push`. Defined in `cloudbuild.yaml`:
+### Cloud Build Pipeline — CI/CD (`cloudbuild.yaml`)
+
+Triggered **automatically on every `git push`** to the repository. Runs on Google Cloud Build infrastructure — you do not need Docker or Python installed on a build server.
 
 ```
-Steps 1–4  → install deps, lint, typecheck, security scan (parallel)
-Step  5    → pytest with 70% coverage gate   ← GATE: images only built if green
-Steps 6–7  → docker build API + Frontend     ← waitFor: [test]
-Steps 8–9  → push to Artifact Registry
-Steps 10–11→ deploy to Cloud Run (LLM_PROVIDER=anthropic, LangSmith tracing enabled)
-Step  12   → upload coverage.xml to GCS
+git push
+    │
+    └── Cloud Build triggers automatically
+            │
+            ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 1–4: Quality gates (run in parallel)         │
+    │  ├── Install dependencies                           │
+    │  ├── Lint (ruff)                                    │
+    │  ├── Type check (mypy)                              │
+    │  └── Security scan (bandit)                         │
+    └─────────────────────┬───────────────────────────────┘
+                          │ all must pass
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Step 5: pytest + 70% coverage gate  ← THE GATE    │
+    └─────────────────────┬───────────────────────────────┘
+                          │ must be green — blocks everything below
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 6–7: Build Docker images (parallel)          │
+    │  ├── docker build Dockerfile      → rag-api         │
+    │  └── docker build Dockerfile.nextjs → rag-frontend  │
+    └─────────────────────┬───────────────────────────────┘
+                          │
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 8–9: Push to Artifact Registry (parallel)    │
+    │  ├── push rag-api:COMMIT_SHA + :latest              │
+    │  └── push rag-frontend:COMMIT_SHA + :latest         │
+    └─────────────────────┬───────────────────────────────┘
+                          │
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 10–11: Deploy to Cloud Run                   │
+    │  ├── gcloud run deploy rag-api                      │
+    │  └── gcloud run deploy rag-frontend                 │
+    └─────────────────────┬───────────────────────────────┘
+                          │
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Step 12: Upload coverage.xml to GCS bucket         │
+    │  (for coverage trend tracking over time)            │
+    └─────────────────────────────────────────────────────┘
 ```
 
-**If tests fail at step 5, the pipeline stops — no Docker images are produced.**
+**Key rules enforced by `waitFor` in `cloudbuild.yaml`:**
+- Steps 6–7 (Docker builds) have `waitFor: [test]` — they cannot start until Step 5 passes
+- Step 11 (deploy frontend) has `waitFor: [push-frontend, deploy-api]` — frontend is only deployed after the API is live and its URL is known (so `NEXT_PUBLIC_API_URL` can be set correctly)
+- **If Step 5 fails — Steps 6 through 12 never run. No images are built. Nothing is deployed.**
 
-### Test Suite
+Each image is tagged with `$COMMIT_SHA` — the exact git commit that produced it. This means:
+- Every deployed version is traceable back to a specific commit
+- Rolling back is one command: `gcloud run deploy rag-api --image=...:<previous-sha>`
+- You can see exactly what code is running in production at any time
+
+---
+
+### Test Suite — What Each File Tests
+
+Run tests locally at any time (no credentials needed — all external services are mocked):
 
 ```bash
 pip install -r requirements-dev.txt -r requirements-api.txt
 pytest
 ```
 
-All external services (Pinecone, Redis, LLM) are mocked — zero network calls, no credentials needed in CI.
+| File | What It Tests | Why It Matters | Tests |
+|------|--------------|----------------|-------|
+| `test_api.py` | Health endpoint, user register, login, token refresh, protected route access | Verifies the entire auth flow works end to end | 14 |
+| `test_vector_store.py` | Pinecone ingest, retrieve, namespace isolation between tenants, error handling | Ensures documents go into the right tenant's namespace and retrieval is accurate | 13 |
+| `test_rate_limit.py` | Redis rate limiter enforces limits, returns 429 on breach, fails open if Redis is down | Protects the API from abuse; fail-open ensures Redis outage doesn't block all traffic | 8 |
+| `test_llm.py` | All 3 providers switch correctly, grade() scores answers, retry on transient errors | Verifies LLM_PROVIDER switching works and quality scoring is reliable | 11 |
+| `test_query_analyzer.py` | All 5 dimensions scored correctly, pattern selected, deduplication, handles bad JSON | The query analyzer drives all routing — errors here affect every query | 15 |
+| `test_security.py` | Prompt injection blocked, PII detected and redacted, file upload validation | Enterprise security — ensures malicious inputs are caught before reaching the LLM | 20 |
+| **Total** | | | **81** |
 
-| File | What It Tests | Tests |
-|------|--------------|-------|
-| `test_api.py` | Health, auth register/login/refresh, protected routes | 14 |
-| `test_vector_store.py` | Pinecone ingest/retrieve, namespace isolation, error handling | 13 |
-| `test_rate_limit.py` | Redis rate limiter, 429 response, fail-open, expire called | 8 |
-| `test_llm.py` | All 3 provider switching, grade, faithfulness, retry | 11 |
-| `test_query_analyzer.py` | All 5 dimensions, pattern selection, deduplication, bad JSON | 15 |
-| `test_security.py` | Injection detection, PII redaction, sanitization, upload validation | 20 |
-| **Total** | | **81** |
-
-Coverage gate: **70% minimum** enforced in both local pipeline and Cloud Build.
+**Coverage gate: 70% minimum** — enforced in both `pytest.ini` (local) and `cloudbuild.yaml` (CI). The build fails if coverage drops below this threshold, even if all 81 tests pass individually.
 
 ---
 
