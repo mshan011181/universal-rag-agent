@@ -484,29 +484,36 @@ docker-compose down
 
 #### Typical local development workflow
 
+The rule is simple: **tests always come before any Docker build.** You never build an image before tests pass.
+
 ```
 1. Write code
       │
       ▼
-2. Test with dev servers (Step 1 above)
+2. Test with dev servers   ← fast feedback loop, use this most of the time
    uvicorn + npm run dev
-   Fast feedback, hot-reload
+   Hot-reload on every save, no Docker involved
       │
       ▼
-3. Verify with Docker Compose (Step 2 above)
-   docker-compose up --build
-   Confirms the Docker image works correctly
-      │
-      ▼
-4. Run the full quality gate
+3. Run the full quality gate   ← tests run here, BEFORE any Docker build
    bash scripts/build_and_test.sh
    Lint → type check → security → 81 tests → docker build → smoke test
+                                       ↑                ↑
+                                  tests first      build only if tests pass
+      │
+      ▼
+4. (Optional) Verify full stack with Docker Compose
+   docker-compose up --build
+   Only needed if you want to test postgres + redis + all services together locally
+   Skip this step if you are confident from Step 3
       │
       ▼
 5. Push to git
-   git push
+   bash scripts/git_manager.sh   (option 2)  — or —  git push enterprise main
    Cloud Build triggers automatically → tests → build → deploy to Cloud Run
 ```
+
+> **Why tests before Docker Compose?** `build_and_test.sh` runs all 81 tests and the 70% coverage gate before building any Docker image. If you run `docker-compose up --build` first and tests fail afterwards, you have built and run untested code — defeating the purpose of the gate. Always run `build_and_test.sh` before Docker Compose.
 
 You **do not** need to manually build Docker images and push them. Step 5 (`git push`) triggers Cloud Build which handles the full build, test, and deployment pipeline automatically.
 
