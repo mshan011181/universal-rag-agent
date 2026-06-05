@@ -549,13 +549,27 @@ The rule is simple: **tests always come before any Docker build.** You never bui
    Cloud Build which builds and pushes both images automatically.
       │
       ▼
-6. Push to git                       ← normal workflow ends here
+6. Push source code to GitHub        ← normal workflow ends here
    bash scripts/git_manager.sh  (option 2)
    — or —
    git push enterprise main
+   │
+   What git push does:
+   └── Pushes SOURCE CODE only to GitHub (not Docker images, not Artifact Registry)
+       GitHub stores your .py, .ts, Dockerfile, yaml files — NOT the built images
+   │
+   Cloud Build then triggers automatically from the GitHub push:
+   ├── Pulls source code from GitHub
+   ├── Runs tests → lint → type check → security
+   ├── Builds Docker images (rag-api + rag-frontend) on GCP infrastructure
+   ├── Pushes those Docker images to Artifact Registry   ← images go here, not GitHub
+   └── Deploys from Artifact Registry to Cloud Run
 
-   Cloud Build triggers automatically:
-   tests → build API + Frontend → push both to Artifact Registry → deploy to Cloud Run
+   Two separate destinations:
+   ┌─────────────────────────────────────────────┐
+   │  git push  →  GitHub (source code)          │
+   │  Cloud Build  →  Artifact Registry (images) │
+   └─────────────────────────────────────────────┘
 ```
 
 **Summary — what each step builds and where the images go:**
