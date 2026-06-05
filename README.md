@@ -495,51 +495,55 @@ The rule is simple: **tests always come before any Docker build.** You never bui
    Hot-reload on every save — no Docker involved, fastest feedback
       │
       ▼
-3. Run the full quality gate         ← tests run FIRST, Docker image built AFTER tests pass
+3. Run the full quality gate         ← tests run FIRST, API image built AFTER tests pass
    bash scripts/build_and_test.sh
    │
    ├── Stage 1: ruff lint
    ├── Stage 2: mypy type check
    ├── Stage 3: bandit security scan
-   ├── Stage 4: pytest (81 tests + 70% coverage gate)  ← GATE
-   ├── Stage 5: docker build rag-api:TAG               ← image built locally only if tests pass
-   ├── Stage 6: docker build rag-frontend:TAG          ← image built locally only if tests pass
-   └── Stage 7: smoke test (start container → curl /api/health → stop)
+   ├── Stage 4: pytest (81 tests + 70% coverage gate)    ← GATE
+   ├── Stage 5: docker build rag-api:TAG                 ← API image only, local machine
+   ├── Stage 6: docker build rag-frontend:TAG            ← Frontend image only, local machine
+   └── Stage 7: smoke test API only (curl /api/health)   ← no postgres, no redis, no frontend
 
-   Output: Docker images sitting on YOUR LOCAL MACHINE only.
-           They are NOT pushed to Artifact Registry yet.
+   Output: rag-api:TAG and rag-frontend:TAG on YOUR LOCAL MACHINE only.
+           NO postgres. NO redis. NOT a full stack test. NOT pushed to Artifact Registry.
       │
       ▼
-4. (Optional) Verify full stack with Docker Compose
+4. (Optional) Verify full stack with Docker Compose   ← use Step 4's images in Step 5
    docker-compose up --build
    │
    What this adds over Step 3:
-   ├── Starts postgres container     ← Step 3 smoke test has no real DB
-   ├── Starts redis container        ← Step 3 smoke test has no real Redis
-   ├── Starts API + Frontend together as a complete system
-   └── You can open http://localhost:3000 and manually test end-to-end
+   ├── Rebuilds API + Frontend images (same code, fresh build)
+   ├── Starts postgres container     ← real DB — Step 3 has no DB
+   ├── Starts redis container        ← real Redis — Step 3 has no Redis
+   ├── Starts API + Frontend + postgres + redis all together
+   └── Open http://localhost:3000 — manually test the full system end-to-end
+   │
+   Output: Full stack running locally. API + Frontend images refreshed on your machine.
+           Use THESE images (from Step 4) for the manual push in Step 5.
    │
    Skip this step if you only changed backend logic and Step 3 passed.
    Use this step if you changed DB queries, Redis caching, or cross-service behaviour.
       │
       ▼
-5. (Optional) Manually push image to Artifact Registry
-   Only needed if you want to deploy a specific locally-built image
-   WITHOUT going through Cloud Build (e.g. hotfix or manual override)
+5. (Optional) Manually push images to Artifact Registry
+   Push the FULL STACK images from Step 4 (not Step 3 — Step 3 only verified the API).
+   Only needed for a hotfix or manual override WITHOUT going through Cloud Build.
 
-   # Authenticate Docker to Artifact Registry (one-time)
+   # Authenticate Docker to Artifact Registry (one-time setup)
    gcloud auth configure-docker us-central1-docker.pkg.dev
 
-   # Tag the locally built image with the Artifact Registry path
-   docker tag rag-api:TAG us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:TAG
-   docker tag rag-frontend:TAG us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:TAG
+   # Tag both images (API + Frontend) with the Artifact Registry path
+   docker tag rag-api:latest us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:TAG
+   docker tag rag-frontend:latest us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:TAG
 
-   # Push to Artifact Registry
+   # Push both images to Artifact Registry
    docker push us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:TAG
    docker push us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:TAG
 
    Skip this step in normal workflow — Step 6 (git push) triggers
-   Cloud Build which builds and pushes automatically.
+   Cloud Build which builds and pushes both images automatically.
       │
       ▼
 6. Push to git                       ← normal workflow ends here
@@ -548,18 +552,18 @@ The rule is simple: **tests always come before any Docker build.** You never bui
    git push enterprise main
 
    Cloud Build triggers automatically:
-   tests → build → push to Artifact Registry → deploy to Cloud Run
+   tests → build API + Frontend → push both to Artifact Registry → deploy to Cloud Run
 ```
 
-**Summary — what each step builds and where the image goes:**
+**Summary — what each step builds and where the images go:**
 
-| Step | Builds image? | Where the image lives | Pushed to Artifact Registry? |
-|------|-------------|----------------------|------------------------------|
-| 2 — Dev servers | No | Nowhere — raw code only | No |
-| 3 — build_and_test.sh | Yes — locally | Your machine only | No |
-| 4 — Docker Compose | Yes — locally | Your machine only | No |
-| 5 — Manual push (optional) | No — uses Step 3 image | Artifact Registry | Yes — manually |
-| 6 — git push → Cloud Build | Yes — on GCP | Artifact Registry | Yes — automatically |
+| Step | What is built | API image | Frontend image | postgres + redis | Pushed to Artifact Registry? |
+|------|--------------|-----------|---------------|-----------------|------------------------------|
+| 2 — Dev servers | Nothing | Raw code only | Raw code only | No | No |
+| 3 — build_and_test.sh | API + Frontend locally | ✓ local | ✓ local | No | No |
+| 4 — Docker Compose | API + Frontend + full stack | ✓ local (rebuilt) | ✓ local (rebuilt) | ✓ running | No |
+| 5 — Manual push (optional) | Nothing new — pushes Step 4 images | ✓ Artifact Registry | ✓ Artifact Registry | — | Yes — manually |
+| 6 — git push → Cloud Build | API + Frontend on GCP | ✓ Artifact Registry | ✓ Artifact Registry | — (managed) | Yes — automatically |
 
 ---
 
