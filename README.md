@@ -580,27 +580,194 @@ Next.js middleware runs before the page is rendered — unauthenticated users ar
 
 ---
 
-## Environment Variables
+## API Keys — What You Need and How to Get Them
+
+The table below shows every API key the system uses, whether it is required for local dev or production, where to get it, and what happens without it.
+
+---
+
+### Quick reference — which keys do you need right now?
+
+| Situation | Keys required |
+|-----------|--------------|
+| **Local dev (writing code)** | `GROQ_API_KEY` + `PINECONE_API_KEY` |
+| **Local dev with monitoring** | Above + `LANGSMITH_API_KEY` |
+| **Production deploy** | `ANTHROPIC_API_KEY` + `PINECONE_API_KEY` + `LANGSMITH_API_KEY` + `GROQ_API_KEY` + `TAVILY_API_KEY` + `COHERE_API_KEY` |
+| **GCP infra only (no LLM calls)** | `PINECONE_API_KEY` + `GROQ_API_KEY` (at minimum) |
+
+---
+
+### 1. Groq API Key — `GROQ_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | LLM in local dev (`LLM_PROVIDER=groq`) + Whisper audio/video transcription in all environments |
+| **Required** | Yes — local dev. Also needed in production for Whisper transcription even when `LLM_PROVIDER=anthropic` |
+| **Free tier** | Yes — generous free tier, no credit card needed |
+| **Get it** | [console.groq.com](https://console.groq.com) → Sign up → API Keys → Create API Key |
+| **Steps** | 1. Go to console.groq.com  2. Sign up with Google or email  3. Click **API Keys** in the left sidebar  4. Click **Create API Key**  5. Copy the key — it starts with `gsk_` |
+
+```env
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+```
+
+---
+
+### 2. Pinecone API Key — `PINECONE_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | Vector database — stores and retrieves document embeddings for all 14 RAG patterns |
+| **Required** | Yes — both local dev and production. The app cannot retrieve any documents without this |
+| **Free tier** | Yes — Starter plan: 1 index, 100K vectors, no credit card needed |
+| **Get it** | [app.pinecone.io](https://app.pinecone.io) → Sign up → API Keys |
+| **Steps** | 1. Go to app.pinecone.io  2. Sign up (Google or email)  3. On the dashboard, click **API Keys** in the left sidebar  4. Copy the **Default** key — it starts with a UUID format |
+
+```env
+PINECONE_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+PINECONE_INDEX_NAME=universal-rag   # leave as default
+```
+
+> The Pinecone index (`universal-rag`) is created **automatically** when the app starts or when `scripts/create_pinecone_index.py` runs. You do not need to create it manually in the Pinecone dashboard.
+
+---
+
+### 3. Anthropic API Key — `ANTHROPIC_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | Production LLM (`LLM_PROVIDER=anthropic`) — Claude Sonnet powers all RAG generation, grading, faithfulness checking |
+| **Required** | Yes — production. Not needed for local dev if `LLM_PROVIDER=groq` |
+| **Free tier** | No — pay-as-you-go. New accounts get $5 free credit to start |
+| **Get it** | [console.anthropic.com](https://console.anthropic.com) → Sign up → API Keys |
+| **Steps** | 1. Go to console.anthropic.com  2. Sign up and verify email  3. Go to **Settings → API Keys**  4. Click **Create Key**  5. Copy the key — it starts with `sk-ant-` |
+
+```env
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
+ANTHROPIC_MODEL=claude-sonnet-4-5   # leave as default
+```
+
+> For Vertex AI Claude (`LLM_PROVIDER=vertexai`) — no API key needed. The Cloud Run service account uses Application Default Credentials (ADC) to authenticate. This only works when deployed on GCP.
+
+---
+
+### 4. LangSmith API Key — `LANGSMITH_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | LLM monitoring and tracing — captures every prompt, response, token count, latency, and cost for all LLM calls |
+| **Required** | Strongly recommended for production. Optional for local dev |
+| **Free tier** | Yes — 5,000 traces/month free, no credit card needed |
+| **Get it** | [smith.langchain.com](https://smith.langchain.com) → Sign up → Settings → API Keys |
+| **Steps** | 1. Go to smith.langchain.com  2. Sign up with Google or email  3. Go to **Settings** (bottom left)  4. Click **API Keys** → **Create API Key**  5. Copy the key — it starts with `ls__` |
+
+```env
+LANGSMITH_API_KEY=ls__xxxxxxxxxxxxxxxxxxxx
+LANGSMITH_PROJECT=universal-rag-enterprise   # leave as default
+```
+
+> After setting the key, tracing is enabled automatically — no code changes needed. All LangChain calls (synthesize, grade, faithfulness check, follow-ups) appear in your LangSmith dashboard at `smith.langchain.com`.
+
+---
+
+### 5. Tavily API Key — `TAVILY_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | Web search fallback in the **CRAG pattern** — when retrieved documents have low confidence, the system falls back to live web search to supplement the answer |
+| **Required** | Optional — if not set, the CRAG pattern skips web search and uses only indexed documents |
+| **Free tier** | Yes — 1,000 searches/month free |
+| **Get it** | [app.tavily.com](https://app.tavily.com) → Sign up → API Keys |
+| **Steps** | 1. Go to app.tavily.com  2. Sign up  3. Your API key is shown on the dashboard home — starts with `tvly-` |
+
+```env
+TAVILY_API_KEY=tvly-xxxxxxxxxxxxxxxxxxxx
+```
+
+---
+
+### 6. Cohere API Key — `COHERE_API_KEY`
+
+| | |
+|---|---|
+| **Used for** | Cross-encoder reranking — after Pinecone retrieves the top-K chunks, Cohere re-scores them for relevance and reorders before sending to the LLM. Improves answer quality |
+| **Required** | Optional — if not set, the system uses RRF (Reciprocal Rank Fusion) reranking instead, which is built-in and requires no API key |
+| **Free tier** | Yes — Trial API key with generous limits, no credit card needed |
+| **Get it** | [dashboard.cohere.com](https://dashboard.cohere.com) → Sign up → API Keys |
+| **Steps** | 1. Go to dashboard.cohere.com  2. Sign up  3. Go to **API Keys** in the left sidebar  4. Copy the **Trial key** |
+
+```env
+COHERE_API_KEY=xxxxxxxxxxxxxxxxxxxx
+```
+
+---
+
+### Auto-generated keys (no signup needed)
+
+These are generated automatically by `deploy_gcp.sh` and stored in Secret Manager. You never need to create or manage them manually.
+
+| Key | How it's generated |
+|-----|--------------------|
+| `JWT_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` — 64 char hex |
+| `DATABASE_URL` | Built from Cloud SQL instance details after Step 3 of deploy |
+| `REDIS_URL` | Built from Memorystore private IP after Step 5 of deploy |
+
+---
+
+### Full `.env` file for local development
+
+Copy this to `.env` in the repo root and fill in your keys:
+
+```env
+# ── LLM ────────────────────────────────────────────────────────────────
+LLM_PROVIDER=groq                         # use groq for local dev
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx     # required — get from console.groq.com
+
+# Production LLM (set LLM_PROVIDER=anthropic when ready)
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxx       # get from console.anthropic.com
+ANTHROPIC_MODEL=claude-sonnet-4-5
+
+# ── Monitoring ─────────────────────────────────────────────────────────
+LANGSMITH_API_KEY=ls__xxxxxxxxxx          # get from smith.langchain.com
+LANGSMITH_PROJECT=universal-rag-enterprise
+
+# ── Vector DB ──────────────────────────────────────────────────────────
+PINECONE_API_KEY=xxxxxxxx-xxxx-xxxx       # required — get from app.pinecone.io
+PINECONE_INDEX_NAME=universal-rag         # leave as default
+
+# ── Optional enhancements ──────────────────────────────────────────────
+TAVILY_API_KEY=tvly-xxxxxxxxxx            # web search fallback (CRAG pattern)
+COHERE_API_KEY=xxxxxxxxxx                 # cross-encoder reranking
+
+# ── Auto-set by deploy_gcp.sh in production ───────────────────────────
+# DATABASE_URL=                           # Cloud SQL — set automatically
+# REDIS_URL=                              # Memorystore — set automatically
+# JWT_SECRET=                             # generated automatically
+```
+
+---
+
+## Environment Variables — Full Reference
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LLM_PROVIDER` | No | `anthropic` (prod default) · `vertexai` · `groq` (local dev) |
-| `ANTHROPIC_API_KEY` | Production | Anthropic Claude direct API key |
+| `LLM_PROVIDER` | No | `groq` (local dev default) · `anthropic` (prod default) · `vertexai` (GCP-native) |
+| `GROQ_API_KEY` | Yes (local dev) | Groq LLM + Whisper transcription — [console.groq.com](https://console.groq.com) |
+| `ANTHROPIC_API_KEY` | Yes (production) | Anthropic Claude direct API — [console.anthropic.com](https://console.anthropic.com) |
 | `ANTHROPIC_MODEL` | No | Model ID (default: `claude-sonnet-4-5`) |
-| `LANGSMITH_API_KEY` | Production | LangSmith API key for tracing |
+| `LANGSMITH_API_KEY` | Recommended | LangSmith tracing — [smith.langchain.com](https://smith.langchain.com) |
 | `LANGSMITH_PROJECT` | No | Project name (default: `universal-rag-enterprise`) |
-| `LANGCHAIN_TRACING_V2` | No | Set to `true` to enable tracing (auto-set in deploy scripts) |
-| `GROQ_API_KEY` | Local dev | Groq API key — LLM and Whisper transcription |
-| `PINECONE_API_KEY` | Yes | Pinecone API key — vector database |
-| `PINECONE_INDEX_NAME` | No | Index name (default: `universal-rag`) |
-| `VERTEXAI_PROJECT` | vertexai only | GCP project ID |
+| `LANGCHAIN_TRACING_V2` | No | Auto-set to `true` by deploy scripts when `LANGSMITH_API_KEY` is present |
+| `PINECONE_API_KEY` | Yes (always) | Vector database — [app.pinecone.io](https://app.pinecone.io) |
+| `PINECONE_INDEX_NAME` | No | Index name (default: `universal-rag`) — auto-created |
+| `TAVILY_API_KEY` | Optional | Web search fallback for CRAG — [app.tavily.com](https://app.tavily.com) |
+| `COHERE_API_KEY` | Optional | Cross-encoder reranking — [dashboard.cohere.com](https://dashboard.cohere.com) |
+| `VERTEXAI_PROJECT` | vertexai only | GCP project ID (auto-set on Cloud Run) |
 | `VERTEXAI_LOCATION` | No | Vertex AI region (default: `us-east5`) |
 | `VERTEXAI_MODEL` | No | Model ID (default: `claude-sonnet-4-5@20251205`) |
-| `TAVILY_API_KEY` | Optional | Web search fallback (CRAG pattern) |
-| `COHERE_API_KEY` | Optional | Cross-encoder reranking |
-| `JWT_SECRET` | Production | JWT token signing secret |
-| `DATABASE_URL` | Production | Cloud SQL connection string (auto-set by deploy script) |
-| `REDIS_URL` | Production | Memorystore connection string (auto-set by deploy script) |
+| `JWT_SECRET` | Production | Auto-generated by `deploy_gcp.sh` — stored in Secret Manager |
+| `DATABASE_URL` | Production | Auto-set by `deploy_gcp.sh` — Cloud SQL Unix socket connection string |
+| `REDIS_URL` | Production | Auto-set by `deploy_gcp.sh` — Memorystore private IP URL |
 | `ENVIRONMENT` | Production | Set to `production` |
 
 ---
