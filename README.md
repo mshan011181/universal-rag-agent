@@ -464,6 +464,31 @@ On refresh fail → redirect to /login
 
 Access token is never written to localStorage — mitigates XSS token theft.
 
+### Why Next.js and not plain React
+
+Next.js **is** React — every component is a standard React component. The choice is between plain React (Vite) vs Next.js (React framework). Next.js was chosen for three specific production reasons:
+
+| | Plain React (Vite) | Next.js 14 |
+|---|---|---|
+| Routing | Manual (react-router) | Built-in file-based routing |
+| SSR / SSG | You build it | Built-in — pages can be server-rendered |
+| API routes | Separate server needed | `/app/api/` routes run server-side |
+| Auth middleware | Manual — flash of protected content | `middleware.ts` blocks request before page renders |
+| Docker output | Needs nginx or custom Node server | `output: standalone` — single `server.js`, ~150MB image |
+| Production deploy | Requires server config | `node server.js` — one command |
+| Dev CORS proxy | Manual proxy setup | `rewrites` in `next.config.js` — zero config |
+
+**Reason 1 — `output: standalone` Docker image**
+Next.js builds a self-contained `server.js` with only the files it needs — no `node_modules` in the final image. Result: ~150MB production image. A plain Vite React build needs nginx or a separately configured Node server, adding complexity to the Dockerfile.
+
+**Reason 2 — Auth guard without flicker**
+Next.js middleware runs before the page is rendered — unauthenticated users are redirected to `/login` before seeing any content. With plain React, the component mounts first, checks auth, then redirects — causing a visible flash of the protected page.
+
+**Reason 3 — Dev proxy to FastAPI**
+`next.config.js` rewrites `/api/*` to `http://localhost:8000/api/*` in development — no CORS configuration needed. In production the frontend calls FastAPI directly via `NEXT_PUBLIC_API_URL`.
+
+> When you would use plain React instead: fully client-side SPA with no Cloud Run frontend service, or a team that already has a CDN/nginx serving static files and wants zero framework opinions.
+
 ---
 
 ## Environment Variables
