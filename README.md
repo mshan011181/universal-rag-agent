@@ -166,24 +166,48 @@ All Enterprise Tenants                        All Enterprise Tenants
 
 ## Tech Stack
 
-| Layer | Local Dev | Production |
-|-------|-----------|------------|
-| **LLM (default)** | Groq Llama 3.3-70b (`LLM_PROVIDER=groq`) | **Anthropic Claude Sonnet** (`LLM_PROVIDER=anthropic`) |
-| **LLM (GCP-native alt)** | — | Vertex AI Claude via ADC (`LLM_PROVIDER=vertexai`) |
-| **LLM Monitoring** | LangSmith (optional) | **LangSmith** — traces all 3 providers automatically |
-| **Vector DB** | Pinecone (same in both) | Pinecone — unlimited, per-tenant namespaces |
-| **Relational DB** | PostgreSQL container | Cloud SQL PostgreSQL — 4000 conns, auto-failover, 64TB |
-| **Cache / Rate limit** | Redis container | Memorystore — 300GB, persistent, sharded |
-| **API** | FastAPI + uvicorn | **Cloud Run** — 1→100 auto-scale, serverless (GKE Autopilot if K8s required) |
-| **UI** | Next.js 14 + Tailwind CSS (replaces Streamlit) | **Cloud Run** — 1→100 auto-scale, serverless (GKE Autopilot if K8s required) |
-| **Container Registry** | Local | **Artifact Registry** (not Docker Hub) |
-| **Embeddings** | sentence-transformers all-MiniLM-L6-v2 (local) | Same — no API key needed |
-| **Transcription** | Groq Whisper large-v3 | Same |
-| **Orchestration** | LangChain 0.3.x + LangGraph | Same |
-| **Auth** | JWT (python-jose) + bcrypt | Same, secrets in Secret Manager |
-| **Observability** | Prometheus + Grafana + structlog | Same + Cloud Logging + **LangSmith** |
-| **Reranking** | Cohere cross-encoder + RRF | Same |
-| **CI/CD** | `scripts/build_and_test.sh` | Cloud Build → Artifact Registry → Cloud Run / GKE |
+> **Important distinction** — the table has three columns: what the application **is**, and **where** it runs.
+> FastAPI and Next.js are the **applications**. Cloud Run is the **hosting platform** that runs them.
+> Cloud Run does not replace FastAPI or Next.js — it replaces the single VM they previously ran on.
+>
+> ```
+> WHAT runs       WHERE it runs (local)     WHERE it runs (production)
+> ─────────────────────────────────────────────────────────────────────
+> FastAPI     →   uvicorn on localhost   →  Cloud Run container (1→100)
+> Next.js     →   node dev server        →  Cloud Run container (1→100)
+> ```
+
+| Layer | Application / Technology | Local Dev | Production Hosting |
+|-------|--------------------------|-----------|-------------------|
+| **API** | **FastAPI** (Python) — never replaced | uvicorn on `localhost:8000` | **Cloud Run** — serverless, 1→100 containers, auto-scale |
+| **UI** | **Next.js 14 + React** — replaces Streamlit | Node dev server on `localhost:3000` | **Cloud Run** — serverless, 1→100 containers, auto-scale |
+| **LLM (default)** | **Anthropic Claude Sonnet** | `LLM_PROVIDER=groq` (Groq Llama) | `LLM_PROVIDER=anthropic` → Anthropic API |
+| **LLM (GCP-native alt)** | **Vertex AI Claude** via ADC | — | `LLM_PROVIDER=vertexai` → no API key needed |
+| **LLM Monitoring** | **LangSmith** | Optional | Required — traces all 3 providers automatically |
+| **Vector DB** | **Pinecone** | Pinecone (same) | Pinecone — unlimited vectors, per-tenant namespaces |
+| **Relational DB** | **PostgreSQL** | Local container | **Cloud SQL** — 4000 conns, auto-failover, 64TB |
+| **Cache / Rate limit** | **Redis** | Local container | **Memorystore** — 300GB, persistent, VPC-internal |
+| **Container Registry** | Docker images | Local only | **Artifact Registry** (GCP-private, not Docker Hub) |
+| **Embeddings** | sentence-transformers all-MiniLM-L6-v2 | Local (no API key) | Same — runs inside FastAPI container |
+| **Transcription** | Groq Whisper large-v3 | Same | Same |
+| **Orchestration** | LangChain 0.3.x + LangGraph | Same | Same |
+| **Auth** | JWT (python-jose) + bcrypt | Same | Same — secrets stored in Secret Manager |
+| **Observability** | Prometheus + Grafana + structlog | Same | Same + Cloud Logging + **LangSmith** |
+| **Reranking** | Cohere cross-encoder + RRF | Same | Same |
+| **CI/CD** | — | `scripts/build_and_test.sh` | Cloud Build → Artifact Registry → Cloud Run |
+
+**Production component map — technology vs hosting platform:**
+
+| Component | Technology (the app) | Hosted On (the platform) |
+|-----------|----------------------|--------------------------|
+| API | FastAPI (Python) | Cloud Run |
+| UI | Next.js 14 (React) | Cloud Run |
+| Vector DB | Pinecone | Pinecone managed cloud |
+| Relational DB | PostgreSQL | Cloud SQL (GCP managed) |
+| Cache | Redis | Memorystore (GCP managed) |
+| LLM | Anthropic Claude Sonnet | Anthropic API |
+| Secrets | — | Secret Manager (GCP) |
+| Images | Docker | Artifact Registry (GCP) |
 
 ---
 
