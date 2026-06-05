@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Universal RAG Agent Enterprise — Shan AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#FAF7F2;--warm:#FDF9F4;--amber:#C8843A;--amber-l:#E8A85C;--amber-p:#F5E6D3;--teal:#2A7B7B;--teal-d:#1D5C5C;--teal-l:#E8F5F5;--char:#2C2C2C;--mid:#5A5A5A;--lite:#8A8A8A;--bord:#E0D8CC;--code:#1E1E1E;--codet:#D4D0C8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--char);font-family:'DM Sans',sans-serif;font-size:16px;line-height:1.75}
+.site-header{background:var(--char);padding:13px 40px;display:flex;align-items:center;gap:12px}
+.site-logo{font-family:'Playfair Display',serif;font-size:1.35rem;color:var(--amber-l);letter-spacing:.02em}
+.site-tag{font-size:.7rem;color:var(--lite);letter-spacing:.12em;text-transform:uppercase;padding-left:12px;border-left:1px solid #444;font-family:'DM Sans',sans-serif}
+.hero{background:var(--char);padding:64px 40px 56px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-80px;right:-80px;width:420px;height:420px;background:radial-gradient(circle,rgba(200,132,58,.14) 0%,transparent 70%);pointer-events:none}
+.hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(200,132,58,.3),transparent)}
+.hero-inner{max-width:900px;margin:0 auto;position:relative}
+.hero-label{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:18px;display:flex;align-items:center;gap:10px}
+.hero-label::before{content:'';display:inline-block;width:28px;height:1px;background:var(--amber)}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:700;color:#FAF7F2;line-height:1.2;margin-bottom:16px}
+.hero h1 em{color:var(--amber-l);font-style:italic}
+.hero-desc{font-size:1rem;color:#A8A098;font-weight:300;max-width:700px;line-height:1.7}
+.hero-badges{margin-top:28px;display:flex;flex-wrap:wrap;gap:8px}
+.badge{background:rgba(200,132,58,.12);border:1px solid rgba(200,132,58,.25);color:var(--amber-l);font-family:'JetBrains Mono',monospace;font-size:.65rem;padding:4px 11px;border-radius:3px;letter-spacing:.04em}
+.badge.teal{background:rgba(42,123,123,.12);border-color:rgba(42,123,123,.25);color:#5CB8B8}
+.art-body{max-width:900px;margin:0 auto;padding:56px 40px 100px}
+
+/* TOC */
+.toc{background:var(--warm);border:1px solid var(--bord);border-left:4px solid var(--teal);padding:26px 30px;margin-bottom:56px;border-radius:2px}
+.toc-title{font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);font-weight:600;margin-bottom:14px}
+.toc-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
+.toc-item{display:flex;align-items:baseline;gap:8px;padding:4px 0}
+.toc-item .tn{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--amber);min-width:22px}
+.toc-item a{color:var(--mid);text-decoration:none;font-size:.88rem;transition:color .2s}
+.toc-item a:hover{color:var(--teal)}
+
+/* Section headings */
+.sec-head{display:flex;align-items:center;gap:14px;margin:68px 0 28px;padding-top:8px;border-top:1px solid var(--bord)}
+.sec-num{font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);background:var(--amber-p);padding:4px 11px;border-radius:2px;white-space:nowrap}
+.sec-head h2{font-family:'Playfair Display',serif;font-size:1.55rem;font-weight:700;color:var(--char)}
+h3{font-family:'Playfair Display',serif;font-size:1.12rem;font-weight:600;color:var(--char);margin:36px 0 14px}
+h4{font-family:'DM Sans',sans-serif;font-size:.92rem;font-weight:600;color:var(--char);margin:24px 0 10px;letter-spacing:.02em}
+p{margin-bottom:1.1em;color:var(--mid)}
+strong{color:var(--char);font-weight:600}
+ul,ol{padding-left:1.4em;margin-bottom:1.1em;color:var(--mid)}
+li{margin-bottom:.4em}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:'JetBrains Mono',monospace;font-size:.82em;background:#EEEAE4;padding:2px 6px;border-radius:3px;color:#5A3A1A}
+
+/* Code blocks */
+.cb{background:var(--code);border-radius:4px;padding:22px;margin:18px 0 28px;overflow-x:auto;position:relative}
+.cb pre{font-family:'JetBrains Mono',monospace;font-size:.7rem;line-height:1.65;color:var(--codet);white-space:pre}
+.cb-label{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);margin-bottom:8px;display:block}
+
+/* Callouts */
+.call{border-radius:3px;padding:18px 22px;margin:22px 0;font-size:.9rem}
+.call-v{background:var(--teal-l);border-left:4px solid var(--teal)}
+.call-v .cb-badge{color:var(--teal-d);font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:5px}
+.call-n{background:var(--amber-p);border-left:4px solid var(--amber)}
+.call-n .cb-badge{color:#7A4A10;font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:5px}
+.call p{margin-bottom:0;font-size:.88rem}
+
+/* Tables */
+.tw{overflow-x:auto;margin:18px 0 28px}
+table{width:100%;border-collapse:collapse;font-size:.84rem}
+thead th{background:var(--char);color:#FAF7F2;font-family:'DM Sans',sans-serif;font-weight:500;font-size:.76rem;letter-spacing:.05em;padding:11px 14px;text-align:left}
+tbody tr{border-bottom:1px solid var(--bord);transition:background .15s}
+tbody tr:hover{background:var(--warm)}
+tbody td{padding:10px 14px;color:var(--mid);vertical-align:top}
+tbody tr:nth-child(even) td{background:rgba(250,247,242,.5)}
+.td1 td:first-child,.td1-mark tbody td:first-child{color:var(--char);font-weight:500}
+.mono td:first-child{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--amber)}
+.tr-total td{font-weight:700;color:var(--char)!important;background:var(--amber-p)!important}
+
+/* Pattern badges */
+.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:9px;margin:20px 0 28px}
+.pb{display:flex;align-items:flex-start;gap:10px;background:var(--warm);border:1px solid var(--bord);padding:10px 13px;border-radius:3px}
+.pb .pn{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--amber);font-weight:500;min-width:20px;line-height:1.4}
+.pb .pt{font-size:.83rem;font-weight:500;color:var(--char);display:block;line-height:1.3}
+.pb .pd{font-size:.74rem;color:var(--lite);display:block;margin-top:2px}
+
+/* Before/After */
+.ba{display:grid;grid-template-columns:1fr 1fr;margin:22px 0 28px;border:1px solid var(--bord);border-radius:4px;overflow:hidden}
+.ba-b{background:#F7F0EB;border-right:1px solid var(--bord);padding:22px}
+.ba-a{background:var(--teal-l);padding:22px}
+.ba-t{font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;margin-bottom:12px;display:block}
+.ba-b .ba-t{color:#8B5A1A}
+.ba-a .ba-t{color:var(--teal-d)}
+.ba ul{list-style:none;padding:0}
+.ba ul li{font-size:.83rem;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.05);color:var(--mid);display:flex;gap:8px}
+.ba-b ul li::before{content:'✗';color:#C97B7B;flex-shrink:0;font-size:.8rem}
+.ba-a ul li::before{content:'✓';color:var(--teal);flex-shrink:0;font-size:.8rem}
+
+/* Feature cards */
+.fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px;margin:22px 0 28px}
+.fc{background:var(--warm);border:1px solid var(--bord);padding:22px;border-radius:3px;position:relative;overflow:hidden}
+.fc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--amber),var(--teal))}
+.fc .fn{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--amber);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;display:block}
+.fc h4{font-size:.96rem;font-family:'Playfair Display',serif;margin:0 0 8px}
+.fc p{font-size:.83rem;line-height:1.55;margin-bottom:0}
+
+/* LLM role cards */
+.lrg{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0 28px}
+.lrc{background:var(--warm);border:1px solid var(--bord);padding:18px 20px;border-radius:3px}
+.lrc-t{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);font-weight:500;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+.lrc-t .dot{width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0}
+.lrc p{font-size:.83rem;margin-bottom:0}
+
+/* Memory layer cards */
+.mlg{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0 28px}
+.mlc{background:var(--warm);border:1px solid var(--bord);padding:18px 20px;border-radius:3px;border-top:3px solid var(--teal)}
+.mlc h4{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin:0 0 7px}
+.mlc p{font-size:.83rem;margin-bottom:0}
+
+/* Key grid */
+.kg{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin:18px 0 28px}
+.kc{background:var(--warm);border:1px solid var(--bord);padding:18px 20px;border-radius:3px}
+.kc .kt{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--amber);font-weight:500;margin-bottom:6px;display:block}
+.kc table{font-size:.78rem}
+.kc table td{padding:4px 0;border:none;background:none!important}
+.kc table td:first-child{font-weight:600;color:var(--char);width:90px;vertical-align:top}
+
+/* Workflow step */
+.wf{background:var(--warm);border:1px solid var(--bord);border-radius:4px;margin:18px 0 28px;overflow:hidden}
+.wf-step{display:flex;align-items:flex-start;gap:16px;padding:16px 20px;border-bottom:1px solid var(--bord)}
+.wf-step:last-child{border-bottom:none}
+.wf-step:hover{background:rgba(42,123,123,.03)}
+.wf-n{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--amber);background:var(--amber-p);padding:3px 8px;border-radius:2px;white-space:nowrap;margin-top:2px;font-weight:500}
+.wf-step h4{font-size:.88rem;margin:0 0 4px;color:var(--char)}
+.wf-step p{font-size:.82rem;margin-bottom:0;color:var(--mid)}
+
+/* IAM table */
+.iam-t td:nth-child(2){font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--teal-d)}
+
+/* Cloud Run vs GKE comparison */
+.cr-gke td:nth-child(2){color:var(--mid)}
+.cr-gke td:nth-child(3){color:var(--teal-d)}
+
+/* Env var table */
+.ev-t td:first-child{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--amber)}
+.ev-t td:nth-child(2){font-weight:500;color:var(--char);width:90px}
+
+/* Pipeline stage */
+.pipe{margin:18px 0 28px}
+.ps{display:flex;gap:12px;padding:13px 16px;border-left:3px solid var(--bord);margin-bottom:3px;background:var(--warm);border-radius:0 3px 3px 0;transition:border-color .2s}
+.ps:hover{border-color:var(--amber)}
+.ps.gate{border-color:var(--teal);background:var(--teal-l)}
+.ps-n{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--amber);background:var(--amber-p);padding:2px 7px;border-radius:2px;white-space:nowrap;align-self:flex-start;margin-top:2px}
+.ps.gate .ps-n{background:rgba(42,123,123,.15);color:var(--teal-d)}
+.ps-t{font-size:.88rem;font-weight:600;color:var(--char);display:block;margin-bottom:3px}
+.ps-d{font-size:.82rem;color:var(--mid)}
+
+/* File tree */
+.ft{background:var(--code);border-radius:4px;padding:22px;margin:18px 0 28px;overflow-x:auto}
+.ft pre{font-family:'JetBrains Mono',monospace;font-size:.7rem;line-height:1.75;color:var(--codet);white-space:pre}
+.ft .dir{color:#98C2C2}
+.ft .file{color:var(--codet)}
+.ft .comment{color:#666}
+
+/* Metrics table */
+.mt td:first-child{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--amber)}
+
+/* Conclusion */
+.concl{background:var(--char);color:#FAF7F2;padding:44px;border-radius:4px;margin:60px 0 0}
+.concl h2{font-family:'Playfair Display',serif;font-size:1.45rem;color:var(--amber-l);margin-bottom:18px}
+.concl p{color:#A8A098;margin-bottom:.9em;font-size:.95rem}
+.concl p:last-child{margin-bottom:0}
+
+/* Footer */
+.art-footer{margin-top:52px;padding-top:28px;border-top:1px solid var(--bord);display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;font-size:.82rem;color:var(--lite)}
+.art-footer a{color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:.73rem}
+.tp{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.tp span{background:var(--warm);border:1px solid var(--bord);font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--mid);padding:3px 9px;border-radius:20px}
+
+hr{border:none;border-top:1px solid var(--bord);margin:52px 0}
+.orn{text-align:center;margin:40px 0;color:var(--amber);font-family:'Playfair Display',serif;font-size:1.1rem;letter-spacing:.3em;opacity:.4}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.hero-inner>*{animation:fadeUp .65s ease both}
+.hero-inner>*:nth-child(1){animation-delay:.05s}
+.hero-inner>*:nth-child(2){animation-delay:.14s}
+.hero-inner>*:nth-child(3){animation-delay:.23s}
+.hero-inner>*:nth-child(4){animation-delay:.32s}
+
+@media(max-width:700px){
+  .art-body{padding:36px 18px 80px}
+  .hero{padding:44px 18px 48px}
+  .site-header{padding:11px 18px}
+  .ba{grid-template-columns:1fr}
+  .lrg,.mlg{grid-template-columns:1fr}
+  .toc-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-logo">Shan AI</div>
+  <div class="site-tag">AI Engineering · Oracle DBA · Cloud Infrastructure</div>
+</header>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-label">Technical Documentation</div>
+    <h1>Universal RAG Agent <em>Enterprise</em></h1>
+    <p class="hero-desc">Production-grade Retrieval-Augmented Generation system implementing <strong style="color:#E8A85C">14 RAG patterns</strong> in a single intelligent agent — auto-scales from 1 to 100 containers on Google Cloud Run or GKE Autopilot, backed by Pinecone, Cloud SQL, Memorystore, Anthropic Claude, and monitored end-to-end via LangSmith.</p>
+    <div class="hero-badges">
+      <span class="badge">Python 3.12</span>
+      <span class="badge teal">Cloud Run Auto-scaling</span>
+      <span class="badge teal">Pinecone Vector DB</span>
+      <span class="badge">Anthropic Claude Sonnet</span>
+      <span class="badge">LangSmith Observability</span>
+      <span class="badge teal">FastAPI 0.115</span>
+      <span class="badge">Next.js 14</span>
+    </div>
+  </div>
+</div>
+
+<main class="art-body">
+
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <div class="toc-grid">
+    <div class="toc-item"><span class="tn">01</span><a href="#overview">Overview</a></div>
+    <div class="toc-item"><span class="tn">02</span><a href="#migration">Before vs After — Infrastructure Migration</a></div>
+    <div class="toc-item"><span class="tn">03</span><a href="#features">Key Features</a></div>
+    <div class="toc-item"><span class="tn">04</span><a href="#patterns">The 14 RAG Patterns</a></div>
+    <div class="toc-item"><span class="tn">05</span><a href="#architecture">Full Architecture</a></div>
+    <div class="toc-item"><span class="tn">06</span><a href="#techstack">Tech Stack</a></div>
+    <div class="toc-item"><span class="tn">07</span><a href="#llm">LLM Provider Switching</a></div>
+    <div class="toc-item"><span class="tn">08</span><a href="#langsmith">LangSmith Monitoring</a></div>
+    <div class="toc-item"><span class="tn">09</span><a href="#structure">Project Structure</a></div>
+    <div class="toc-item"><span class="tn">10</span><a href="#quickstart">Quick Start — Local Development</a></div>
+    <div class="toc-item"><span class="tn">11</span><a href="#frontend">Frontend UI — Next.js 14</a></div>
+    <div class="toc-item"><span class="tn">12</span><a href="#apikeys">API Keys Reference</a></div>
+    <div class="toc-item"><span class="tn">13</span><a href="#envvars">Environment Variables</a></div>
+    <div class="toc-item"><span class="tn">14</span><a href="#deployment">Production Deployment</a></div>
+    <div class="toc-item"><span class="tn">15</span><a href="#crvsqke">Cloud Run vs GKE</a></div>
+    <div class="toc-item"><span class="tn">16</span><a href="#pipeline">Build &amp; Test Pipeline</a></div>
+    <div class="toc-item"><span class="tn">17</span><a href="#tests">Test Suite</a></div>
+    <div class="toc-item"><span class="tn">18</span><a href="#managed">What Managed Services Replace</a></div>
+    <div class="toc-item"><span class="tn">19</span><a href="#api">API Endpoints</a></div>
+    <div class="toc-item"><span class="tn">20</span><a href="#observability">Observability</a></div>
+    <div class="toc-item"><span class="tn">21</span><a href="#roles">4 LLM Roles &amp; 4 Memory Layers</a></div>
+    <div class="toc-item"><span class="tn">22</span><a href="#pinecone">Pinecone Index Setup</a></div>
+    <div class="toc-item"><span class="tn">23</span><a href="#repos">Repositories &amp; License</a></div>
+  </div>
+</nav>
+
+<!-- 01 Overview -->
+<div class="sec-head" id="overview">
+  <span class="sec-num">01</span>
+  <h2>Overview</h2>
+</div>
+<p>The Universal RAG Agent automatically selects the optimal retrieval strategy for every query using a <strong>5-dimension query analyzer</strong>. Rather than being locked into a single RAG approach, it routes each query through the best-fit pattern — or chains multiple patterns — based on query length, ambiguity, complexity, data type, and conversation state.</p>
+
+<!-- 02 Migration -->
+<div class="sec-head" id="migration">
+  <span class="sec-num">02</span>
+  <h2>Before vs After — Full Infrastructure Migration</h2>
+</div>
+
+<div class="ba">
+  <div class="ba-b">
+    <span class="ba-t">✗ Before — Single VM (breaks at scale)</span>
+    <ul>
+      <li>FastAPI container — ~50 concurrent</li>
+      <li>Streamlit container — ~20 concurrent</li>
+      <li>ChromaDB container — slows/crashes</li>
+      <li>PostgreSQL container — hits connection limit</li>
+      <li>Redis container — runs OOM</li>
+      <li>LLM: Groq (hardcoded, no SLA)</li>
+      <li>No monitoring</li>
+    </ul>
+  </div>
+  <div class="ba-a">
+    <span class="ba-t">✓ After — Managed Services (scales automatically)</span>
+    <ul>
+      <li>Cloud Load Balancer</li>
+      <li>Cloud Run (FastAPI) — 1→100 containers</li>
+      <li>Cloud Run (Next.js UI) — 1→100 containers</li>
+      <li>GKE Autopilot — 2→100 pods (alt)</li>
+      <li>Pinecone — unlimited vectors</li>
+      <li>Cloud SQL — 4000 conns, 64TB</li>
+      <li>Memorystore — 300GB, sharded</li>
+      <li>Anthropic Claude — enterprise SLA</li>
+      <li>LangSmith — full trace / monitoring</li>
+    </ul>
+  </div>
+</div>
+
+<div class="cb"><span class="cb-label">Infrastructure Migration Diagram</span><pre>
+BEFORE (Single VM)                    AFTER (Managed Services)
+
+All Enterprise Tenants                All Enterprise Tenants
+         │                                     │
+         ▼                                     ▼
+      GCP VM                           Cloud Load Balancer
+      ├── FastAPI container                     │
+      ├── Streamlit container                   ▼
+      ├── ChromaDB container       Cloud Run (FastAPI)     1 → 100 containers
+      ├── PostgreSQL container     Cloud Run (Next.js UI)  1 → 100 containers
+      └── Redis container                       │         ─ or ─
+                                    GKE Autopilot          2 → 100 pods
+      LLM: Groq (hardcoded)                    │
+      No monitoring                 ├── Pinecone            unlimited vectors
+                                    ├── Cloud SQL           4000 conns, 64TB
+                                    ├── Memorystore         300GB, sharded
+                                    ├── Anthropic Claude    enterprise SLA
+                                    └── LangSmith           full trace/monitoring</pre></div>
+
+<!-- 03 Key Features -->
+<div class="sec-head" id="features">
+  <span class="sec-num">03</span>
+  <h2>Key Features</h2>
+</div>
+
+<div class="fg">
+  <div class="fc"><span class="fn">Core Intelligence</span><h4>14 RAG Patterns</h4><p>All patterns implemented and auto-selected per query. No other system implements all 14 with intelligent routing.</p></div>
+  <div class="fc"><span class="fn">Query Analysis</span><h4>5-Dimension Query Analyzer</h4><p>Routes each query to the right pattern(s) based on length, ambiguity, complexity, data type, and conversation state.</p></div>
+  <div class="fc"><span class="fn">Ingestion</span><h4>Multi-modal Ingestion</h4><p>PDF, DOCX, TXT, Audio, Video, Web Pages, YouTube. Groq Whisper (whisper-large-v3) for audio/video transcription.</p></div>
+  <div class="fc"><span class="fn">Memory</span><h4>Self-Improving Memory</h4><p>Tracks pattern performance, routing signals, and verified knowledge — gets measurably better with use.</p></div>
+  <div class="fc"><span class="fn">LLM</span><h4>3 LLM Providers</h4><p><code>anthropic</code> (production default), <code>vertexai</code> (GCP-native, no API key), <code>groq</code> (local dev/CI).</p></div>
+  <div class="fc"><span class="fn">Observability</span><h4>LangSmith Monitoring</h4><p>Every LLM call traced with token counts, latency, cost, and quality scores. Full prompt replay for debugging.</p></div>
+  <div class="fc"><span class="fn">API</span><h4>Production FastAPI</h4><p>JWT + OAuth2 + API Key auth, Redis-backed rate limiting, Prometheus metrics, structured audit log.</p></div>
+  <div class="fc"><span class="fn">UI</span><h4>Production Next.js 14</h4><p>Replaces Streamlit — login, query, ingest, admin dashboard, role-based nav, mobile responsive.</p></div>
+  <div class="fc"><span class="fn">Deployment</span><h4>Two Deployment Targets</h4><p>Cloud Run (serverless) or GKE Autopilot (K8s) — same images, one-command deploy via Cloud Build CI/CD.</p></div>
+</div>
+
+<!-- 04 Patterns -->
+<div class="sec-head" id="patterns">
+  <span class="sec-num">04</span>
+  <h2>The 14 RAG Patterns</h2>
+</div>
+
+<div class="pg">
+  <div class="pb"><span class="pn">01</span><div><span class="pt">Naive RAG</span><span class="pd">Simple factual queries with clear indexed answers</span></div></div>
+  <div class="pb"><span class="pn">02</span><div><span class="pt">HyDE</span><span class="pd">Very short or highly ambiguous queries</span></div></div>
+  <div class="pb"><span class="pn">03</span><div><span class="pt">Query Rewriting</span><span class="pd">Vague or poorly phrased queries</span></div></div>
+  <div class="pb"><span class="pn">04</span><div><span class="pt">CRAG</span><span class="pd">High-risk domains — legal, medical, financial, compliance</span></div></div>
+  <div class="pb"><span class="pn">05</span><div><span class="pt">Self-RAG</span><span class="pd">Complex multi-step reasoning requiring self-verification</span></div></div>
+  <div class="pb"><span class="pn">06</span><div><span class="pt">Adaptive RAG</span><span class="pd">Mixed-complexity workloads needing dynamic strategy</span></div></div>
+  <div class="pb"><span class="pn">07</span><div><span class="pt">FLARE</span><span class="pd">Long-form generation requiring iterative retrieval</span></div></div>
+  <div class="pb"><span class="pn">08</span><div><span class="pt">Speculative RAG</span><span class="pd">Queries benefiting from hypothesis-then-verify approach</span></div></div>
+  <div class="pb"><span class="pn">09</span><div><span class="pt">Modular RAG</span><span class="pd">Queries requiring configurable retrieval pipelines</span></div></div>
+  <div class="pb"><span class="pn">10</span><div><span class="pt">Agentic RAG</span><span class="pd">Multi-tool, multi-step research tasks</span></div></div>
+  <div class="pb"><span class="pn">11</span><div><span class="pt">GraphRAG</span><span class="pd">Entity-relationship and network-style queries</span></div></div>
+  <div class="pb"><span class="pn">12</span><div><span class="pt">Multi-Modal RAG</span><span class="pd">Image and chart analysis</span></div></div>
+  <div class="pb"><span class="pn">13</span><div><span class="pt">Conversational RAG</span><span class="pd">Follow-up questions with conversation history</span></div></div>
+  <div class="pb"><span class="pn">14</span><div><span class="pt">RAG Fusion</span><span class="pd">Broad queries benefiting from multi-perspective retrieval</span></div></div>
+</div>
+
+<!-- 05 Architecture -->
+<div class="sec-head" id="architecture">
+  <span class="sec-num">05</span>
+  <h2>Full Architecture</h2>
+</div>
+
+<div class="cb"><span class="cb-label">System Architecture</span><pre>
+                      ┌─────────────────────────────────────────────────────┐
+                      │              Enterprise Tenants                      │
+                      │   (per-tenant Pinecone namespace + DB schema)        │
+                      └─────────────────────┬───────────────────────────────┘
+                                            │
+                                            ▼
+                            ┌───────────────────────────┐
+                            │     Cloud Load Balancer    │
+                            └──────────┬────────────────┘
+                                       │
+               ┌───────────────────────┼──────────────────────┐
+               ▼                                              ▼
+  ┌────────────────────────┐               ┌────────────────────────────┐
+  │  Cloud Run / GKE       │               │  Cloud Run / GKE           │
+  │  FastAPI (rag-api)     │               │  Next.js 14 (rag-frontend) │
+  │  1–100 containers      │               │  1–100 containers          │
+  └────────────┬───────────┘               └────────────────────────────┘
+               │
+               ▼
+  ┌────────────────────────┐
+  │     Query Analyzer     │  5 dimensions:
+  │     (5-dimension)      │  length · ambiguity · complexity
+  └────────────┬───────────┘  data_type · conversation_state
+               │
+               ▼
+  ┌────────────────────────┐
+  │     Pattern Router     │  Sequential chain or parallel fan-out
+  └────────────┬───────────┘  across 14 RAG patterns
+               │
+     ┌─────────┼────────┐
+     ▼         ▼        ▼
+┌──────────┐ ┌──────┐ ┌──────────────────────────────────────────┐
+│Retrieval │ │Rerank│ │          Generation Layer                  │
+│          │ │      │ │                                            │
+│Pinecone  │ │Cohere│ │  LLM_PROVIDER switching:                  │
+│namespaced│ │cross-│ │  anthropic  → Anthropic Claude API        │
+│vector DB │ │encode│ │  vertexai   → Vertex AI via ADC           │
+│+         │ │+ RRF │ │  groq       → Groq Llama                  │
+│Tavily    │ │rerank│ │                                            │
+│web search│ │      │ │  4 LLM Roles per query:                   │
+└──────────┘ └──────┘ │  Synthesizer · Grader · Verifier · Judge  │
+                       └───────────────────┬────────────────────────┘
+                                           │
+                                           ▼
+                       ┌───────────────────────────────────────────┐
+                       │         LangSmith Tracing                  │
+                       │  Every chain call captured:                │
+                       │  token counts · latency · cost             │
+                       │  quality scores · full prompt traces       │
+                       └───────────────────┬───────────────────────┘
+                                           │
+             ┌─────────────────────────────┼─────────────────────────┐
+             ▼                             ▼                          ▼
+┌────────────────────┐   ┌───────────────────────┐   ┌──────────────────────┐
+│   Pinecone         │   │   Cloud SQL            │   │   Memorystore Redis  │
+│   Vector DB        │   │   PostgreSQL           │   │   Rate limiting +    │
+│   namespace per    │   │   10-table multi-      │   │   session cache      │
+│   tenant           │   │   tenant schema        │   │   VPC-internal       │
+└────────────────────┘   └───────────────────────┘   └──────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         4-Layer Memory Store                               │
+│  Conversation History · Pattern Performance · Routing Signals              │
+│  Verified Knowledge Cache (score ≥ 0.85 → instant reuse)                  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│              GCP Infrastructure (Secret Manager + IAM)                     │
+│  All API keys stored as secrets · Cloud Run + GKE pull via service account │
+│  Workload Identity for GKE — no key files on pods                          │
+└────────────────────────────────────────────────────────────────────────────┘</pre></div>
+
+<!-- 06 Tech Stack -->
+<div class="sec-head" id="techstack">
+  <span class="sec-num">06</span>
+  <h2>Tech Stack</h2>
+</div>
+
+<div class="call call-v">
+  <span class="cb-badge">✦ Important Distinction</span>
+  <p>FastAPI and Next.js are the <strong>applications</strong>. Cloud Run is the <strong>hosting platform</strong> that runs them. Cloud Run does not replace FastAPI or Next.js — it replaces the single VM they previously ran on.</p>
+</div>
+
+<div class="cb"><span class="cb-label">What runs vs where it runs</span><pre>
+WHAT runs       WHERE it runs (local)     WHERE it runs (production)
+─────────────────────────────────────────────────────────────────────
+FastAPI     →   uvicorn on localhost   →  Cloud Run container (1→100)
+Next.js     →   node dev server        →  Cloud Run container (1→100)</pre></div>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Layer</th><th>Application / Technology</th><th>Local Dev</th><th>Production Hosting</th></tr></thead>
+  <tbody>
+    <tr><td><strong>API</strong></td><td>FastAPI (Python) — never replaced</td><td>uvicorn on localhost:8000</td><td>Cloud Run — serverless, 1→100 containers</td></tr>
+    <tr><td><strong>UI</strong></td><td>Next.js 14 + React — replaces Streamlit</td><td>Node dev server on localhost:3000</td><td>Cloud Run — serverless, 1→100 containers</td></tr>
+    <tr><td><strong>LLM (default)</strong></td><td>Anthropic Claude Sonnet</td><td>LLM_PROVIDER=groq (Groq Llama)</td><td>LLM_PROVIDER=anthropic → Anthropic API</td></tr>
+    <tr><td><strong>LLM (GCP alt)</strong></td><td>Vertex AI Claude via ADC</td><td>—</td><td>LLM_PROVIDER=vertexai → no API key needed</td></tr>
+    <tr><td><strong>LLM Monitoring</strong></td><td>LangSmith</td><td>Optional</td><td>Required — traces all 3 providers automatically</td></tr>
+    <tr><td><strong>Vector DB</strong></td><td>Pinecone</td><td>Pinecone (same)</td><td>Pinecone — unlimited vectors, per-tenant namespaces</td></tr>
+    <tr><td><strong>Relational DB</strong></td><td>PostgreSQL</td><td>Local container</td><td>Cloud SQL — 4000 conns, auto-failover, 64TB</td></tr>
+    <tr><td><strong>Cache / Rate limit</strong></td><td>Redis</td><td>Local container</td><td>Memorystore — 300GB, persistent, VPC-internal</td></tr>
+    <tr><td><strong>Container Registry</strong></td><td>Docker images</td><td>Local only</td><td>Artifact Registry (GCP-private, not Docker Hub)</td></tr>
+    <tr><td><strong>Embeddings</strong></td><td>sentence-transformers all-MiniLM-L6-v2</td><td>Local (no API key)</td><td>Same — runs inside FastAPI container</td></tr>
+    <tr><td><strong>Transcription</strong></td><td>Groq Whisper large-v3</td><td>Same</td><td>Same</td></tr>
+    <tr><td><strong>Orchestration</strong></td><td>LangChain 0.3.x + LangGraph</td><td>Same</td><td>Same</td></tr>
+    <tr><td><strong>Auth</strong></td><td>JWT (python-jose) + bcrypt</td><td>Same</td><td>Same — secrets stored in Secret Manager</td></tr>
+    <tr><td><strong>Observability</strong></td><td>Prometheus + Grafana + structlog</td><td>Same</td><td>Same + Cloud Logging + LangSmith</td></tr>
+    <tr><td><strong>Reranking</strong></td><td>Cohere cross-encoder + RRF</td><td>Same</td><td>Same</td></tr>
+    <tr><td><strong>CI/CD</strong></td><td>—</td><td>scripts/build_and_test.sh</td><td>Cloud Build → Artifact Registry → Cloud Run</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Production Component Map</h3>
+<div class="tw">
+<table class="td1">
+  <thead><tr><th>Component</th><th>Technology (the app)</th><th>Hosted On (the platform)</th></tr></thead>
+  <tbody>
+    <tr><td>API</td><td>FastAPI (Python)</td><td>Cloud Run</td></tr>
+    <tr><td>UI</td><td>Next.js 14 (React)</td><td>Cloud Run</td></tr>
+    <tr><td>Vector DB</td><td>Pinecone</td><td>Pinecone managed cloud</td></tr>
+    <tr><td>Relational DB</td><td>PostgreSQL</td><td>Cloud SQL (GCP managed)</td></tr>
+    <tr><td>Cache</td><td>Redis</td><td>Memorystore (GCP managed)</td></tr>
+    <tr><td>LLM</td><td>Anthropic Claude Sonnet</td><td>Anthropic API</td></tr>
+    <tr><td>Secrets</td><td>—</td><td>Secret Manager (GCP)</td></tr>
+    <tr><td>Images</td><td>Docker</td><td>Artifact Registry (GCP)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- 07 LLM -->
+<div class="sec-head" id="llm">
+  <span class="sec-num">07</span>
+  <h2>LLM Provider Switching</h2>
+</div>
+<p>All three providers use the same <code>get_llm()</code> factory in <code>src/generation/llm.py</code>. Switch by setting one env var — no code changes required.</p>
+
+<div class="tw">
+<table class="mono td1">
+  <thead><tr><th>LLM_PROVIDER</th><th>Provider</th><th>Auth</th><th>Recommended For</th></tr></thead>
+  <tbody>
+    <tr><td>anthropic</td><td>Anthropic Claude Sonnet direct API</td><td>ANTHROPIC_API_KEY</td><td>Production enterprise (default)</td></tr>
+    <tr><td>vertexai</td><td>Vertex AI Claude via ADC</td><td>GCP service account (no key)</td><td>GCP-native, no external API calls</td></tr>
+    <tr><td>groq</td><td>Groq Llama 3.3-70b</td><td>GROQ_API_KEY</td><td>Local dev / CI pipelines</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Why Anthropic over Groq for Production</h3>
+<div class="tw">
+<table>
+  <thead><tr><th></th><th>Groq</th><th>Anthropic</th></tr></thead>
+  <tbody>
+    <tr><td>SLA</td><td>None (free tier)</td><td>99.9% uptime guarantee</td></tr>
+    <tr><td>Rate limits</td><td>Strict (tokens/min cap)</td><td>High (enterprise tier)</td></tr>
+    <tr><td>Model quality</td><td>Llama 3.3-70b</td><td>Claude Sonnet — better reasoning</td></tr>
+    <tr><td>Support</td><td>Community</td><td>Dedicated enterprise support</td></tr>
+    <tr><td>Cost predictability</td><td>Variable</td><td>Consistent pricing</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- 08 LangSmith -->
+<div class="sec-head" id="langsmith">
+  <span class="sec-num">08</span>
+  <h2>LangSmith Monitoring</h2>
+</div>
+<p>LangSmith traces every LLM call across all three providers automatically. No additional instrumentation needed in chain files — <code>_configure_langsmith()</code> sets the required env vars at startup and LangChain picks them up.</p>
+
+<h3>What Gets Traced</h3>
+<div class="tw">
+<table class="td1">
+  <thead><tr><th>Call</th><th>Captured</th></tr></thead>
+  <tbody>
+    <tr><td>synthesize()</td><td>Full prompt, response, token count, latency</td></tr>
+    <tr><td>grade()</td><td>Quality scores per dimension (relevance, completeness, hallucination risk)</td></tr>
+    <tr><td>check_faithfulness()</td><td>Citation map, unsupported sentences flagged</td></tr>
+    <tr><td>generate_followups()</td><td>Follow-up questions with confidence</td></tr>
+    <tr><td>Every retrieval chain</td><td>Chunks retrieved, reranker scores, pattern used</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>LangSmith Dashboard</h3>
+<ul>
+  <li><strong>Per-tenant traces</strong> — filter by enterprise, user, or session</li>
+  <li><strong>Cost per query</strong> — token count × model rate, aggregated by day/week</li>
+  <li><strong>Latency percentiles</strong> — p50 / p95 / p99 per RAG pattern</li>
+  <li><strong>Quality score trends</strong> — track hallucination risk over time</li>
+  <li><strong>Failure analysis</strong> — full prompt replay for any failed query</li>
+</ul>
+
+<h3>Setup</h3>
+<div class="cb"><span class="cb-label">LangSmith Setup</span><pre>
+# 1. Sign up at smith.langchain.com (free tier available)
+# 2. Create a project named "universal-rag-enterprise"
+# 3. Copy your API key, then:
+
+export LANGSMITH_API_KEY=ls__your_key_here
+
+# Tracing is then enabled automatically when deploy_gcp.sh runs</pre></div>
+
+<!-- 09 Structure -->
+<div class="sec-head" id="structure">
+  <span class="sec-num">09</span>
+  <h2>Project Structure</h2>
+</div>
+
+<div class="ft"><pre>
+universal-rag-agent-enterprise/
+├── Dockerfile                        <span class="comment"># FastAPI API image (Cloud Run PORT env var aware)</span>
+├── Dockerfile.nextjs                 <span class="comment"># Next.js UI image — multi-stage, ~150MB standalone</span>
+├── Dockerfile.streamlit              <span class="comment"># Streamlit image — local data exploration only</span>
+├── docker-compose.yml                <span class="comment"># Local dev: API + Next.js UI + postgres + redis</span>
+├── cloudbuild.yaml                   <span class="comment"># Cloud Build CI/CD — 12 stages, images gated on tests</span>
+├── pytest.ini                        <span class="comment"># Test config — 70% coverage gate, asyncio auto</span>
+├── requirements.txt                  <span class="comment"># Core shared deps</span>
+├── requirements-api.txt              <span class="comment"># API container: langchain-anthropic, langsmith, pinecone</span>
+├── requirements-dev.txt              <span class="comment"># Test/lint tools: pytest, ruff, mypy, bandit</span>
+├── .env.example                      <span class="comment"># Full env template</span>
+├── setup.sh                          <span class="comment"># One-command local setup</span>
+│
+├── <span class="dir">frontend/</span>                         <span class="comment"># ── Next.js 14 Production UI ──</span>
+│   ├── package.json                  <span class="comment"># Next 14, React 18, Tailwind, TypeScript</span>
+│   ├── next.config.js                <span class="comment"># standalone output + /api/* dev proxy to FastAPI</span>
+│   └── <span class="dir">src/</span>
+│       ├── <span class="dir">lib/</span>
+│       │   ├── api.ts                <span class="comment"># Fetch wrapper — auto-refresh on 401, all endpoints</span>
+│       │   └── auth.ts               <span class="comment"># restoreSession, getUserRole, clearSession</span>
+│       ├── <span class="dir">app/</span>
+│       │   ├── login/page.tsx        <span class="comment"># Sign in → POST /api/auth/token</span>
+│       │   ├── register/page.tsx     <span class="comment"># Create account → POST /api/auth/register</span>
+│       │   ├── query/page.tsx        <span class="comment"># RAG query — pattern picker, quality badge, sources</span>
+│       │   ├── ingest/page.tsx       <span class="comment"># Drag-drop file upload + paste text</span>
+│       │   └── admin/page.tsx        <span class="comment"># KPI cards + RAG pattern usage bar chart (admin only)</span>
+│       └── <span class="dir">components/</span>
+│           ├── AuthGuard.tsx         <span class="comment"># Redirects to /login if session invalid</span>
+│           └── <span class="dir">layout/</span>
+│               ├── Sidebar.tsx       <span class="comment"># Dark sidebar — role-based nav</span>
+│               └── AppShell.tsx      <span class="comment"># AuthGuard + Sidebar wrapper</span>
+│
+├── <span class="dir">src/</span>                              <span class="comment"># ── Python backend ──</span>
+│   ├── agent.py                      <span class="comment"># Main RAG orchestrator</span>
+│   ├── query_analyzer.py             <span class="comment"># 5-dimension query analyzer</span>
+│   ├── pattern_router.py             <span class="comment"># Routes queries to optimal RAG pattern(s)</span>
+│   ├── security.py                   <span class="comment"># Prompt injection + PII detection/redaction</span>
+│   ├── observability.py              <span class="comment"># Prometheus metrics + structlog</span>
+│   ├── <span class="dir">patterns/</span>                     <span class="comment"># 14 RAG pattern implementations</span>
+│   │   ├── naive_rag.py, hyde.py, query_rewriting.py, crag.py, self_rag.py
+│   │   ├── rag_fusion.py, conv_rag.py, agentic_rag.py, flare.py
+│   │   └── speculative_rag.py, graph_rag.py, multimodal_rag.py
+│   ├── <span class="dir">retrieval/</span>
+│   │   ├── vector_store.py           <span class="comment"># Pinecone — namespace per tenant, auto-creates index</span>
+│   │   ├── media_ingest.py           <span class="comment"># Audio/video/web/YouTube ingestion</span>
+│   │   ├── web_search.py             <span class="comment"># Tavily fallback search</span>
+│   │   └── reranker.py               <span class="comment"># Cohere + RRF reranking</span>
+│   ├── <span class="dir">generation/</span>
+│   │   └── llm.py                    <span class="comment"># 3-provider factory (anthropic/vertexai/groq) + LangSmith</span>
+│   └── <span class="dir">memory/</span>
+│       └── sqlite_store.py           <span class="comment"># 4-layer local memory store</span>
+│
+├── <span class="dir">api/</span>                              <span class="comment"># ── FastAPI backend ──</span>
+│   ├── main.py                       <span class="comment"># App entry — CORS, middleware, routers</span>
+│   ├── auth_utils.py                 <span class="comment"># JWT + API Key auth</span>
+│   ├── <span class="dir">middleware/</span>
+│   │   ├── rate_limit.py             <span class="comment"># Redis-backed sliding window (Memorystore in prod)</span>
+│   │   └── audit.py                  <span class="comment"># Structured audit logging</span>
+│   └── <span class="dir">routers/</span>
+│       └── auth.py, query.py, ingest.py, health.py, admin.py
+│
+├── <span class="dir">infra/</span>
+│   ├── <span class="dir">gcp/</span>
+│   │   ├── cloudrun-api.yaml         <span class="comment"># Cloud Run service spec — FastAPI</span>
+│   │   └── cloudrun-frontend.yaml    <span class="comment"># Cloud Run service spec — Next.js</span>
+│   ├── <span class="dir">k8s/</span>
+│   │   └── deployment.yml            <span class="comment"># GKE — Anthropic + LangSmith env, HPAs (2–100 pods)</span>
+│   └── <span class="dir">postgres/</span>
+│       └── init.sql                  <span class="comment"># 10-table multi-tenant schema</span>
+│
+├── <span class="dir">scripts/</span>
+│   ├── deploy_gcp.sh                 <span class="comment"># 9-step GCP provisioning → Cloud Run</span>
+│   ├── setup_gke.sh                  <span class="comment"># 8-step GKE Autopilot deploy (same images)</span>
+│   ├── preflight_check.sh            <span class="comment"># Pre-deploy validation — completes in &lt;5 seconds</span>
+│   ├── build_and_test.sh             <span class="comment"># Local pipeline: lint → test → docker build → smoke test</span>
+│   └── create_pinecone_index.py      <span class="comment"># Idempotent Pinecone index creation (dim=384, cosine)</span>
+│
+└── <span class="dir">tests/</span>
+    ├── conftest.py                   <span class="comment"># Autouse mocks: Pinecone, Redis, LLM (zero network calls)</span>
+    ├── test_api.py                   <span class="comment"># Health, auth register/login/refresh, protected routes (14)</span>
+    ├── test_vector_store.py          <span class="comment"># Pinecone ingest/retrieve, namespace isolation (13)</span>
+    ├── test_rate_limit.py            <span class="comment"># Redis rate limiter, 429, fail-open, expire (8)</span>
+    ├── test_llm.py                   <span class="comment"># All 3 provider switching, grade, faithfulness, retry (11)</span>
+    ├── test_query_analyzer.py        <span class="comment"># 5 dimensions, pattern selection, deduplication (15)</span>
+    └── test_security.py              <span class="comment"># Injection, PII, sanitization, upload validation (20)</span></pre></div>
+
+<!-- 10 Quick Start -->
+<div class="sec-head" id="quickstart">
+  <span class="sec-num">10</span>
+  <h2>Quick Start — Local Development</h2>
+</div>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>Python 3.12+</li>
+  <li>Docker Desktop running</li>
+  <li><a href="https://console.groq.com/">Groq API Key</a> — free (local dev)</li>
+  <li><a href="https://www.pinecone.io/">Pinecone API Key</a> — free Starter plan</li>
+  <li><a href="https://console.anthropic.com/">Anthropic API Key</a> — for production</li>
+  <li><a href="https://smith.langchain.com/">LangSmith API Key</a> — free tier available</li>
+  <li>ffmpeg: <code>winget install ffmpeg</code> (Windows) / <code>brew install ffmpeg</code> (Mac)</li>
+</ul>
+
+<h3>1. Clone and Setup</h3>
+<div class="cb"><pre>
+git clone https://github.com/mshan011181/universal-rag-agent-enterprise.git
+cd universal-rag-agent-enterprise
+bash setup.sh</pre></div>
+
+<h3>2. Configure Environment</h3>
+<p>Edit <code>.env</code>:</p>
+<div class="cb"><span class="cb-label">.env</span><pre>
+# LLM — use groq for local dev, anthropic for production
+LLM_PROVIDER=groq
+GROQ_API_KEY=your_groq_key_here
+
+# Vector DB
+PINECONE_API_KEY=your_pinecone_key_here
+PINECONE_INDEX_NAME=universal-rag
+
+# Production LLM (set LLM_PROVIDER=anthropic to use)
+ANTHROPIC_API_KEY=your_anthropic_key_here
+ANTHROPIC_MODEL=claude-sonnet-4-5
+
+# LangSmith monitoring (optional locally, required in production)
+LANGSMITH_API_KEY=your_langsmith_key_here
+LANGSMITH_PROJECT=universal-rag-enterprise
+
+# Optional
+TAVILY_API_KEY=your_tavily_key_here
+COHERE_API_KEY=your_cohere_key_here</pre></div>
+
+<h3>3. Run Locally</h3>
+<p>There are two ways to run the app locally — they serve <strong>different purposes</strong>.</p>
+
+<h4>Step 1 — Dev servers (while actively writing code)</h4>
+<p>Use this during development. Both servers have <strong>hot-reload</strong> — any code change is reflected instantly without restarting.</p>
+<div class="cb"><span class="cb-label">Terminal 1 — FastAPI backend</span><pre>
+uvicorn api.main:app --reload --port 8000</pre></div>
+<div class="cb"><span class="cb-label">Terminal 2 — Next.js frontend</span><pre>
+cd frontend
+npm install          # first time only
+npm run dev          # starts on http://localhost:3000</pre></div>
+
+<div class="tw"><table class="td1">
+  <thead><tr><th>Service</th><th>URL</th><th>Hot-reload</th></tr></thead>
+  <tbody>
+    <tr><td>Next.js UI</td><td>http://localhost:3000</td><td>Yes — instant on save</td></tr>
+    <tr><td>FastAPI Swagger</td><td>http://localhost:8000/api/docs</td><td>Yes — on save</td></tr>
+  </tbody>
+</table></div>
+
+<h4>Step 2 — Docker Compose (before pushing)</h4>
+<p>Once your feature is working in Step 1, run Docker Compose to verify the app behaves the same way inside a Docker container. This is important because the Docker image is what actually gets deployed to Cloud Run.</p>
+<div class="cb"><pre>
+docker-compose up -d --build</pre></div>
+
+<div class="tw"><table class="td1">
+  <thead><tr><th>Service</th><th>URL</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Next.js UI</td><td>http://localhost:3000</td><td>Running inside Docker container</td></tr>
+    <tr><td>FastAPI Swagger</td><td>http://localhost:8000/api/docs</td><td>Running inside Docker container</td></tr>
+    <tr><td>Prometheus</td><td>http://localhost:9090</td><td>Metrics scraping</td></tr>
+    <tr><td>Grafana</td><td>http://localhost:3001</td><td>Login: admin / admin</td></tr>
+  </tbody>
+</table></div>
+
+<h4>Typical Local Development Workflow</h4>
+<div class="cb"><span class="cb-label">Development → Push Workflow</span><pre>
+1. Write code
+      │
+      ▼
+2. Test with dev servers             ← use this most of the time
+   uvicorn + npm run dev
+   Hot-reload on every save
+      │
+      ▼
+3. Run the full quality gate         ← tests FIRST, image built AFTER tests pass
+   bash scripts/build_and_test.sh
+   ├── Stage 1: ruff lint
+   ├── Stage 2: mypy type check
+   ├── Stage 3: bandit security scan
+   ├── Stage 4: pytest (81 tests + 70% coverage gate)    ← GATE
+   ├── Stage 5: docker build rag-api:TAG
+   ├── Stage 6: docker build rag-frontend:TAG
+   └── Stage 7: smoke test API only (curl /api/health)
+      │
+      ▼
+4. (Optional) Verify full stack with Docker Compose
+   docker-compose up --build
+   Open http://localhost:3000 — manually test end-to-end
+      │
+      ▼
+5. Push source code to GitHub        ← the ONE thing YOU do
+   git push enterprise main
+
+   YOUR ACTION STOPS HERE — everything else is automatic:
+   ════════════════════════════════════════════════════════
+   Cloud Build detects the push
+   → Runs tests + lint + type check + security scan on GCP
+   → Builds Docker images on GCP
+   → Pushes images to Artifact Registry
+   → Deploys from Artifact Registry to Cloud Run → app is live
+   ════════════════════════════════════════════════════════</pre></div>
+
+<h3>Step Summary</h3>
+<div class="tw"><table>
+  <thead><tr><th>Step</th><th>What is built</th><th>API image</th><th>Frontend image</th><th>Pushed to Artifact Registry?</th></tr></thead>
+  <tbody>
+    <tr><td>2 — Dev servers</td><td>Nothing</td><td>Raw code only</td><td>Raw code only</td><td>No</td></tr>
+    <tr><td>3 — build_and_test.sh</td><td>API + Frontend images</td><td>✓ local</td><td>✓ local</td><td>No</td></tr>
+    <tr><td>4 — Docker Compose</td><td>API + Frontend rebuilt; postgres + redis pulled</td><td>✓ local (rebuilt)</td><td>✓ local (rebuilt)</td><td>No</td></tr>
+    <tr><td>5 — Manual push (optional)</td><td>Nothing new — pushes Step 4 images</td><td>✓ Artifact Registry</td><td>✓ Artifact Registry</td><td>Yes — manually</td></tr>
+    <tr><td>6 — git push → Cloud Build</td><td>API + Frontend on GCP</td><td>✓ Artifact Registry</td><td>✓ Artifact Registry</td><td>Yes — automatically</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 11 Frontend -->
+<div class="sec-head" id="frontend">
+  <span class="sec-num">11</span>
+  <h2>Frontend UI — Next.js 14 (replaces Streamlit)</h2>
+</div>
+<p>Streamlit is a data-science prototyping tool — not suitable for production enterprise. It was replaced with <strong>Next.js 14</strong> which calls the FastAPI backend via REST API. They are fully decoupled services.</p>
+
+<h3>Why Next.js over Streamlit</h3>
+<div class="tw"><table>
+  <thead><tr><th></th><th>Streamlit</th><th>Next.js 14</th></tr></thead>
+  <tbody>
+    <tr><td>Auth UI</td><td>Hacked via session_state</td><td>Proper login / register pages</td></tr>
+    <tr><td>Routing</td><td>No real routing</td><td>/login /register /query /ingest /admin</td></tr>
+    <tr><td>Role-based views</td><td>Not possible</td><td>Admin-only Dashboard — hidden for regular users</td></tr>
+    <tr><td>SSO / SAML readiness</td><td>No</td><td>Standard OAuth2 flow plugs in</td></tr>
+    <tr><td>Mobile responsive</td><td>No</td><td>Yes — Tailwind responsive layout</td></tr>
+    <tr><td>Concurrency</td><td>1 Python process per user</td><td>Node.js — 80 concurrent users per instance</td></tr>
+    <tr><td>Docker image size</td><td>~500MB Python</td><td>~150MB standalone Node output</td></tr>
+    <tr><td>Production SLA</td><td>Not designed for it</td><td>Vercel/Cloud Run production-grade</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Pages</h3>
+<div class="tw"><table class="mono td1">
+  <thead><tr><th>Route</th><th>What It Does</th></tr></thead>
+  <tbody>
+    <tr><td>/login</td><td>Email + password → POST /api/auth/token → JWT stored in memory</td></tr>
+    <tr><td>/register</td><td>Create account → POST /api/auth/register</td></tr>
+    <tr><td>/query</td><td>RAG query with pattern picker (auto or any of 14), namespace selector, quality badge, collapsible sources, click-to-ask follow-up questions</td></tr>
+    <tr><td>/ingest</td><td>Drag-and-drop file upload (PDF/DOCX/TXT/CSV) or paste text — per-tenant namespace</td></tr>
+    <tr><td>/admin</td><td>KPI cards (total queries, users, documents, avg quality score) + RAG pattern usage bar chart — admin role only</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Auth Flow</h3>
+<div class="cb"><span class="cb-label">Authentication Flow</span><pre>
+User logs in → POST /api/auth/token
+             ← access_token (stored in JS memory, not localStorage)
+             ← refresh_token (stored in sessionStorage)
+
+Every API call → Authorization: Bearer &lt;access_token&gt;
+On 401        → auto-retry with refresh_token → POST /api/auth/refresh
+On refresh fail → redirect to /login
+
+Access token is never written to localStorage — mitigates XSS token theft.</pre></div>
+
+<h3>Why Next.js and not plain React</h3>
+<div class="tw"><table>
+  <thead><tr><th></th><th>Plain React (Vite)</th><th>Next.js 14</th></tr></thead>
+  <tbody>
+    <tr><td>Routing</td><td>Manual (react-router)</td><td>Built-in file-based routing</td></tr>
+    <tr><td>SSR / SSG</td><td>You build it</td><td>Built-in — pages can be server-rendered</td></tr>
+    <tr><td>Auth middleware</td><td>Manual — flash of protected content</td><td>middleware.ts blocks request before page renders</td></tr>
+    <tr><td>Docker output</td><td>Needs nginx or custom Node server</td><td>output: standalone — single server.js, ~150MB image</td></tr>
+    <tr><td>Production deploy</td><td>Requires server config</td><td>node server.js — one command</td></tr>
+    <tr><td>Dev CORS proxy</td><td>Manual proxy setup</td><td>rewrites in next.config.js — zero config</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 12 API Keys -->
+<div class="sec-head" id="apikeys">
+  <span class="sec-num">12</span>
+  <h2>API Keys Reference</h2>
+</div>
+
+<h3>Quick Reference — Which Keys Do You Need?</h3>
+<div class="tw"><table class="td1">
+  <thead><tr><th>Situation</th><th>Keys Required</th></tr></thead>
+  <tbody>
+    <tr><td>Local dev (writing code)</td><td>GROQ_API_KEY + PINECONE_API_KEY</td></tr>
+    <tr><td>Local dev with monitoring</td><td>Above + LANGSMITH_API_KEY</td></tr>
+    <tr><td>Production deploy</td><td>All 6 — GROQ + PINECONE + ANTHROPIC + LANGSMITH + TAVILY + COHERE</td></tr>
+  </tbody>
+</table></div>
+
+<div class="kg">
+  <div class="kc">
+    <span class="kt">GROQ_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>LLM in local dev + Whisper transcription in all environments</td></tr>
+      <tr><td>Required</td><td>Yes — local dev. Also needed in production for Whisper</td></tr>
+      <tr><td>Free tier</td><td>Yes — no credit card needed</td></tr>
+      <tr><td>Get it</td><td><a href="https://console.groq.com">console.groq.com</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+  <div class="kc">
+    <span class="kt">PINECONE_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>Vector database — stores and retrieves document embeddings</td></tr>
+      <tr><td>Required</td><td>Yes — both local dev and production</td></tr>
+      <tr><td>Free tier</td><td>Yes — Starter: 1 index, 100K vectors, no credit card</td></tr>
+      <tr><td>Get it</td><td><a href="https://app.pinecone.io">app.pinecone.io</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+  <div class="kc">
+    <span class="kt">ANTHROPIC_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>Production LLM — Claude Sonnet for all RAG generation</td></tr>
+      <tr><td>Required</td><td>Yes — production. Not needed for local dev with LLM_PROVIDER=groq</td></tr>
+      <tr><td>Free tier</td><td>No — pay-as-you-go. $5 free credit on new accounts</td></tr>
+      <tr><td>Get it</td><td><a href="https://console.anthropic.com">console.anthropic.com</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+  <div class="kc">
+    <span class="kt">LANGSMITH_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>LLM monitoring — captures every prompt, response, token count, cost</td></tr>
+      <tr><td>Required</td><td>Strongly recommended for production. Optional locally</td></tr>
+      <tr><td>Free tier</td><td>Yes — 5,000 traces/month free</td></tr>
+      <tr><td>Get it</td><td><a href="https://smith.langchain.com">smith.langchain.com</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+  <div class="kc">
+    <span class="kt">TAVILY_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>Web search fallback in CRAG pattern — when confidence is low</td></tr>
+      <tr><td>Required</td><td>Optional — without it, CRAG skips web search</td></tr>
+      <tr><td>Free tier</td><td>Yes — 1,000 searches/month</td></tr>
+      <tr><td>Get it</td><td><a href="https://app.tavily.com">app.tavily.com</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+  <div class="kc">
+    <span class="kt">COHERE_API_KEY</span>
+    <table><tbody>
+      <tr><td>Used for</td><td>Cross-encoder reranking — re-scores chunks after Pinecone retrieval</td></tr>
+      <tr><td>Required</td><td>Optional — falls back to RRF reranking if not set</td></tr>
+      <tr><td>Free tier</td><td>Yes — Trial API key with generous limits</td></tr>
+      <tr><td>Get it</td><td><a href="https://dashboard.cohere.com">dashboard.cohere.com</a> → API Keys</td></tr>
+    </tbody></table>
+  </div>
+</div>
+
+<h3>Auto-Generated Keys</h3>
+<div class="tw"><table class="mono td1">
+  <thead><tr><th>Key</th><th>How It's Generated</th></tr></thead>
+  <tbody>
+    <tr><td>JWT_SECRET</td><td>python -c "import secrets; print(secrets.token_hex(32))" — 64 char hex</td></tr>
+    <tr><td>DATABASE_URL</td><td>Built from Cloud SQL instance details after Step 3 of deploy</td></tr>
+    <tr><td>REDIS_URL</td><td>Built from Memorystore private IP after Step 5 of deploy</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Full .env for Local Development</h3>
+<div class="cb"><span class="cb-label">.env</span><pre>
+# ── LLM ────────────────────────────────────────────────────────────────
+LLM_PROVIDER=groq                         # use groq for local dev
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx     # required — get from console.groq.com
+
+# Production LLM (set LLM_PROVIDER=anthropic when ready)
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxx       # get from console.anthropic.com
+ANTHROPIC_MODEL=claude-sonnet-4-5
+
+# ── Monitoring ─────────────────────────────────────────────────────────
+LANGSMITH_API_KEY=ls__xxxxxxxxxx          # get from smith.langchain.com
+LANGSMITH_PROJECT=universal-rag-enterprise
+
+# ── Vector DB ──────────────────────────────────────────────────────────
+PINECONE_API_KEY=xxxxxxxx-xxxx-xxxx       # required — get from app.pinecone.io
+PINECONE_INDEX_NAME=universal-rag         # leave as default
+
+# ── Optional enhancements ──────────────────────────────────────────────
+TAVILY_API_KEY=tvly-xxxxxxxxxx            # web search fallback (CRAG pattern)
+COHERE_API_KEY=xxxxxxxxxx                 # cross-encoder reranking
+
+# ── Auto-set by deploy_gcp.sh in production ───────────────────────────
+# DATABASE_URL=                           # Cloud SQL — set automatically
+# REDIS_URL=                              # Memorystore — set automatically
+# JWT_SECRET=                             # generated automatically</pre></div>
+
+<!-- 13 Env vars -->
+<div class="sec-head" id="envvars">
+  <span class="sec-num">13</span>
+  <h2>Environment Variables — Full Reference</h2>
+</div>
+<div class="tw"><table class="ev-t">
+  <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>LLM_PROVIDER</td><td>No</td><td>groq (local dev default) · anthropic (prod default) · vertexai (GCP-native)</td></tr>
+    <tr><td>GROQ_API_KEY</td><td>Yes (local dev)</td><td>Groq LLM + Whisper transcription</td></tr>
+    <tr><td>ANTHROPIC_API_KEY</td><td>Yes (production)</td><td>Anthropic Claude direct API</td></tr>
+    <tr><td>ANTHROPIC_MODEL</td><td>No</td><td>Model ID (default: claude-sonnet-4-5)</td></tr>
+    <tr><td>LANGSMITH_API_KEY</td><td>Recommended</td><td>LangSmith tracing — smith.langchain.com</td></tr>
+    <tr><td>LANGSMITH_PROJECT</td><td>No</td><td>Project name (default: universal-rag-enterprise)</td></tr>
+    <tr><td>LANGCHAIN_TRACING_V2</td><td>No</td><td>Auto-set to true by deploy scripts when LANGSMITH_API_KEY is present</td></tr>
+    <tr><td>PINECONE_API_KEY</td><td>Yes (always)</td><td>Vector database</td></tr>
+    <tr><td>PINECONE_INDEX_NAME</td><td>No</td><td>Index name (default: universal-rag) — auto-created</td></tr>
+    <tr><td>TAVILY_API_KEY</td><td>Optional</td><td>Web search fallback for CRAG</td></tr>
+    <tr><td>COHERE_API_KEY</td><td>Optional</td><td>Cross-encoder reranking</td></tr>
+    <tr><td>VERTEXAI_PROJECT</td><td>vertexai only</td><td>GCP project ID (auto-set on Cloud Run)</td></tr>
+    <tr><td>VERTEXAI_LOCATION</td><td>No</td><td>Vertex AI region (default: us-east5)</td></tr>
+    <tr><td>VERTEXAI_MODEL</td><td>No</td><td>Model ID (default: claude-sonnet-4-5@20251205)</td></tr>
+    <tr><td>JWT_SECRET</td><td>Production</td><td>Auto-generated by deploy_gcp.sh — stored in Secret Manager</td></tr>
+    <tr><td>DATABASE_URL</td><td>Production</td><td>Auto-set by deploy_gcp.sh — Cloud SQL Unix socket connection string</td></tr>
+    <tr><td>REDIS_URL</td><td>Production</td><td>Auto-set by deploy_gcp.sh — Memorystore private IP URL</td></tr>
+    <tr><td>ENVIRONMENT</td><td>Production</td><td>Set to production</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 14 Deployment -->
+<div class="sec-head" id="deployment">
+  <span class="sec-num">14</span>
+  <h2>Production Deployment</h2>
+</div>
+
+<h3>Option A — Cloud Run (Serverless, Recommended)</h3>
+<p>Fully managed — no cluster, no nodes, no infrastructure to maintain. Two scripts do everything.</p>
+
+<h4>Script 1 — Pre-flight check</h4>
+<div class="cb"><pre>
+cd universal-rag-agent-enterprise
+export PROJECT_ID=your-gcp-project-id
+bash scripts/preflight_check.sh</pre></div>
+<p>Checks gcloud, docker, git, python on PATH; correct repo directory; PROJECT_ID exported; GCP ADC file; API keys. Completes in under 5 seconds — no network calls.</p>
+
+<div class="call call-n">
+  <span class="cb-badge">⚠ One Manual Step</span>
+  <p>Before deploying, enable Vertex AI Claude in the GCP Console: <code>console.cloud.google.com/vertex-ai/model-garden</code> → search Claude → Enable. If you skip this, Cloud Run deploys fine but every LLM call returns <code>403 Permission Denied</code>.</p>
+</div>
+
+<h4>Script 2 — Full GCP deploy</h4>
+<div class="cb"><pre>
+bash scripts/deploy_gcp.sh</pre></div>
+<p>Provisions your entire production infrastructure in 9 sequential steps (~15 minutes total). Each step is idempotent — safe to re-run if anything fails midway.</p>
+
+<div class="wf">
+  <div class="wf-step"><span class="wf-n">Step 1</span><div><h4>Enable GCP APIs (~1 min)</h4><p>Turns on 10 GCP services: Cloud Run, Cloud SQL Admin, Redis (Memorystore), VPC Access, Vertex AI, Artifact Registry, Secret Manager, Cloud Build, Compute Engine, Service Networking.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 2</span><div><h4>Artifact Registry (~30s)</h4><p>Creates a private Docker image repository called <code>rag-repo</code> in your region. Also runs <code>gcloud auth configure-docker</code> so your local Docker can push to it.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 3</span><div><h4>Cloud SQL PostgreSQL (~5 min)</h4><p>Creates a PostgreSQL 16 instance with auto-growing storage, daily backups at 2am, point-in-time recovery. Creates <code>ragdb</code> database and <code>raguser</code> account. Saves password to Secret Manager.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 4</span><div><h4>Serverless VPC Access Connector (~2 min)</h4><p>Creates <code>rag-vpc-connector</code> that bridges Cloud Run to your VPC. Required because Memorystore Redis is VPC-internal only — Cloud Run containers cannot reach it without this.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 5</span><div><h4>Memorystore Redis (~2 min)</h4><p>Creates a managed Redis 7 instance named <code>rag-redis</code> (5GB, VPC-internal). Fetches private VPC IP and constructs the REDIS_URL the app uses for rate limiting and session caching.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 6</span><div><h4>Pinecone Index (~30s)</h4><p>Calls <code>create_pinecone_index.py</code> — creates the <code>universal-rag</code> index with <code>dimension=384</code> and <code>metric=cosine</code> if it doesn't already exist, then polls until ready. Idempotent.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 7</span><div><h4>Service Account + IAM Roles (~30s)</h4><p>Creates GCP service account <code>rag-cloudrun-sa</code> and grants exactly 4 roles: aiplatform.user, cloudsql.client, secretmanager.secretAccessor, vpcaccess.user.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 8</span><div><h4>Secret Manager (~30s)</h4><p>Stores every credential as a named secret. Grants Cloud Build service account access so CI/CD can deploy without storing keys in the build config.</p></div></div>
+  <div class="wf-step"><span class="wf-n">Step 9</span><div><h4>Build Images → Push → Deploy Cloud Run (~5 min)</h4><p>Builds Docker images for both services, tags each with git commit SHA + latest, pushes to Artifact Registry, deploys two Cloud Run services.</p></div></div>
+</div>
+
+<h4>IAM Roles Granted</h4>
+<div class="tw"><table class="iam-t">
+  <thead><tr><th>Role</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>roles/aiplatform.user</td><td>Cloud Run can call Vertex AI Claude without an API key</td></tr>
+    <tr><td>roles/cloudsql.client</td><td>Connect to Cloud SQL via Unix socket</td></tr>
+    <tr><td>roles/secretmanager.secretAccessor</td><td>Read secrets at runtime</td></tr>
+    <tr><td>roles/vpcaccess.user</td><td>Use the VPC connector to reach Memorystore</td></tr>
+  </tbody>
+</table></div>
+
+<h4>Cloud Run Service Configuration</h4>
+<div class="tw"><table class="td1">
+  <thead><tr><th>Service</th><th>Config</th></tr></thead>
+  <tbody>
+    <tr><td>rag-api (FastAPI)</td><td>Secrets from Secret Manager at runtime · Cloud SQL via Unix socket · VPC connector for Memorystore · LLM_PROVIDER=anthropic · LANGCHAIN_TRACING_V2=true · min-instances=1 · max-instances=100 · concurrency=80 · 4GB RAM · 2 vCPU</td></tr>
+    <tr><td>rag-frontend (Next.js)</td><td>NEXT_PUBLIC_API_URL baked in at build time · No secrets needed · min-instances=1 · max-instances=100 · concurrency=80 · 1GB RAM · 1 vCPU · Cloud Run provisions HTTPS + TLS automatically</td></tr>
+  </tbody>
+</table></div>
+
+<p>Rollback is one command using the commit SHA tag:</p>
+<div class="cb"><pre>
+gcloud run deploy rag-api --image=REGION-docker.pkg.dev/PROJECT/rag-repo/rag-api:&lt;previous-sha&gt;</pre></div>
+
+<h4>Output after Successful Deploy</h4>
+<div class="cb"><pre>
+  UI  (Next.js)  : https://rag-frontend-xxxx-uc.a.run.app
+  API (FastAPI)  : https://rag-api-xxxx-uc.a.run.app/api/docs
+  Vector DB      : Pinecone (index: universal-rag)
+  DB             : Cloud SQL PROJECT:REGION:rag-postgres
+  Cache          : Memorystore IP:6379 (via VPC connector)
+  LLM            : Anthropic Claude (claude-sonnet-4-5)
+  Monitoring     : LangSmith (project: universal-rag-enterprise)</pre></div>
+
+<h3>Option B — GKE Autopilot (Kubernetes)</h3>
+<p>Use when you need persistent WebSocket connections, custom sidecars, or an existing K8s workflow. Uses the <strong>same Docker images</strong> pushed to Artifact Registry.</p>
+<div class="call call-n"><span class="cb-badge">⚠ Prerequisite</span><p>Run <code>deploy_gcp.sh</code> first — it provisions Artifact Registry, Secret Manager, Cloud SQL, Memorystore, and the service account that GKE needs.</p></div>
+
+<div class="cb"><pre>
+export PROJECT_ID=your-gcp-project-id
+export REGION=us-central1
+bash scripts/setup_gke.sh</pre></div>
+
+<div class="tw"><table class="td1">
+  <thead><tr><th>Step</th><th>What It Does</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Authenticate Docker → Artifact Registry</td></tr>
+    <tr><td>2</td><td>Build API + Frontend Docker images locally</td></tr>
+    <tr><td>3</td><td>Push both images to Artifact Registry (not Docker Hub)</td></tr>
+    <tr><td>4</td><td>Create GKE Autopilot cluster (auto node management, ~5 min)</td></tr>
+    <tr><td>5</td><td>Workload Identity — pods get GCP SA permissions without key files</td></tr>
+    <tr><td>6</td><td>Grant cluster image pull access to Artifact Registry</td></tr>
+    <tr><td>7</td><td>Pull all secrets from Secret Manager → create rag-secrets K8s Secret</td></tr>
+    <tr><td>8</td><td>Apply infra/k8s/deployment.yml → Deployments + Services + HPAs</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 15 CR vs GKE -->
+<div class="sec-head" id="crvsqke">
+  <span class="sec-num">15</span>
+  <h2>Cloud Run vs GKE — When to Use Which</h2>
+</div>
+<p>Both options run the <strong>same Docker images</strong> from Artifact Registry. The choice is purely about the hosting model — not the application code.</p>
+
+<div class="tw"><table class="cr-gke">
+  <thead><tr><th></th><th>Cloud Run</th><th>GKE Autopilot</th></tr></thead>
+  <tbody>
+    <tr><td>Node management</td><td>None</td><td>None (Autopilot manages nodes)</td></tr>
+    <tr><td>Cold starts</td><td>Yes — mitigated by --min-instances=1</td><td>No — pods always running</td></tr>
+    <tr><td>Persistent WebSockets</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Custom sidecars</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Cost at low traffic</td><td>Lower — pay per request, scales to zero</td><td>Higher — min 2 pods (~$50–80/month minimum)</td></tr>
+    <tr><td>Setup complexity</td><td>~15 min via deploy_gcp.sh</td><td>~25 min via setup_gke.sh + GKE cluster</td></tr>
+    <tr><td>Best for</td><td>Most enterprise deployments</td><td>Specific K8s requirements only</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Cost at Low Traffic (10,000 req/month)</h3>
+<div class="tw"><table>
+  <thead><tr><th></th><th>Cloud Run</th><th>GKE Autopilot</th></tr></thead>
+  <tbody>
+    <tr><td>Compute</td><td>~$5–15</td><td>~$80–120</td></tr>
+    <tr><td>Pay model</td><td>Per request</td><td>Per pod-hour</td></tr>
+    <tr><td>Scales to zero</td><td>Yes (but min-instances=1 keeps 1 warm)</td><td>No</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Decision Guide</h3>
+<div class="lrg">
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Choose Cloud Run if</div><p>Starting a new enterprise deployment · team doesn't use Kubernetes · zero infrastructure maintenance · traffic is bursty or unpredictable · no WebSockets or sidecars needed</p></div>
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Choose GKE Autopilot if</div><p>Organization already has GKE cluster and K8s expertise · need persistent WebSocket connections · need sidecar containers (service mesh, log agents) · sustained high traffic where pod-hour pricing is cheaper</p></div>
+</div>
+
+<div class="call call-v"><span class="cb-badge">✦ Default</span><p>This project defaults to Cloud Run. GKE support is fully wired via <code>scripts/setup_gke.sh</code> and <code>infra/k8s/deployment.yml</code> for teams that need it.</p></div>
+
+<!-- 16 Pipeline -->
+<div class="sec-head" id="pipeline">
+  <span class="sec-num">16</span>
+  <h2>Build &amp; Test Pipeline</h2>
+</div>
+
+<h3>Deployment vs Build/Test — What Is the Difference?</h3>
+<div class="tw"><table class="td1">
+  <thead><tr><th></th><th>Build/Test Pipeline</th><th>Deployment</th></tr></thead>
+  <tbody>
+    <tr><td>Script (local)</td><td>scripts/build_and_test.sh</td><td>scripts/deploy_gcp.sh (first time)</td></tr>
+    <tr><td>Script (K8s)</td><td>Same</td><td>scripts/setup_gke.sh (first time)</td></tr>
+    <tr><td>Automated</td><td>cloudbuild.yaml steps 1–9</td><td>cloudbuild.yaml steps 10–11</td></tr>
+    <tr><td>What it does</td><td>Validates code, builds Docker images</td><td>Provisions infra, puts images live</td></tr>
+    <tr><td>Touches live infra?</td><td>No</td><td>Yes</td></tr>
+    <tr><td>Runs how often?</td><td>Every git push</td><td>Once for setup; then Cloud Build handles it</td></tr>
+    <tr><td>Output</td><td>Docker images in Artifact Registry</td><td>Live app with public URL</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Local Pipeline — build_and_test.sh</h3>
+<p>Runs 7 stages in order. Each stage must pass before the next one starts. If any stage fails the script exits immediately.</p>
+
+<div class="pipe">
+  <div class="ps"><span class="ps-n">Stage 1</span><div><span class="ps-t">Lint (ruff)</span><span class="ps-d">Checks code style, import ordering, unused variables across src/, api/, tests/. Fast — runs in under 3 seconds.</span></div></div>
+  <div class="ps"><span class="ps-n">Stage 2</span><div><span class="ps-t">Type check (mypy)</span><span class="ps-d">Static type analysis. Catches type mismatches before they become runtime errors — especially important for the LLM provider switching code.</span></div></div>
+  <div class="ps"><span class="ps-n">Stage 3</span><div><span class="ps-t">Security scan (bandit)</span><span class="ps-d">SAST tool. Scans for hardcoded passwords, insecure functions (eval, pickle), SQL injection risks, weak random number generation. Only HIGH and MEDIUM severity issues fail the build.</span></div></div>
+  <div class="ps gate"><span class="ps-n">Stage 4</span><div><span class="ps-t">Tests + coverage gate (pytest) ← THE GATE</span><span class="ps-d">Runs all 81 tests and enforces 70% coverage. All external services mocked — Pinecone, Redis, LLM. Zero network calls, no API keys needed. If this fails → Stages 5, 6, and 7 never run. No images are produced.</span></div></div>
+  <div class="ps"><span class="ps-n">Stage 5</span><div><span class="ps-t">Build API image (Docker)</span><span class="ps-d">docker build -f Dockerfile -t rag-api:TAG . — tagged with commit SHA + latest. Only runs because Stage 4 passed.</span></div></div>
+  <div class="ps"><span class="ps-n">Stage 6</span><div><span class="ps-t">Build Frontend image (Docker)</span><span class="ps-d">docker build -f Dockerfile.nextjs — multi-stage build. Final image is ~150MB, contains only compiled output, not source code or node_modules.</span></div></div>
+  <div class="ps"><span class="ps-n">Stage 7</span><div><span class="ps-t">Smoke test</span><span class="ps-d">Starts the API container locally, waits up to 40 seconds, hits /api/health (must return {"status": "ok"}), then stops the container. Catches startup failures that pass unit tests.</span></div></div>
+</div>
+
+<div class="cb"><pre>
+# Skip stages 1–3 for faster iteration during development
+bash scripts/build_and_test.sh --skip-lint</pre></div>
+
+<h3>Cloud Build CI/CD Pipeline</h3>
+<p>Triggered automatically on every <code>git push</code>. Runs on Google Cloud Build infrastructure.</p>
+
+<div class="cb"><span class="cb-label">Cloud Build — 12 Stages</span><pre>
+git push
+    │
+    └── Cloud Build triggers automatically
+            │
+            ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 1–4: Quality gates (parallel)                │
+    │  ├── Install dependencies                           │
+    │  ├── Lint (ruff)                                    │
+    │  ├── Type check (mypy)                              │
+    │  └── Security scan (bandit)                         │
+    └─────────────────────┬───────────────────────────────┘
+                          │ all must pass
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Step 5: pytest + 70% coverage gate  ← THE GATE    │
+    └─────────────────────┬───────────────────────────────┘
+                          │ must be green — blocks everything below
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 6–7: Build Docker images (parallel)          │
+    │  ├── docker build Dockerfile      → rag-api         │
+    │  └── docker build Dockerfile.nextjs → rag-frontend  │
+    └─────────────────────┬───────────────────────────────┘
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 8–9: Push to Artifact Registry (parallel)    │
+    │  ├── push rag-api:COMMIT_SHA + :latest              │
+    │  └── push rag-frontend:COMMIT_SHA + :latest         │
+    └─────────────────────┬───────────────────────────────┘
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Steps 10–11: Deploy to Cloud Run                   │
+    │  ├── gcloud run deploy rag-api                      │
+    │  └── gcloud run deploy rag-frontend                 │
+    └─────────────────────┬───────────────────────────────┘
+                          ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  Step 12: Upload coverage.xml to GCS bucket         │
+    │  (for coverage trend tracking over time)            │
+    └─────────────────────────────────────────────────────┘</pre></div>
+
+<div class="call call-v"><span class="cb-badge">✦ Key Rules</span><p>Steps 6–7 (Docker builds) have <code>waitFor: [test]</code> — cannot start until Step 5 passes. Step 11 (deploy frontend) has <code>waitFor: [push-frontend, deploy-api]</code> — frontend only deployed after API is live. If Step 5 fails — Steps 6 through 12 never run. No images built. Nothing deployed.</p></div>
+
+<!-- 17 Tests -->
+<div class="sec-head" id="tests">
+  <span class="sec-num">17</span>
+  <h2>Test Suite</h2>
+</div>
+
+<div class="cb"><pre>
+pip install -r requirements-dev.txt -r requirements-api.txt
+pytest</pre></div>
+
+<div class="tw"><table>
+  <thead><tr><th>File</th><th>What It Tests</th><th>Why It Matters</th><th>Tests</th></tr></thead>
+  <tbody>
+    <tr><td>test_api.py</td><td>Health endpoint, user register, login, token refresh, protected route access</td><td>Verifies the entire auth flow works end to end</td><td>14</td></tr>
+    <tr><td>test_vector_store.py</td><td>Pinecone ingest, retrieve, namespace isolation between tenants, error handling</td><td>Ensures documents go into the right tenant's namespace and retrieval is accurate</td><td>13</td></tr>
+    <tr><td>test_rate_limit.py</td><td>Redis rate limiter enforces limits, returns 429 on breach, fails open if Redis is down</td><td>Protects the API from abuse; fail-open ensures Redis outage doesn't block all traffic</td><td>8</td></tr>
+    <tr><td>test_llm.py</td><td>All 3 providers switch correctly, grade() scores answers, retry on transient errors</td><td>Verifies LLM_PROVIDER switching works and quality scoring is reliable</td><td>11</td></tr>
+    <tr><td>test_query_analyzer.py</td><td>All 5 dimensions scored correctly, pattern selected, deduplication, handles bad JSON</td><td>The query analyzer drives all routing — errors here affect every query</td><td>15</td></tr>
+    <tr><td>test_security.py</td><td>Prompt injection blocked, PII detected and redacted, file upload validation</td><td>Enterprise security — ensures malicious inputs are caught before reaching the LLM</td><td>20</td></tr>
+    <tr class="tr-total"><td>Total</td><td colspan="2">70% minimum coverage gate — enforced in pytest.ini (local) and cloudbuild.yaml (CI)</td><td>81</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 18 Managed Services -->
+<div class="sec-head" id="managed">
+  <span class="sec-num">18</span>
+  <h2>What Managed Services Replace</h2>
+</div>
+<div class="tw"><table>
+  <thead><tr><th>BEFORE (single container)</th><th>AFTER (managed)</th><th>Benefit</th></tr></thead>
+  <tbody>
+    <tr><td>ChromaDB container</td><td><strong>Pinecone</strong></td><td>Unlimited vectors, per-tenant namespaces, &lt;100ms latency</td></tr>
+    <tr><td>PostgreSQL container</td><td><strong>Cloud SQL</strong></td><td>4000 connections, auto-failover, 64TB, daily backups</td></tr>
+    <tr><td>Redis container</td><td><strong>Memorystore</strong></td><td>300GB, persistent, VPC-internal, no eviction surprises</td></tr>
+    <tr><td>Groq (hardcoded)</td><td><strong>Anthropic Claude</strong> (LLM_PROVIDER=anthropic)</td><td>Enterprise SLA, no rate limits</td></tr>
+    <tr><td>—</td><td><strong>Vertex AI Claude</strong> (LLM_PROVIDER=vertexai)</td><td>GCP-native, ADC auth, no API key</td></tr>
+    <tr><td>No monitoring</td><td><strong>LangSmith</strong></td><td>Full LLM trace, cost, latency, quality per query</td></tr>
+    <tr><td>Docker Hub</td><td><strong>Artifact Registry</strong></td><td>Private GCP registry, IAM-controlled, VPC-native pulls</td></tr>
+    <tr><td>FastAPI VM container</td><td><strong>Cloud Run / GKE</strong></td><td>1→100 auto-scale, pay per request</td></tr>
+    <tr><td>Streamlit VM container</td><td><strong>Next.js 14 on Cloud Run / GKE</strong></td><td>Proper auth, role-based UI, responsive, 1→100 auto-scale</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 19 API Endpoints -->
+<div class="sec-head" id="api">
+  <span class="sec-num">19</span>
+  <h2>API Endpoints</h2>
+</div>
+<div class="tw"><table class="mono">
+  <thead><tr><th>Endpoint</th><th>Method</th><th>Auth</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>/api/auth/register</td><td>POST</td><td>None</td><td>Register new user</td></tr>
+    <tr><td>/api/auth/token</td><td>POST</td><td>None</td><td>Get JWT access + refresh token</td></tr>
+    <tr><td>/api/auth/refresh</td><td>POST</td><td>JWT</td><td>Refresh access token</td></tr>
+    <tr><td>/api/query/</td><td>POST</td><td>JWT or API Key</td><td>Submit a RAG query</td></tr>
+    <tr><td>/api/ingest/file</td><td>POST</td><td>JWT or API Key</td><td>Upload and index a file</td></tr>
+    <tr><td>/api/ingest/text</td><td>POST</td><td>JWT or API Key</td><td>Index raw text</td></tr>
+    <tr><td>/api/health</td><td>GET</td><td>None</td><td>Liveness probe</td></tr>
+    <tr><td>/api/health/ready</td><td>GET</td><td>None</td><td>Readiness probe (checks Pinecone)</td></tr>
+    <tr><td>/api/admin/stats</td><td>GET</td><td>Admin JWT</td><td>System statistics</td></tr>
+    <tr><td>/metrics</td><td>GET</td><td>None</td><td>Prometheus metrics</td></tr>
+  </tbody>
+</table></div>
+
+<h3>Rate Limits (Redis / Memorystore backed)</h3>
+<div class="tw"><table class="mono td1">
+  <thead><tr><th>Endpoint</th><th>Limit</th></tr></thead>
+  <tbody>
+    <tr><td>/api/query</td><td>30 req/min</td></tr>
+    <tr><td>/api/ingest</td><td>10 req/min</td></tr>
+    <tr><td>/api/auth</td><td>20 req/min</td></tr>
+    <tr><td>Default</td><td>100 req/min</td></tr>
+  </tbody>
+</table></div>
+<div class="call call-n"><span class="cb-badge">⚙ Fail-Open</span><p>Rate limit state is stored in Redis/Memorystore — consistent across all instances. Fails open (requests pass) if Redis is unavailable.</p></div>
+
+<!-- 20 Observability -->
+<div class="sec-head" id="observability">
+  <span class="sec-num">20</span>
+  <h2>Observability</h2>
+</div>
+
+<h3>Prometheus Metrics</h3>
+<p>Prometheus scrapes <code>/metrics</code> every 15 seconds.</p>
+<div class="tw"><table class="mt td1">
+  <thead><tr><th>Metric</th><th>What It Tracks</th></tr></thead>
+  <tbody>
+    <tr><td>rag_queries_total</td><td>Total queries by pattern and status</td></tr>
+    <tr><td>rag_query_latency_seconds</td><td>Query duration histogram</td></tr>
+    <tr><td>rag_quality_score</td><td>Answer quality distribution (0.0–1.0)</td></tr>
+    <tr><td>rag_fallback_total</td><td>Web search fallback frequency</td></tr>
+    <tr><td>rag_cache_hits_total</td><td>Verified knowledge cache hit rate</td></tr>
+    <tr><td>http_requests_total</td><td>All API requests by endpoint and status</td></tr>
+    <tr><td>http_request_duration_seconds</td><td>API response time histogram</td></tr>
+  </tbody>
+</table></div>
+
+<h3>LangSmith Traces</h3>
+<div class="tw"><table class="td1">
+  <thead><tr><th>What</th><th>Where in LangSmith</th></tr></thead>
+  <tbody>
+    <tr><td>Full prompt + response</td><td>Runs → expand any run</td></tr>
+    <tr><td>Token count + cost</td><td>Run detail → Metadata</td></tr>
+    <tr><td>Latency per pattern</td><td>Dashboard → filter by tag</td></tr>
+    <tr><td>Quality score (grade output)</td><td>Runs → Feedback tab</td></tr>
+    <tr><td>Hallucination flags</td><td>Runs → check_faithfulness output</td></tr>
+  </tbody>
+</table></div>
+
+<!-- 21 Roles and Memory -->
+<div class="sec-head" id="roles">
+  <span class="sec-num">21</span>
+  <h2>4 LLM Roles &amp; 4 Memory Layers</h2>
+</div>
+
+<h3>4 LLM Roles</h3>
+<div class="lrg">
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Synthesizer</div><p>Generates the final answer from retrieved chunks. Instructed to never use prior knowledge — only what the chunks provide.</p></div>
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Grader</div><p>Scores answer quality 0.0–1.0 across three dimensions: relevance, completeness, and hallucination risk.</p></div>
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Verifier</div><p>Checks faithfulness — every sentence in the answer must be supported by a specific source chunk. Flags unsupported sentences.</p></div>
+  <div class="lrc"><div class="lrc-t"><span class="dot"></span>Judge</div><p>Resolves conflicting information across sources — determines which source to trust and why.</p></div>
+</div>
+
+<h3>4 Memory Layers</h3>
+<div class="mlg">
+  <div class="mlc"><h4>Conversation History</h4><p>Tracks dialogue context per session — enables follow-up questions without re-stating context.</p></div>
+  <div class="mlc"><h4>Pattern Performance</h4><p>Learns which patterns work best per query type — routing improves over time as more queries are processed.</p></div>
+  <div class="mlc"><h4>Routing Signals</h4><p>Improves future routing decisions — 5-dimension analysis gets more accurate with accumulated data.</p></div>
+  <div class="mlc"><h4>Verified Knowledge Cache</h4><p>Stores high-confidence answers (score ≥ 0.85) for instant reuse — identical queries return in &lt;50ms at $0 cost.</p></div>
+</div>
+
+<!-- 22 Pinecone -->
+<div class="sec-head" id="pinecone">
+  <span class="sec-num">22</span>
+  <h2>Pinecone Index Setup</h2>
+</div>
+<p>Auto-created — no manual step required. Before the app can store or search any documents, Pinecone needs a <strong>pre-configured index</strong> — think of it like creating a database table before you can insert rows. You cannot insert vectors into an index that does not exist.</p>
+
+<h3>What an Index Is</h3>
+<p>Pinecone stores document embeddings as vectors. An index defines two things that can <strong>never be changed after creation</strong>:</p>
+<div class="tw"><table class="mono td1">
+  <thead><tr><th>Setting</th><th>Value</th><th>Why It Matters</th></tr></thead>
+  <tbody>
+    <tr><td>dimension=384</td><td>Must match all-MiniLM-L6-v2 output</td><td>If the index dimension doesn't match the embedding model, every insert fails</td></tr>
+    <tr><td>metric=cosine</td><td>Similarity measure for search</td><td>Determines how "closeness" between vectors is calculated</td></tr>
+  </tbody>
+</table></div>
+<div class="call call-n"><span class="cb-badge">⚠ Critical</span><p>If either setting is wrong, you have to delete the index and recreate it — losing all indexed documents.</p></div>
+
+<h3>Why It Needs to Exist Before the App Starts</h3>
+<div class="cb"><span class="cb-label">Ingest Flow — Index Must Exist</span><pre>
+User uploads a document
+        │
+        ▼
+FastAPI calls ingest()
+        │
+        ▼
+SentenceTransformer generates 384-dim embeddings
+        │
+        ▼
+Pinecone.Index("universal-rag").upsert(vectors)
+        │
+        ├── Index EXISTS → vectors stored ✓
+        │
+        └── Index DOES NOT EXIST → exception, ingest fails ✗</pre></div>
+
+<h3>Three Ways It Gets Created (all automatic)</h3>
+<p>The system never requires you to manually create the index in the Pinecone dashboard.</p>
+<div class="cb"><span class="cb-label">Index Creation — Three Paths</span><pre>
+Option 1 — setup.sh (local first-time setup)
+  bash setup.sh
+  └── calls create_pinecone_index.py automatically
+
+Option 2 — Standalone script (if you skipped setup.sh)
+  python scripts/create_pinecone_index.py
+  └── creates index if missing, skips if already exists (idempotent)
+
+Option 3 — _ensure_index() inside vector_store.py (last resort)
+  └── called automatically inside _get_index()
+      before every retrieve() or ingest() call
+      if the index somehow doesn't exist, it creates it on the spot</pre></div>
+
+<h3>What <code>create_pinecone_index.py</code> Actually Does</h3>
+<div class="cb"><span class="cb-label">create_pinecone_index.py — Execution Flow</span><pre>
+Start
+  │
+  ▼
+Connect to Pinecone using PINECONE_API_KEY
+  │
+  ▼
+List all existing indexes
+  │
+  ├── "universal-rag" already exists → exit immediately (idempotent)
+  │
+  └── Does not exist → create index
+        dimension=384, metric=cosine
+        ServerlessSpec (cloud=aws, region=us-east-1)
+        │
+        ▼
+      Poll every 2 seconds for up to 120 seconds
+        │
+        ├── status.ready = True → index is usable, exit
+        │
+        └── Timeout after 60 attempts → raise error</pre></div>
+<div class="call call-v"><span class="cb-badge">✦ Idempotent</span><p>Running <code>create_pinecone_index.py</code> 10 times has the same result as running it once. It never creates duplicates or throws an error if the index already exists.</p></div>
+
+<h3>In Production</h3>
+<p><code>deploy_gcp.sh</code> handles it automatically at <strong>Step 6</strong> — the index is ready before any Cloud Run container starts accepting traffic. You never touch the Pinecone dashboard manually.</p>
+<div class="cb"><span class="cb-label">deploy_gcp.sh — Step 6 Placement</span><pre>
+bash scripts/deploy_gcp.sh
+  │
+  ...
+  ├── Step 5: Memorystore Redis
+  ├── Step 6: python scripts/create_pinecone_index.py  ← here
+  ├── Step 7: Service account + IAM
+  ...</pre></div>
+
+<!-- 23 Repos -->
+<div class="sec-head" id="repos">
+  <span class="sec-num">23</span>
+  <h2>Repositories &amp; License</h2>
+</div>
+<div class="tw"><table class="td1">
+  <thead><tr><th>Repo</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://github.com/mshan011181/universal-rag-agent-enterprise">universal-rag-agent-enterprise</a></td><td>This repo — managed services, Cloud Run, GKE, Anthropic, LangSmith</td></tr>
+    <tr><td><a href="https://github.com/mshan011181/universal-rag-agent">universal-rag-agent</a></td><td>Original single-VM version with local Docker containers</td></tr>
+  </tbody>
+</table></div>
+
+<div class="call call-n"><span class="cb-badge">License</span><p>Copyright (c) 2025 Shan. All rights reserved. Viewing and downloading this code is permitted for reference and educational purposes only. Modification, redistribution, commercial use, and derivative works are strictly prohibited without prior written permission from the author.</p></div>
+
+<!-- Conclusion -->
+<div class="concl">
+  <h2>Author</h2>
+  <p><strong style="color:#FAF7F2">Shan</strong> — AI Engineer</p>
+  <p>Built with Anthropic Claude, LangSmith, LangChain, Pinecone, Next.js 14, FastAPI, Google Cloud Run, GKE, and Artifact Registry.</p>
+  <p>GitHub: <a href="https://github.com/mshan011181/universal-rag-agent-enterprise" style="color:var(--amber-l)">github.com/mshan011181/universal-rag-agent-enterprise</a></p>
+</div>
+
+<!-- Footer -->
+<footer class="art-footer">
+  <div>
+    <div style="margin-bottom:8px">Tech Stack</div>
+    <div class="tp">
+      <span>Python 3.12</span><span>FastAPI</span><span>Next.js 14</span><span>Anthropic Claude</span><span>LangSmith</span><span>Pinecone</span><span>Cloud Run</span><span>GKE Autopilot</span><span>Cloud SQL</span><span>Memorystore</span><span>Artifact Registry</span><span>Cloud Build</span>
+    </div>
+  </div>
+  <div style="text-align:right">
+    <a href="https://shanmaha.com">shanmaha.com →</a>
+  </div>
+</footer>
+
+</main>
+</body>
+</html>

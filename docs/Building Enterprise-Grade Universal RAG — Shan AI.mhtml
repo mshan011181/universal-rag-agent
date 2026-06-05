@@ -1,0 +1,1471 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: file:///C:/Users/mshan/Downloads/universal-rag-enterprise.html
+Subject: =?utf-8?Q?Building=20Enterprise-Grade=20Universal=20RAG=20=E2=80=94=20Sha?=
+ =?utf-8?Q?n=20AI?=
+Date: Fri, 5 Jun 2026 10:50:42 +0530
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--LifWJe1cc4CZtoIXY9jlJtib5gS6Moa98S5kbat5FI----"
+
+
+------MultipartBoundary--LifWJe1cc4CZtoIXY9jlJtib5gS6Moa98S5kbat5FI----
+Content-Type: text/html
+Content-ID: <frame-E1E4AFFEFF3E038EE0A8CA622A24C6E9@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///C:/Users/mshan/Downloads/universal-rag-enterprise.html
+
+<!DOCTYPE html><html lang=3D"en"><head><meta http-equiv=3D"Content-Type" co=
+ntent=3D"text/html; charset=3DUTF-8"><link rel=3D"stylesheet" type=3D"text/=
+css" href=3D"cid:css-98642d97-3167-4231-b85e-dc69a5bbf7f1@mhtml.blink" />
+
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1.=
+0">
+<title>Building Enterprise-Grade Universal RAG =E2=80=94 Shan AI</title>
+<link rel=3D"preconnect" href=3D"https://fonts.googleapis.com/">
+<link href=3D"https://fonts.googleapis.com/css2?family=3DPlayfair+Display:i=
+tal,wght@0,400;0,600;0,700;1,400&amp;family=3DDM+Sans:wght@300;400;500;600&=
+amp;family=3DJetBrains+Mono:wght@400;500&amp;display=3Dswap" rel=3D"stylesh=
+eet">
+
+</head>
+<body>
+
+<!-- Site Header -->
+<header class=3D"site-header">
+  <div class=3D"site-logo">Shan AI</div>
+  <div class=3D"site-tagline">AI Engineering =C2=B7 Oracle DBA =C2=B7 Cloud=
+ Infrastructure</div>
+</header>
+
+<!-- Hero -->
+<div class=3D"hero">
+  <div class=3D"hero-inner">
+    <div class=3D"hero-label">Enterprise AI Architecture</div>
+    <h1>Building Enterprise-Grade <em>Universal RAG</em>:<br>From a Single =
+VM to a Cloud-Native AI Platform</h1>
+    <p class=3D"hero-sub">A complete guide to migrating, scaling, and monit=
+oring a production RAG system =E2=80=94 14 retrieval patterns, managed GCP =
+services, full LLM observability, and a CI/CD pipeline that ships on every =
+commit.</p>
+    <div class=3D"hero-meta">
+      <span class=3D"hero-tag">RAG Architecture</span>
+      <span class=3D"hero-tag">Google Cloud Run</span>
+      <span class=3D"hero-tag">Anthropic Claude</span>
+      <span class=3D"hero-tag">LangSmith</span>
+      <span class=3D"hero-tag">Pinecone</span>
+    </div>
+  </div>
+</div>
+
+<!-- Article Body -->
+<main class=3D"article-body">
+
+  <!-- TOC -->
+  <nav class=3D"toc">
+    <div class=3D"toc-title">Contents</div>
+    <ol>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part1">What Is the Universal RAG Agent?</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part2">The Infrastructure Problem: Why Single-VM RAG Fails</a></li=
+>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part3">The Migration: Before vs After</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part4">The Full System Architecture</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part5">Technology Stack: Development to Production</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part6">Distinct Features and Their Advantages</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part7">The CI/CD Pipeline: Code to Production in One Push</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part8">GCP Infrastructure Provisioning</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part9">Security Architecture</a></li>
+      <li><a href=3D"file:///C:/Users/mshan/Downloads/universal-rag-enterpr=
+ise.html#part10">Summary: Why This Architecture</a></li>
+    </ol>
+  </nav>
+
+  <!-- Intro -->
+  <p>Retrieval-Augmented Generation (RAG) is now a standard pattern in ente=
+rprise AI. But most RAG implementations are built for demos =E2=80=94 a sin=
+gle Python script, a local vector store, and a hardcoded LLM call. When the=
+se hit production with real enterprise traffic, they collapse: the vector d=
+atabase runs out of memory, the database hits connection limits, the LLM pr=
+ovider rate-limits you, and the entire system goes down for every tenant si=
+multaneously.</p>
+
+  <p>This article walks through the design and migration of the <strong>Uni=
+versal RAG Agent Enterprise</strong> =E2=80=94 a system that starts with 14=
+ RAG patterns on a single VM and migrates every component to a managed, aut=
+o-scaling, monitored production platform on Google Cloud. Every architectur=
+al decision is explained, every trade-off is documented, and every componen=
+t is mapped from its development equivalent to its production replacement.<=
+/p>
+
+  <!-- Part 1 -->
+  <div class=3D"part-heading" id=3D"part1">
+    <span class=3D"part-num">Part 01</span>
+    <h2>What Is the Universal RAG Agent?</h2>
+  </div>
+
+  <h3>The Core Problem with Single-Pattern RAG</h3>
+  <p>Most RAG implementations use one pattern: embed a query, search a vect=
+or store, feed chunks to an LLM, return the answer. This works for simple f=
+actual questions but breaks for:</p>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Query Type</th><th>Why Single-Pattern Fails</th></tr><=
+/thead>
+      <tbody>
+        <tr><td>Ambiguous queries</td><td>"Tell me about the policy" =E2=80=
+=94 which policy? what aspect?</td></tr>
+        <tr><td>Complex reasoning</td><td>Compare Q3 performance across all=
+ BUs and identify root cause</td></tr>
+        <tr><td>High-stakes domains</td><td>Legal, medical, financial queri=
+es where hallucination is unacceptable</td></tr>
+        <tr><td>Follow-up questions</td><td>"And what did he say about that=
+ in the 2022 report?"</td></tr>
+        <tr><td>Entity-relationship queries</td><td>"Which executives are c=
+onnected to the compliance breach?"</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The Universal RAG Agent solves this by implementing <strong>14 distinc=
+t RAG patterns</strong> and automatically selecting the right one =E2=80=94=
+ or chaining multiple =E2=80=94 for every query.</p>
+
+  <h3>The 5-Dimension Query Analyzer</h3>
+  <p>Before any retrieval happens, every query passes through a 5-dimension=
+ analyzer that scores it across five axes to determine the optimal retrieva=
+l strategy.</p>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Dimension</th><th>What It Measures</th></tr></thead>
+      <tbody>
+        <tr><td>Length</td><td>Is the query very short (likely ambiguous) o=
+r long (likely complex multi-part)?</td></tr>
+        <tr><td>Ambiguity</td><td>Does the query have multiple possible int=
+erpretations or missing context?</td></tr>
+        <tr><td>Complexity</td><td>Does it require multi-step reasoning, co=
+mparisons, or causal analysis?</td></tr>
+        <tr><td>Data Type</td><td>Is it asking about text, entities, relati=
+onships, images, or time-series?</td></tr>
+        <tr><td>Conversation State</td><td>Is this a follow-up to a previou=
+s query? Does it depend on session history?</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Based on these scores, the <strong>Pattern Router</strong> selects the=
+ optimal RAG pattern =E2=80=94 or chains multiple patterns for complex quer=
+ies.</p>
+
+  <h3>The 14 RAG Patterns</h3>
+
+  <div class=3D"pattern-grid">
+    <div class=3D"pattern-badge"><span class=3D"pnum">01</span><div><span c=
+lass=3D"pname">Naive RAG</span><br><small style=3D"color:var(--light-gray);=
+font-size:0.75rem">Simple factual queries</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">02</span><div><span c=
+lass=3D"pname">HyDE</span><br><small style=3D"color:var(--light-gray);font-=
+size:0.75rem">Ambiguous / short queries</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">03</span><div><span c=
+lass=3D"pname">Query Rewriting</span><br><small style=3D"color:var(--light-=
+gray);font-size:0.75rem">Vague queries</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">04</span><div><span c=
+lass=3D"pname">CRAG</span><br><small style=3D"color:var(--light-gray);font-=
+size:0.75rem">High-risk domains</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">05</span><div><span c=
+lass=3D"pname">Self-RAG</span><br><small style=3D"color:var(--light-gray);f=
+ont-size:0.75rem">Complex reasoning</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">06</span><div><span c=
+lass=3D"pname">Adaptive RAG</span><br><small style=3D"color:var(--light-gra=
+y);font-size:0.75rem">Mixed workloads</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">07</span><div><span c=
+lass=3D"pname">FLARE</span><br><small style=3D"color:var(--light-gray);font=
+-size:0.75rem">Long-form generation</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">08</span><div><span c=
+lass=3D"pname">Speculative RAG</span><br><small style=3D"color:var(--light-=
+gray);font-size:0.75rem">Hypothesis-then-verify</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">09</span><div><span c=
+lass=3D"pname">Modular RAG</span><br><small style=3D"color:var(--light-gray=
+);font-size:0.75rem">Configurable pipeline</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">10</span><div><span c=
+lass=3D"pname">Agentic RAG</span><br><small style=3D"color:var(--light-gray=
+);font-size:0.75rem">Multi-tool research tasks</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">11</span><div><span c=
+lass=3D"pname">GraphRAG</span><br><small style=3D"color:var(--light-gray);f=
+ont-size:0.75rem">Entity-relationship queries</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">12</span><div><span c=
+lass=3D"pname">Multi-Modal RAG</span><br><small style=3D"color:var(--light-=
+gray);font-size:0.75rem">Image and chart analysis</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">13</span><div><span c=
+lass=3D"pname">Conversational RAG</span><br><small style=3D"color:var(--lig=
+ht-gray);font-size:0.75rem">Follow-up with history</small></div></div>
+    <div class=3D"pattern-badge"><span class=3D"pnum">14</span><div><span c=
+lass=3D"pname">RAG Fusion</span><br><small style=3D"color:var(--light-gray)=
+;font-size:0.75rem">Multi-perspective retrieval</small></div></div>
+  </div>
+
+  <div class=3D"callout callout-verified">
+    <span class=3D"callout-badge">=E2=9C=A6 Key Advantage</span>
+    <p>No other single RAG system implements all 14 patterns and auto-selec=
+ts between them. Most enterprise implementations pick one or two patterns a=
+nd apply them to every query =E2=80=94 producing poor results for queries t=
+hat do not fit that pattern.</p>
+  </div>
+
+  <!-- Part 2 -->
+  <div class=3D"part-heading" id=3D"part2">
+    <span class=3D"part-num">Part 02</span>
+    <h2>The Infrastructure Problem: Why Single-VM RAG Fails</h2>
+  </div>
+
+  <p>The initial implementation ran every component as a Docker container o=
+n a single GCP VM. Each component had a hard ceiling =E2=80=94 and when one=
+ failed, it took down the entire system for every tenant simultaneously.</p=
+>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Component</th><th>What Breaks</th><th>Why</th></tr></t=
+head>
+      <tbody>
+        <tr><td>ChromaDB</td><td>Slows then crashes</td><td>In-memory vecto=
+r store has no persistence or sharding. At 100K+ documents it exhausts RAM<=
+/td></tr>
+        <tr><td>PostgreSQL</td><td>Connection limit hit</td><td>A container=
+ can handle ~100 connections. Enterprise with 50 concurrent users =C3=97 co=
+nnection pools =3D exceeded</td></tr>
+        <tr><td>Redis</td><td>OOM eviction</td><td>Container has fixed memo=
+ry. Redis starts evicting cache entries, causing rate limit state to disapp=
+ear</td></tr>
+        <tr><td>FastAPI</td><td>~50 concurrent requests</td><td>Single cont=
+ainer cannot scale horizontally. CPU-bound under load</td></tr>
+        <tr><td>Streamlit</td><td>~20 concurrent users</td><td>Each user ge=
+ts their own Python process =E2=80=94 not suitable for enterprise multi-use=
+r</td></tr>
+        <tr><td>Groq</td><td>Rate limited</td><td>Free tier has strict toke=
+ns/min cap =E2=80=94 fails under real enterprise query volume</td></tr>
+        <tr><td>No monitoring</td><td>Silent failures</td><td>No visibility=
+ into which queries fail, why answers are wrong, or what the cost is</td></=
+tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class=3D"callout callout-note">
+    <span class=3D"callout-badge">=E2=9A=A0 Core Problem</span>
+    <p>When one component fails on a single VM, it takes down the entire sy=
+stem for every enterprise tenant simultaneously. There is no isolation, no =
+scaling, no failover.</p>
+  </div>
+
+  <!-- Part 3 -->
+  <div class=3D"part-heading" id=3D"part3">
+    <span class=3D"part-num">Part 03</span>
+    <h2>The Migration: Before vs After</h2>
+  </div>
+
+  <div class=3D"before-after">
+    <div class=3D"ba-col ba-before">
+      <div class=3D"ba-title">=E2=9C=97 Before =E2=80=94 Single VM</div>
+      <ul class=3D"ba-list">
+        <li>ChromaDB container (in-memory, crashes)</li>
+        <li>PostgreSQL container (connection limits)</li>
+        <li>Redis container (OOM evictions)</li>
+        <li>Groq hardcoded (no SLA, rate limits)</li>
+        <li>No monitoring (silent failures)</li>
+        <li>Streamlit UI (prototype tool)</li>
+        <li>FastAPI on VM (~50 concurrent)</li>
+        <li>Docker Hub (public registry)</li>
+      </ul>
+    </div>
+    <div class=3D"ba-col ba-after">
+      <div class=3D"ba-title">=E2=9C=93 After =E2=80=94 Managed Services</d=
+iv>
+      <ul class=3D"ba-list">
+        <li>Pinecone managed =E2=80=94 unlimited vectors, per-tenant namesp=
+aces</li>
+        <li>Cloud SQL =E2=80=94 4,000 connections, auto-failover, daily bac=
+kups</li>
+        <li>Memorystore =E2=80=94 300GB, persistent, VPC-internal, no evict=
+ions</li>
+        <li>Anthropic Claude =E2=80=94 99.9% SLA, enterprise rate limits</l=
+i>
+        <li>LangSmith =E2=80=94 full trace of every LLM call: cost, latency=
+, quality</li>
+        <li>Next.js 14 + React =E2=80=94 real auth, role-based views, SSO-r=
+eady</li>
+        <li>FastAPI on Cloud Run =E2=80=94 1=E2=86=92100 containers, pay pe=
+r request</li>
+        <li>Artifact Registry (GCP) =E2=80=94 private, IAM-controlled, VPC-=
+native pulls</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Part 4 -->
+  <div class=3D"part-heading" id=3D"part4">
+    <span class=3D"part-num">Part 04</span>
+    <h2>The Full System Architecture</h2>
+  </div>
+
+  <p>The production architecture routes all enterprise tenant traffic throu=
+gh a Cloud Load Balancer to independently auto-scaling Cloud Run services f=
+or the API and UI. The query processing pipeline sits inside the FastAPI se=
+rvice and is responsible for pattern selection, retrieval, reranking, gener=
+ation, and quality verification.</p>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">Architecture Overview</span>
+    <pre>Enterprise Tenants (A =C2=B7 B =C2=B7 C =C2=B7 ...)
+             =E2=94=82
+             =E2=96=BC
+   Cloud Load Balancer (HTTPS, TLS)
+             =E2=94=82
+    =E2=94=8C=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=90
+    =E2=96=BC                     =E2=96=BC
+Cloud Run                Cloud Run
+FastAPI (rag-api)        Next.js 14 (rag-frontend)
+1=E2=80=93100 containers         1=E2=80=93100 containers
+4GB RAM =C2=B7 2 vCPU         1GB RAM =C2=B7 1 vCPU
+    =E2=94=82
+    =E2=96=BC
+Query Processing Pipeline
+  =E2=94=9C=E2=94=80=E2=94=80 5-Dimension Query Analyzer
+  =E2=94=9C=E2=94=80=E2=94=80 Pattern Router =E2=86=92 14 RAG Patterns
+  =E2=94=9C=E2=94=80=E2=94=80 Retrieve (Pinecone + Tavily)
+  =E2=94=9C=E2=94=80=E2=94=80 Rerank (Cohere + RRF)
+  =E2=94=94=E2=94=80=E2=94=80 Generate (4 LLM Roles)
+             =E2=94=82
+             =E2=96=BC
+LangSmith Tracing (tokens =C2=B7 latency =C2=B7 cost =C2=B7 quality)
+             =E2=94=82
+    =E2=94=8C=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=AC=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=AC=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=
+=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=80=E2=94=90
+    =E2=96=BC        =E2=96=BC        =E2=96=BC                =E2=96=BC
+Pinecone  Cloud SQL  Memorystore   4-Layer Memory
+Vector DB PostgreSQL Redis          Conv. History
+namespace 10-table   Rate limit     Pattern Perf
+per tenant multi-     + cache       Routing Sigs
+           tenant     VPC-intern    Knowledge Cache
+
+GCP Security: Secret Manager =C2=B7 IAM =C2=B7 VPC Connector</pre>
+  </div>
+
+  <!-- Part 5 -->
+  <div class=3D"part-heading" id=3D"part5">
+    <span class=3D"part-num">Part 05</span>
+    <h2>Technology Stack: Development to Production</h2>
+  </div>
+
+  <p>The system is designed so that <strong>the same application code runs =
+in both development and production</strong> =E2=80=94 only the infrastructu=
+re underneath changes.</p>
+
+  <div class=3D"callout callout-verified">
+    <span class=3D"callout-badge">=E2=9C=A6 Key Design Principle</span>
+    <p>Switching from development to production is a single environment var=
+iable change =E2=80=94 <code style=3D"font-family:'JetBrains Mono',monospac=
+e;font-size:0.85em">LLM_PROVIDER=3Dgroq</code> becomes <code style=3D"font-=
+family:'JetBrains Mono',monospace;font-size:0.85em">LLM_PROVIDER=3Danthropi=
+c</code>. No code changes. No Dockerfile changes. The same image runs in bo=
+th environments.</p>
+  </div>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Local Development</th><th>Production</th=
+></tr></thead>
+      <tbody>
+        <tr><td>API Application</td><td>FastAPI (uvicorn) on localhost:8000=
+</td><td>FastAPI (same code) on Cloud Run 1=E2=86=92100 containers</td></tr=
+>
+        <tr><td>UI Application</td><td>Next.js 14 (node dev) on localhost:3=
+000</td><td>Next.js 14 (same code) on Cloud Run 1=E2=86=92100 containers</t=
+d></tr>
+        <tr><td>LLM</td><td>Groq Llama 3.3-70b (LLM_PROVIDER=3Dgroq)</td><t=
+d>Anthropic Claude Sonnet (LLM_PROVIDER=3Danthropic)</td></tr>
+        <tr><td>LLM Monitoring</td><td>LangSmith (optional)</td><td>LangSmi=
+th (required)</td></tr>
+        <tr><td>Vector DB</td><td>Pinecone</td><td>Pinecone (same)</td></tr=
+>
+        <tr><td>Relational DB</td><td>postgres:16-alpine (Docker container)=
+</td><td>Cloud SQL PostgreSQL (GCP managed)</td></tr>
+        <tr><td>Cache</td><td>redis:7-alpine (Docker container)</td><td>Mem=
+orystore Redis (GCP managed, VPC)</td></tr>
+        <tr><td>Auth</td><td>JWT + bcrypt</td><td>Same + Secret Manager</td=
+></tr>
+        <tr><td>Embeddings</td><td>all-MiniLM-L6-v2 (local, no API key)</td=
+><td>Same (local, no API key)</td></tr>
+        <tr><td>CI/CD</td><td>build_and_test.sh</td><td>Cloud Build (auto t=
+rigger)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Part 6 -->
+  <div class=3D"part-heading" id=3D"part6">
+    <span class=3D"part-num">Part 06</span>
+    <h2>Distinct Features and Their Advantages</h2>
+  </div>
+
+  <h3>Feature 1: LLM Provider Switching with Zero Code Changes</h3>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Provider</th><th>SLA</th><th>Rate Limits</th><th>Auth<=
+/th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td>Groq</td><td>None</td><td>Strict (free tier)</td><td>API ke=
+y</td><td>Local dev, CI</td></tr>
+        <tr><td>Anthropic</td><td>99.9%</td><td>High (enterprise)</td><td>A=
+PI key</td><td>Production enterprise</td></tr>
+        <tr><td>Vertex AI</td><td>99.9%</td><td>GCP quota</td><td>ADC (no k=
+ey)</td><td>GCP-native deployments</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Feature 2: LangSmith =E2=80=94 End-to-End LLM Observability</h3>
+
+  <p>Most production RAG systems are black boxes. You get an answer but hav=
+e no idea why it was wrong, how much it cost, or which step failed. LangSmi=
+th captures every LLM call automatically.</p>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">LangSmith =E2=80=94 Per-Query Trace</span>
+    <pre>synthesize()   =E2=86=92 full prompt + response
+               =E2=86=92 token count: 847 input, 312 output
+               =E2=86=92 latency: 1.2s
+               =E2=86=92 cost: $0.0034
+
+grade()        =E2=86=92 relevance: 0.92
+               =E2=86=92 completeness: 0.88
+               =E2=86=92 hallucination_risk: 0.04
+               =E2=86=92 quality_score: 0.89
+
+check_faithfulness()  =E2=86=92 all sentences supported
+                      =E2=86=92 citation map: 3/3 verified
+
+generate_followups()  =E2=86=92 3 follow-up questions</pre>
+  </div>
+
+  <div class=3D"callout callout-verified">
+    <span class=3D"callout-badge">=E2=9C=A6 Advantage over Prometheus-only =
+observability</span>
+    <p>Prometheus tells you the API responded in 1.4 seconds. LangSmith tel=
+ls you the LLM took 1.1 seconds, the quality score was 0.42 (low), the hall=
+ucination risk was 0.67 (high), and shows you the exact prompt that caused =
+it =E2=80=94 enabling root cause analysis on AI-specific failures that infr=
+astructure metrics cannot capture.</p>
+  </div>
+
+  <h3>Feature 3: Per-Tenant Isolation at the Vector DB Layer</h3>
+
+  <p>In a multi-tenant RAG system, the most critical isolation requirement =
+is that Tenant A's documents never appear in Tenant B's query results. Pine=
+cone implements this via <strong>namespaces</strong>: every <code style=3D"=
+font-family:'JetBrains Mono',monospace;font-size:0.85em">retrieve()</code> =
+call passes <code style=3D"font-family:'JetBrains Mono',monospace;font-size=
+:0.85em">namespace=3Dtenant_id</code>, and Pinecone enforces isolation at t=
+he query level.</p>
+
+  <div class=3D"callout callout-note">
+    <span class=3D"callout-badge">=E2=9A=99 Architecture Detail</span>
+    <p>Strict isolation without running separate vector databases per tenan=
+t. All tenants share the same managed Pinecone infrastructure, but their da=
+ta is completely separated. Adding a new tenant requires no infrastructure =
+changes =E2=80=94 just use a new namespace string.</p>
+  </div>
+
+  <h3>Feature 4: 4-Layer Self-Improving Memory</h3>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Layer</th><th>What It Learns</th></tr></thead>
+      <tbody>
+        <tr><td>Conversation History</td><td>What was asked and answered in=
+ this session =E2=80=94 enables follow-up questions without re-stating cont=
+ext</td></tr>
+        <tr><td>Pattern Performance</td><td>Which RAG patterns produced hig=
+h quality scores for which query types =E2=80=94 routing improves over time=
+</td></tr>
+        <tr><td>Routing Signals</td><td>Which 5-dimension combinations led =
+to good outcomes =E2=80=94 analyzer gets better with usage</td></tr>
+        <tr><td>Verified Knowledge Cache</td><td>Answers with quality_score=
+ =E2=89=A5 0.85 are cached. Identical queries return instantly =E2=80=94 no=
+ LLM call</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Feature 5: 4 LLM Roles per Query</h3>
+
+  <p>Each query uses the LLM not once, but four times in different roles =
+=E2=80=94 making the system self-auditing by design.</p>
+
+  <div class=3D"llm-roles">
+    <div class=3D"llm-role-card">
+      <div class=3D"llm-role-title"><span class=3D"dot"></span>Synthesizer<=
+/div>
+      <p>Generates the answer from retrieved chunks only. Instructed to nev=
+er use prior knowledge beyond the provided context.</p>
+    </div>
+    <div class=3D"llm-role-card">
+      <div class=3D"llm-role-title"><span class=3D"dot"></span>Grader</div>
+      <p>Scores the answer 0.0=E2=80=931.0 on three dimensions: relevance, =
+completeness, and hallucination risk. Triggers CRAG fallback if below 0.65.=
+</p>
+    </div>
+    <div class=3D"llm-role-card">
+      <div class=3D"llm-role-title"><span class=3D"dot"></span>Verifier</di=
+v>
+      <p>Checks faithfulness: maps every sentence in the answer to a specif=
+ic source chunk. Flags any sentence with no supporting evidence.</p>
+    </div>
+    <div class=3D"llm-role-card">
+      <div class=3D"llm-role-title"><span class=3D"dot"></span>Judge</div>
+      <p>Resolves conflicts when multiple chunks contradict each other =E2=
+=80=94 determines which source to trust and why.</p>
+    </div>
+  </div>
+
+  <h3>Feature 6: Production UI =E2=80=94 Next.js 14 Replacing Streamlit</h3=
+>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Capability</th><th>Streamlit</th><th>Next.js 14</th></=
+tr></thead>
+      <tbody>
+        <tr><td>Authentication UI</td><td>Hacked via session_state</td><td>=
+Proper login / register pages</td></tr>
+        <tr><td>Role-based views</td><td>Not possible</td><td>Admin dashboa=
+rd hidden for users</td></tr>
+        <tr><td>SSO / SAML readiness</td><td>No</td><td>Yes =E2=80=94 stand=
+ard OAuth2 flow</td></tr>
+        <tr><td>Mobile responsive</td><td>No</td><td>Yes =E2=80=94 Tailwind=
+</td></tr>
+        <tr><td>Concurrency</td><td>1 Python process per user</td><td>Node.=
+js =E2=80=94 80 concurrent/instance</td></tr>
+        <tr><td>Docker image size</td><td>~500MB Python</td><td>~150MB stan=
+dalone</td></tr>
+        <tr><td>Production SLA</td><td>Not designed for</td><td>Cloud Run g=
+rade</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Feature 7: Two Deployment Targets, Same Images</h3>
+
+  <p>The same Docker images deploy to either Cloud Run or GKE Autopilot. Th=
+e decision guide:</p>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">Deployment Target Decision</span>
+    <pre>Do you need persistent WebSockets or custom sidecars?
+      =E2=94=82
+      =E2=94=9C=E2=94=80=E2=94=80 Yes =E2=86=92 GKE Autopilot
+      =E2=94=82
+      =E2=94=94=E2=94=80=E2=94=80 No =E2=86=92 Is traffic unpredictable or =
+bursty?
+                    =E2=94=82
+                    =E2=94=9C=E2=94=80=E2=94=80 Yes =E2=86=92 Cloud Run (pa=
+y per request, scales to 0)
+                    =E2=94=82
+                    =E2=94=94=E2=94=80=E2=94=80 No (sustained high traffic)=
+ =E2=86=92
+                              Compare Cloud Run vs GKE pod-hour billing
+                              at your actual traffic volume</pre>
+  </div>
+
+  <!-- Part 7 -->
+  <div class=3D"part-heading" id=3D"part7">
+    <span class=3D"part-num">Part 07</span>
+    <h2>The CI/CD Pipeline: Code to Production in One Push</h2>
+  </div>
+
+  <div class=3D"callout callout-verified">
+    <span class=3D"callout-badge">=E2=9C=A6 Core Rule</span>
+    <p>Docker images are only produced after all tests pass. This is enforc=
+ed by the <code style=3D"font-family:'JetBrains Mono',monospace;font-size:0=
+.85em">waitFor</code> directive in <code style=3D"font-family:'JetBrains Mo=
+no',monospace;font-size:0.85em">cloudbuild.yaml</code> =E2=80=94 the Docker=
+ build steps cannot start until the test step completes successfully.</p>
+  </div>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">Full Pipeline =E2=80=94 git push =E2=86=92 p=
+roduction</span>
+    <pre>git push enterprise main
+      =E2=94=82
+      =E2=94=9C=E2=94=80=E2=94=80 Source code =E2=86=92 GitHub (only source=
+ code, never images)
+      =E2=94=94=E2=94=80=E2=94=80 Cloud Build triggers automatically
+              =E2=94=82
+              =E2=96=BC
+      Quality Gate (parallel)
+      =E2=94=9C=E2=94=80=E2=94=80 ruff lint (style, unused imports)
+      =E2=94=9C=E2=94=80=E2=94=80 mypy type check (catch type errors)
+      =E2=94=94=E2=94=80=E2=94=80 bandit security scan (SAST)
+              =E2=94=82 all must pass
+              =E2=96=BC
+      pytest =E2=80=94 81 tests + 70% coverage gate
+      =E2=86=90 THE GATE =E2=80=94 nothing below runs if this fails
+      All external services mocked: Pinecone, Redis, LLM
+      Zero network calls, no credentials needed
+              =E2=94=82 green
+              =E2=96=BC
+      Build Docker images (parallel)
+      =E2=94=9C=E2=94=80=E2=94=80 docker build Dockerfile   =E2=86=92 rag-a=
+pi
+      =E2=94=94=E2=94=80=E2=94=80 docker build Dockerfile.nextjs =E2=86=92 =
+rag-ui
+              =E2=94=82
+              =E2=96=BC
+      Push to Artifact Registry (parallel)
+      =E2=94=9C=E2=94=80=E2=94=80 rag-api:COMMIT_SHA + :latest
+      =E2=94=94=E2=94=80=E2=94=80 rag-frontend:COMMIT_SHA + :latest
+              =E2=94=82
+              =E2=96=BC
+      Deploy to Cloud Run
+      =E2=94=9C=E2=94=80=E2=94=80 gcloud run deploy rag-api
+      =E2=94=94=E2=94=80=E2=94=80 gcloud run deploy rag-frontend
+              =E2=94=82
+              =E2=96=BC
+      App is live in production</pre>
+  </div>
+
+  <h3>Test Suite Coverage</h3>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Test File</th><th>What It Protects</th><th>Tests</th><=
+/tr></thead>
+      <tbody>
+        <tr><td>test_api.py</td><td>Auth flow, JWT, protected routes</td><t=
+d>14</td></tr>
+        <tr><td>test_vector_store.py</td><td>Pinecone namespace isolation p=
+er tenant</td><td>13</td></tr>
+        <tr><td>test_rate_limit.py</td><td>Redis rate limiting, fail-open o=
+n Redis outage</td><td>8</td></tr>
+        <tr><td>test_llm.py</td><td>All 3 provider switching, quality gradi=
+ng, retry</td><td>11</td></tr>
+        <tr><td>test_query_analyzer.py</td><td>5-dimension routing accuracy=
+</td><td>15</td></tr>
+        <tr><td>test_security.py</td><td>Prompt injection, PII redaction, u=
+pload validation</td><td>20</td></tr>
+        <tr class=3D"test-total"><td>Total</td><td>70% coverage gate =E2=80=
+=94 technical debt cannot accumulate silently</td><td>81</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Part 8 -->
+  <div class=3D"part-heading" id=3D"part8">
+    <span class=3D"part-num">Part 08</span>
+    <h2>GCP Infrastructure Provisioning</h2>
+  </div>
+
+  <p>A single script (<code style=3D"font-family:'JetBrains Mono',monospace=
+;font-size:0.85em">deploy_gcp.sh</code>) provisions the entire production i=
+nfrastructure in 9 steps =E2=80=94 replacing hours of manual console clicki=
+ng with a single command.</p>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Step</th><th>What It Creates</th><th>Replaces</th></tr=
+></thead>
+      <tbody>
+        <tr><td>1</td><td>Enable 10 GCP APIs</td><td>Manual console clickin=
+g</td></tr>
+        <tr><td>2</td><td>Artifact Registry repo</td><td>Docker Hub (public=
+)</td></tr>
+        <tr><td>3</td><td>Cloud SQL PostgreSQL =E2=80=94 auto-grow, daily b=
+ackup, point-in-time recovery</td><td>postgres container</td></tr>
+        <tr><td>4</td><td>Serverless VPC connector</td><td>(new =E2=80=94 r=
+equired for Memorystore access)</td></tr>
+        <tr><td>5</td><td>Memorystore Redis 7 =E2=80=94 5GB, VPC-internal</=
+td><td>redis container</td></tr>
+        <tr><td>6</td><td>Pinecone index =E2=80=94 dim=3D384, cosine, idemp=
+otent</td><td>ChromaDB container</td></tr>
+        <tr><td>7</td><td>Service account + 4 IAM roles</td><td>Manual IAM =
+management</td></tr>
+        <tr><td>8</td><td>All secrets in Secret Manager</td><td>.env files =
+/ hardcoded keys</td></tr>
+        <tr><td>9</td><td>Docker build =E2=86=92 push =E2=86=92 Cloud Run d=
+eploy</td><td>Manual docker + gcloud commands</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Part 9 -->
+  <div class=3D"part-heading" id=3D"part9">
+    <span class=3D"part-num">Part 09</span>
+    <h2>Security Architecture</h2>
+  </div>
+
+  <h3>Secrets =E2=80=94 Never in Code or Images</h3>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">Secret Management Flow</span>
+    <pre>API Keys (ANTHROPIC, PINECONE, LANGSMITH...)
+      =E2=94=82
+      =E2=96=BC
+Secret Manager (GCP)
+      =E2=94=82
+      =E2=94=9C=E2=94=80=E2=94=80 Cloud Run reads at container startup =E2=
+=86=92 env vars
+      =E2=94=82   (secrets never baked into Docker image)
+      =E2=94=82
+      =E2=94=94=E2=94=80=E2=94=80 GKE reads via Workload Identity =E2=86=92=
+ K8s secrets
+          (no key files on pods, no .env files)</pre>
+  </div>
+
+  <h3>Authentication Flow</h3>
+
+  <div class=3D"code-block">
+    <span class=3D"code-label">JWT Auth =E2=80=94 User =E2=86=92 Next.js =
+=E2=86=92 FastAPI</span>
+    <pre>User                Next.js UI              FastAPI
+  =E2=94=82                     =E2=94=82                      =E2=94=82
+  =E2=94=9C=E2=94=80=E2=94=80 POST /login =E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=80=E2=96=BA=E2=94=82                      =E2=94=82
+  =E2=94=82                     =E2=94=9C=E2=94=80=E2=94=80 POST /api/auth/=
+token=E2=96=BA=E2=94=82
+  =E2=94=82                     =E2=94=82                      =E2=94=9C=E2=
+=94=80=E2=94=80 verify credentials
+  =E2=94=82                     =E2=94=82                      =E2=94=9C=E2=
+=94=80=E2=94=80 issue JWT (access + refresh)
+  =E2=94=82                     =E2=94=82=E2=97=84=E2=94=80=E2=94=80=E2=94=
+=80 tokens =E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=A4
+  =E2=94=82=E2=97=84=E2=94=80=E2=94=80 session =E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=A4            =
+          =E2=94=82
+  =E2=94=82                     =E2=94=82                      =E2=94=82
+  =E2=94=9C=E2=94=80=E2=94=80 POST /query =E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=80=E2=96=BA=E2=94=82                      =E2=94=82
+  =E2=94=82                     =E2=94=9C=E2=94=80=E2=94=80 Authorization: =
+Bearer =E2=94=80=E2=94=80=E2=96=BA=E2=94=82
+  =E2=94=82                     =E2=94=82                      =E2=94=9C=E2=
+=94=80=E2=94=80 validate JWT
+  =E2=94=82                     =E2=94=82                      =E2=94=94=E2=
+=94=80=E2=94=80 route to RAG pipeline
+  =E2=94=82=E2=97=84=E2=94=80=E2=94=80 answer =E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=A4=E2=
+=97=84=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=
+=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=E2=94=80=
+=E2=94=80=E2=94=80=E2=94=80=E2=94=80-=E2=94=A4</pre>
+  </div>
+
+  <p>Access tokens stored in JS memory (never localStorage =E2=80=94 mitiga=
+tes XSS token theft). Refresh tokens in sessionStorage. Auto-refresh on 401=
+.</p>
+
+  <h3>Rate Limiting =E2=80=94 Redis Backed, Fail-Open</h3>
+
+  <div class=3D"table-wrap">
+    <table>
+      <thead><tr><th>Endpoint</th><th>Limit</th><th>Reason</th></tr></thead=
+>
+      <tbody>
+        <tr><td>/api/query</td><td>30/min</td><td>LLM calls are expensive</=
+td></tr>
+        <tr><td>/api/ingest</td><td>10/min</td><td>Embedding + indexing is =
+CPU-heavy</td></tr>
+        <tr><td>/api/auth</td><td>20/min</td><td>Brute force protection</td=
+></tr>
+        <tr><td>Default</td><td>100/min</td><td>General protection</td></tr=
+>
+      </tbody>
+    </table>
+  </div>
+
+  <div class=3D"callout callout-note">
+    <span class=3D"callout-badge">=E2=9A=99 Fail-Open Design</span>
+    <p>If Redis is unavailable, the rate limiter fails open =E2=80=94 it al=
+lows the request rather than blocking all traffic. A Redis outage does not =
+become a full service outage.</p>
+  </div>
+
+  <!-- Part 10 -->
+  <div class=3D"part-heading" id=3D"part10">
+    <span class=3D"part-num">Part 10</span>
+    <h2>Summary: Why This Architecture</h2>
+  </div>
+
+  <p>Every component in this system was chosen not in isolation but because=
+ of how it interacts with the others. The compounding advantages are what m=
+ake this platform enterprise-ready.</p>
+
+  <div class=3D"feature-grid">
+    <div class=3D"feature-card">
+      <span class=3D"feature-num">Isolation Stack</span>
+      <h4>True Multi-Tenant Isolation</h4>
+      <p>Pinecone namespaces + Cloud SQL per-tenant schema + JWT with tenan=
+t claims =3D no data leakage possible between enterprise customers.</p>
+    </div>
+    <div class=3D"feature-card">
+      <span class=3D"feature-num">Quality Stack</span>
+      <h4>Measurable, Auditable AI Quality</h4>
+      <p>Anthropic Claude (99.9% SLA) + LangSmith tracing (cost + quality p=
+er call) + 4-role LLM pipeline =3D know exactly when and why answers are wr=
+ong.</p>
+    </div>
+    <div class=3D"feature-card">
+      <span class=3D"feature-num">Scale Stack</span>
+      <h4>Scales Without Infrastructure Work</h4>
+      <p>Cloud Run auto-scaling (1=E2=86=92100) + Memorystore (consistent r=
+ate limit state) + Cloud SQL (4,000 connections) =3D handles enterprise loa=
+d automatically.</p>
+    </div>
+    <div class=3D"feature-card">
+      <span class=3D"feature-num">Deploy Stack</span>
+      <h4>Safe, Traceable, Reversible Deploys</h4>
+      <p>Cloud Build test gate (70% coverage) + COMMIT_SHA image tagging + =
+one-command rollback =3D deployments that can always be reversed.</p>
+    </div>
+  </div>
+
+  <h3>At a Glance =E2=80=94 What This System Provides</h3>
+
+  <div class=3D"table-wrap">
+    <table class=3D"cap-table">
+      <thead><tr><th>Capability</th><th>Before (Single VM)</th><th>After (E=
+nterprise)</th></tr></thead>
+      <tbody>
+        <tr><td>Max concurrent users</td><td>~50</td><td>8,000+ (100 contai=
+ners =C3=97 80 concurrency)</td></tr>
+        <tr><td>Vector DB capacity</td><td>RAM-limited (~100K docs)</td><td=
+>Unlimited (Pinecone managed)</td></tr>
+        <tr><td>DB connections</td><td>~100</td><td>4,000 (Cloud SQL)</td><=
+/tr>
+        <tr><td>LLM provider</td><td>1 (Groq, hardcoded)</td><td>3 (switcha=
+ble via env var)</td></tr>
+        <tr><td>LLM SLA</td><td>None</td><td>99.9% (Anthropic)</td></tr>
+        <tr><td>Tenant isolation</td><td>None</td><td>Complete (Pinecone na=
+mespace + DB schema)</td></tr>
+        <tr><td>Monitoring</td><td>None</td><td>Full (Prometheus + LangSmit=
+h)</td></tr>
+        <tr><td>Cost visibility</td><td>None</td><td>Per-query cost in Lang=
+Smith</td></tr>
+        <tr><td>Deployment</td><td>Manual</td><td>Automated on every git pu=
+sh</td></tr>
+        <tr><td>Rollback</td><td>Redeploy from scratch</td><td>One command =
+(previous COMMIT_SHA)</td></tr>
+        <tr><td>UI</td><td>Streamlit (prototype)</td><td>Next.js 14 (produc=
+tion enterprise)</td></tr>
+        <tr><td>Auth</td><td>Basic</td><td>JWT + refresh + role-based views=
+</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Conclusion -->
+  <div class=3D"conclusion">
+    <h2>Conclusion</h2>
+    <p>The Universal RAG Agent Enterprise demonstrates that building a prod=
+uction AI system is not just about the AI =E2=80=94 it is equally about the=
+ infrastructure, the operations, the security, and the developer workflow a=
+round it.</p>
+    <p>The 14 RAG patterns ensure every query gets the right retrieval stra=
+tegy. The managed services ensure the system stays up under enterprise load=
+. The LLM provider switching ensures cost-effective development without com=
+promising production quality. LangSmith ensures that when something goes wr=
+ong =E2=80=94 and in AI systems, things go wrong =E2=80=94 you can see exac=
+tly why and fix it.</p>
+    <p>The migration from a single VM with five containers to a fully manag=
+ed cloud-native platform is not optional for enterprise scale. It is the di=
+fference between a demo that works for 10 users and a platform that serves =
+10,000.</p>
+  </div>
+
+  <!-- Footer -->
+  <footer class=3D"article-footer">
+    <div>
+      <div style=3D"margin-bottom:10px">Built with:</div>
+      <div class=3D"tech-stack">
+        <span class=3D"tech-pill">Anthropic Claude</span>
+        <span class=3D"tech-pill">LangSmith</span>
+        <span class=3D"tech-pill">LangChain</span>
+        <span class=3D"tech-pill">Pinecone</span>
+        <span class=3D"tech-pill">Next.js 14</span>
+        <span class=3D"tech-pill">FastAPI</span>
+        <span class=3D"tech-pill">Cloud Run</span>
+        <span class=3D"tech-pill">GKE</span>
+        <span class=3D"tech-pill">Artifact Registry</span>
+      </div>
+    </div>
+    <div style=3D"text-align:right">
+      <a href=3D"https://github.com/mshan011181/universal-rag-agent-enterpr=
+ise">github.com/mshan011181/universal-rag-agent-enterprise =E2=86=92</a>
+      <div style=3D"margin-top:8px"><a href=3D"https://shanmaha.com/">shanm=
+aha.com</a></div>
+    </div>
+  </footer>
+
+</main>
+
+
+</body></html>
+------MultipartBoundary--LifWJe1cc4CZtoIXY9jlJtib5gS6Moa98S5kbat5FI----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap
+
+@charset "utf-8";
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 300; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6h9Q.woff2") format("woff2"); unicode-range=
+: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+32=
+9, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,=
+ U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 300; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2") format("woff2"); unicode-range: U=
++0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+32=
+9, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+F=
+FFD; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 400; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6h9Q.woff2") format("woff2"); unicode-range=
+: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+32=
+9, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,=
+ U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 400; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2") format("woff2"); unicode-range: U=
++0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+32=
+9, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+F=
+FFD; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 500; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6h9Q.woff2") format("woff2"); unicode-range=
+: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+32=
+9, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,=
+ U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 500; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2") format("woff2"); unicode-range: U=
++0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+32=
+9, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+F=
+FFD; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 600; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6h9Q.woff2") format("woff2"); unicode-range=
+: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+32=
+9, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,=
+ U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 600; =
+font-display: swap; src: url("https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2=
+ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2") format("woff2"); unicode-range: U=
++0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304, U+308, U+32=
+9, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+F=
+FFD; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx3cwhs=
+k.woff2") format("woff2"); unicode-range: U+460-52F, U+1C80-1C8A, U+20B4, U=
++2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxTcwhs=
+k.woff2") format("woff2"); unicode-range: U+301, U+400-45F, U+490-491, U+4B=
+0-4B1, U+2116; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxPcwhs=
+k.woff2") format("woff2"); unicode-range: U+370-377, U+37A-37F, U+384-38A, =
+U+38C, U+38E-3A1, U+3A3-3FF; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx_cwhs=
+k.woff2") format("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, =
+U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+=
+329, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhs=
+k.woff2") format("woff2"); unicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, =
+U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2=
+-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; =
+}
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.=
+woff2") format("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC=
+, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+=
+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx3cwhs=
+k.woff2") format("woff2"); unicode-range: U+460-52F, U+1C80-1C8A, U+20B4, U=
++2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxTcwhs=
+k.woff2") format("woff2"); unicode-range: U+301, U+400-45F, U+490-491, U+4B=
+0-4B1, U+2116; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxPcwhs=
+k.woff2") format("woff2"); unicode-range: U+370-377, U+37A-37F, U+384-38A, =
+U+38C, U+38E-3A1, U+3A3-3FF; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx_cwhs=
+k.woff2") format("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, =
+U+168-169, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+=
+329, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhs=
+k.woff2") format("woff2"); unicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, =
+U+2CE-2D7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2=
+-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; =
+}
+
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight=
+: 500; font-display: swap; src: url("https://fonts.gstatic.com/s/jetbrainsm=
+ono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.=
+woff2") format("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC=
+, U+2C6, U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+=
+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Playfair Display"; font-style: italic; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtXA-W2r.woff2"=
+) format("woff2"); unicode-range: U+301, U+400-45F, U+490-491, U+4B0-4B1, U=
++2116; }
+
+@font-face { font-family: "Playfair Display"; font-style: italic; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt7A-W2r.woff2"=
+) format("woff2"); unicode-range: U+102-103, U+110-111, U+128-129, U+168-16=
+9, U+1A0-1A1, U+1AF-1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1=
+EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Playfair Display"; font-style: italic; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A-W2r.woff2"=
+) format("woff2"); unicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D=
+7, U+2DD-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U=
++2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Playfair Display"; font-style: italic; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA-Q.woff2") =
+format("woff2"); unicode-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6,=
+ U+2DA, U+2DC, U+304, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+=
+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2") format("woff2"); u=
+nicode-range: U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2") format("woff2"); u=
+nicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-=
+1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2") format("woff2"); u=
+nicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304,=
+ U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, =
+U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 400; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2") format("woff2"); uni=
+code-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304=
+, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215=
+, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 600; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2") format("woff2"); u=
+nicode-range: U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 600; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2") format("woff2"); u=
+nicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-=
+1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 600; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2") format("woff2"); u=
+nicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304,=
+ U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, =
+U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 600; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2") format("woff2"); uni=
+code-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304=
+, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215=
+, U+FEFF, U+FFFD; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 700; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2") format("woff2"); u=
+nicode-range: U+301, U+400-45F, U+490-491, U+4B0-4B1, U+2116; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 700; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2") format("woff2"); u=
+nicode-range: U+102-103, U+110-111, U+128-129, U+168-169, U+1A0-1A1, U+1AF-=
+1B0, U+300-301, U+303-304, U+308-309, U+323, U+329, U+1EA0-1EF9, U+20AB; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 700; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2") format("woff2"); u=
+nicode-range: U+100-2BA, U+2BD-2C5, U+2C7-2CC, U+2CE-2D7, U+2DD-2FF, U+304,=
+ U+308, U+329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, =
+U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+@font-face { font-family: "Playfair Display"; font-style: normal; font-weig=
+ht: 700; font-display: swap; src: url("https://fonts.gstatic.com/s/playfair=
+display/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2") format("woff2"); uni=
+code-range: U+0-FF, U+131, U+152-153, U+2BB-2BC, U+2C6, U+2DA, U+2DC, U+304=
+, U+308, U+329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215=
+, U+FEFF, U+FFFD; }
+------MultipartBoundary--LifWJe1cc4CZtoIXY9jlJtib5gS6Moa98S5kbat5FI----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-98642d97-3167-4231-b85e-dc69a5bbf7f1@mhtml.blink
+
+@charset "utf-8";
+
+:root { --cream: #FAF7F2; --warm-white: #FDF9F4; --amber: #C8843A; --amber-=
+light: #E8A85C; --amber-pale: #F5E6D3; --teal: #2A7B7B; --teal-dark: #1D5C5=
+C; --teal-light: #E8F5F5; --charcoal: #2C2C2C; --mid-gray: #5A5A5A; --light=
+-gray: #8A8A8A; --border: #E0D8CC; --code-bg: #1E1E1E; --code-text: #D4D0C8=
+; }
+
+* { margin: 0px; padding: 0px; box-sizing: border-box; }
+
+body { background: var(--cream); color: var(--charcoal); font-family: "DM S=
+ans", sans-serif; font-size: 17px; line-height: 1.75; }
+
+.site-header { background: var(--charcoal); padding: 14px 40px; display: fl=
+ex; align-items: center; gap: 12px; }
+
+.site-logo { font-family: "Playfair Display", serif; font-size: 1.4rem; col=
+or: var(--amber-light); letter-spacing: 0.02em; }
+
+.site-tagline { font-family: "DM Sans", sans-serif; font-size: 0.75rem; col=
+or: var(--light-gray); letter-spacing: 0.12em; text-transform: uppercase; p=
+adding-left: 12px; border-left: 1px solid rgb(68, 68, 68); }
+
+.hero { background: var(--charcoal); padding: 72px 40px 64px; position: rel=
+ative; overflow: hidden; }
+
+.hero::before { content: ""; position: absolute; top: -60px; right: -60px; =
+width: 380px; height: 380px; background: radial-gradient(circle, rgba(200, =
+132, 58, 0.15) 0%, transparent 70%); pointer-events: none; }
+
+.hero-inner { max-width: 860px; margin: 0px auto; position: relative; }
+
+.hero-label { font-family: "JetBrains Mono", monospace; font-size: 0.7rem; =
+letter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); marg=
+in-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+.hero-label::before { content: ""; display: inline-block; width: 28px; heig=
+ht: 1px; background: var(--amber); }
+
+.hero h1 { font-family: "Playfair Display", serif; font-size: clamp(2rem, 4=
+vw, 3rem); font-weight: 700; color: var(--warm-white); line-height: 1.2; ma=
+rgin-bottom: 18px; }
+
+.hero h1 em { color: var(--amber-light); font-style: italic; }
+
+.hero-sub { font-size: 1.05rem; color: rgb(176, 168, 152); font-weight: 300=
+; max-width: 640px; }
+
+.hero-meta { margin-top: 36px; display: flex; align-items: center; gap: 24p=
+x; flex-wrap: wrap; }
+
+.hero-tag { background: rgba(200, 132, 58, 0.15); border: 1px solid rgba(20=
+0, 132, 58, 0.3); color: var(--amber-light); font-family: "JetBrains Mono",=
+ monospace; font-size: 0.72rem; padding: 4px 12px; border-radius: 3px; lett=
+er-spacing: 0.05em; }
+
+.article-body { max-width: 860px; margin: 0px auto; padding: 64px 40px 100p=
+x; }
+
+.toc { background: var(--warm-white); border-top-color: ; border-top-style:=
+ ; border-top-width: ; border-right-color: ; border-right-style: ; border-r=
+ight-width: ; border-bottom-color: ; border-bottom-style: ; border-bottom-w=
+idth: ; border-image-source: ; border-image-slice: ; border-image-width: ; =
+border-image-outset: ; border-image-repeat: ; border-left: 4px solid var(--=
+teal); padding: 28px 32px; margin-bottom: 60px; border-radius: 2px; }
+
+.toc-title { font-family: "DM Sans", sans-serif; font-size: 0.7rem; letter-=
+spacing: 0.18em; text-transform: uppercase; color: var(--teal); font-weight=
+: 600; margin-bottom: 14px; }
+
+.toc ol { list-style: none; counter-reset: toc-counter 0; }
+
+.toc ol li { counter-increment: toc-counter 1; margin-bottom: 8px; display:=
+ flex; align-items: baseline; gap: 10px; }
+
+.toc ol li::before { content: counter(toc-counter, decimal-leading-zero); f=
+ont-family: "JetBrains Mono", monospace; font-size: 0.68rem; color: var(--a=
+mber); min-width: 26px; }
+
+.toc a { color: var(--mid-gray); text-decoration: none; font-size: 0.92rem;=
+ transition: color 0.2s; }
+
+.toc a:hover { color: var(--teal); }
+
+.part-heading { display: flex; align-items: center; gap: 16px; margin: 72px=
+ 0px 32px; }
+
+.part-num { font-family: "JetBrains Mono", monospace; font-size: 0.65rem; l=
+etter-spacing: 0.2em; text-transform: uppercase; color: var(--amber); backg=
+round: var(--amber-pale); padding: 5px 12px; border-radius: 2px; white-spac=
+e: nowrap; }
+
+.part-heading h2 { font-family: "Playfair Display", serif; font-size: 1.65r=
+em; font-weight: 700; color: var(--charcoal); line-height: 1.3; }
+
+h3 { font-family: "Playfair Display", serif; font-size: 1.2rem; font-weight=
+: 600; color: var(--charcoal); margin: 40px 0px 16px; }
+
+p { margin-bottom: 1.2em; color: var(--mid-gray); }
+
+strong { color: var(--charcoal); font-weight: 600; }
+
+hr { border-right: none; border-bottom: none; border-left: none; border-ima=
+ge: initial; border-top: 1px solid var(--border); margin: 60px 0px; }
+
+.code-block { background: var(--code-bg); border-radius: 4px; padding: 24px=
+; margin: 24px 0px 32px; overflow-x: auto; position: relative; }
+
+.code-block pre { font-family: "JetBrains Mono", monospace; font-size: 0.72=
+rem; line-height: 1.65; color: var(--code-text); white-space: pre; }
+
+.code-label { font-family: "JetBrains Mono", monospace; font-size: 0.62rem;=
+ letter-spacing: 0.15em; text-transform: uppercase; color: var(--amber); ma=
+rgin-bottom: 8px; display: block; }
+
+.callout { border-radius: 3px; padding: 20px 24px; margin: 28px 0px; font-s=
+ize: 0.93rem; }
+
+.callout-verified { background: var(--teal-light); border-left: 4px solid v=
+ar(--teal); }
+
+.callout-verified .callout-badge { color: var(--teal-dark); font-family: "J=
+etBrains Mono", monospace; font-size: 0.65rem; letter-spacing: 0.15em; text=
+-transform: uppercase; font-weight: 600; display: block; margin-bottom: 6px=
+; }
+
+.callout-note { background: var(--amber-pale); border-left: 4px solid var(-=
+-amber); }
+
+.callout-note .callout-badge { color: rgb(139, 90, 26); font-family: "JetBr=
+ains Mono", monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-tra=
+nsform: uppercase; font-weight: 600; display: block; margin-bottom: 6px; }
+
+.callout p { margin-bottom: 0px; }
+
+.table-wrap { overflow-x: auto; margin: 24px 0px 32px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+
+thead th { background: var(--charcoal); color: var(--warm-white); font-fami=
+ly: "DM Sans", sans-serif; font-weight: 500; font-size: 0.78rem; letter-spa=
+cing: 0.05em; padding: 12px 16px; text-align: left; }
+
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0=
+.15s; }
+
+tbody tr:hover { background: var(--warm-white); }
+
+tbody td { padding: 11px 16px; color: var(--mid-gray); vertical-align: top;=
+ }
+
+tbody td:first-child { color: var(--charcoal); font-weight: 500; }
+
+tbody tr:nth-child(2n) td { background: rgba(250, 247, 242, 0.6); }
+
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fill, min=
+max(260px, 1fr)); gap: 20px; margin: 32px 0px; }
+
+.feature-card { background: var(--warm-white); border: 1px solid var(--bord=
+er); padding: 24px; border-radius: 3px; position: relative; overflow: hidde=
+n; }
+
+.feature-card::before { content: ""; position: absolute; top: 0px; left: 0p=
+x; right: 0px; height: 3px; background: linear-gradient(90deg, var(--amber)=
+, var(--teal)); }
+
+.feature-num { font-family: "JetBrains Mono", monospace; font-size: 0.65rem=
+; color: var(--amber); letter-spacing: 0.12em; text-transform: uppercase; m=
+argin-bottom: 10px; display: block; }
+
+.feature-card h4 { font-family: "Playfair Display", serif; font-size: 1rem;=
+ font-weight: 600; color: var(--charcoal); margin-bottom: 8px; }
+
+.feature-card p { font-size: 0.85rem; line-height: 1.55; margin-bottom: 0px=
+; }
+
+.pattern-grid { display: grid; grid-template-columns: repeat(auto-fill, min=
+max(200px, 1fr)); gap: 10px; margin: 24px 0px; }
+
+.pattern-badge { display: flex; align-items: center; gap: 10px; background:=
+ var(--warm-white); border: 1px solid var(--border); padding: 10px 14px; bo=
+rder-radius: 3px; font-size: 0.82rem; }
+
+.pattern-badge .pnum { font-family: "JetBrains Mono", monospace; font-size:=
+ 0.7rem; color: var(--amber); min-width: 22px; font-weight: 500; }
+
+.pattern-badge .pname { font-weight: 500; color: var(--charcoal); }
+
+.before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 0px; ma=
+rgin: 28px 0px 32px; border: 1px solid var(--border); border-radius: 4px; o=
+verflow: hidden; }
+
+.ba-col { padding: 24px; }
+
+.ba-before { background: rgb(247, 240, 235); border-right: 1px solid var(--=
+border); }
+
+.ba-after { background: var(--teal-light); }
+
+.ba-title { font-family: "JetBrains Mono", monospace; font-size: 0.65rem; l=
+etter-spacing: 0.18em; text-transform: uppercase; font-weight: 600; margin-=
+bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.ba-before .ba-title { color: rgb(139, 90, 26); }
+
+.ba-after .ba-title { color: var(--teal-dark); }
+
+.ba-list { list-style: none; }
+
+.ba-list li { font-size: 0.86rem; padding: 6px 0px; border-bottom: 1px soli=
+d rgba(0, 0, 0, 0.06); color: var(--mid-gray); display: flex; gap: 8px; ali=
+gn-items: baseline; }
+
+.ba-list li::before { content: "=E2=80=94"; color: var(--light-gray); flex-=
+shrink: 0; }
+
+.ba-after .ba-list li::before { content: "=E2=9C=93"; color: var(--teal); f=
+lex-shrink: 0; }
+
+.llm-roles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; marg=
+in: 24px 0px 32px; }
+
+.llm-role-card { background: var(--warm-white); border: 1px solid var(--bor=
+der); padding: 20px 22px; border-radius: 3px; }
+
+.llm-role-title { font-family: "JetBrains Mono", monospace; font-size: 0.72=
+rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal);=
+ font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; =
+gap: 8px; }
+
+.llm-role-title .dot { width: 7px; height: 7px; border-radius: 50%; backgro=
+und: var(--amber); flex-shrink: 0; }
+
+.llm-role-card p { font-size: 0.85rem; margin-bottom: 0px; }
+
+.cap-table tbody td:nth-child(2) { color: rgb(178, 90, 42); }
+
+.cap-table tbody td:nth-child(3) { color: var(--teal-dark); font-weight: 50=
+0; }
+
+.test-total td { font-weight: 700; color: var(--charcoal) !important; backg=
+round: var(--amber-pale) !important; }
+
+.ornament { text-align: center; margin: 48px 0px; color: var(--amber); font=
+-family: "Playfair Display", serif; font-size: 1.2rem; letter-spacing: 0.3e=
+m; opacity: 0.5; }
+
+.conclusion { background: var(--charcoal); color: var(--warm-white); paddin=
+g: 48px; border-radius: 4px; margin: 64px 0px 0px; }
+
+.conclusion h2 { font-family: "Playfair Display", serif; font-size: 1.5rem;=
+ color: var(--amber-light); margin-bottom: 20px; }
+
+.conclusion p { color: rgb(176, 168, 152); margin-bottom: 1em; }
+
+.conclusion p:last-of-type { margin-bottom: 0px; }
+
+.article-footer { margin-top: 60px; padding-top: 32px; border-top: 1px soli=
+d var(--border); font-size: 0.83rem; color: var(--light-gray); display: fle=
+x; justify-content: space-between; align-items: center; gap: 16px; }
+
+.article-footer a { color: var(--teal); text-decoration: none; font-family:=
+ "JetBrains Mono", monospace; font-size: 0.75rem; }
+
+.article-footer a:hover { text-decoration: underline; }
+
+.tech-stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.tech-pill { background: var(--warm-white); border: 1px solid var(--border)=
+; font-family: "JetBrains Mono", monospace; font-size: 0.65rem; color: var(=
+--mid-gray); padding: 3px 10px; border-radius: 20px; }
+
+@keyframes fadeUp {=20
+  0% { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0px); }
+}
+
+.hero-inner > * { animation: 0.7s ease 0s 1 normal both running fadeUp; }
+
+.hero-inner > :nth-child(1) { animation-delay: 0.05s; }
+
+.hero-inner > :nth-child(2) { animation-delay: 0.15s; }
+
+.hero-inner > :nth-child(3) { animation-delay: 0.25s; }
+
+.hero-inner > :nth-child(4) { animation-delay: 0.35s; }
+
+@media (max-width: 680px) {
+  .article-body { padding: 40px 20px 80px; }
+  .hero { padding: 48px 20px; }
+  .site-header { padding: 12px 20px; }
+  .before-after { grid-template-columns: 1fr; }
+  .llm-roles { grid-template-columns: 1fr; }
+  .feature-grid { grid-template-columns: 1fr; }
+}
+------MultipartBoundary--LifWJe1cc4CZtoIXY9jlJtib5gS6Moa98S5kbat5FI------
