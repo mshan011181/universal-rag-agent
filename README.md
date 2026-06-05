@@ -550,7 +550,8 @@ The rule is simple: **tests always come before any Docker build.** You never bui
       │
       ▼
 6. Push source code to GitHub        ← the ONE thing YOU do, everything else is automatic
-   bash scripts/git_manager.sh  (option 2)
+   bash scripts/git_manager.sh
+   # When prompted with the menu, select option 2 — "Push changes (add → commit → push)"
    — or —
    git push enterprise main
 
