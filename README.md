@@ -490,32 +490,76 @@ The rule is simple: **tests always come before any Docker build.** You never bui
 1. Write code
       │
       ▼
-2. Test with dev servers   ← fast feedback loop, use this most of the time
+2. Test with dev servers             ← use this most of the time during development
    uvicorn + npm run dev
-   Hot-reload on every save, no Docker involved
+   Hot-reload on every save — no Docker involved, fastest feedback
       │
       ▼
-3. Run the full quality gate   ← tests run here, BEFORE any Docker build
+3. Run the full quality gate         ← tests run FIRST, Docker image built AFTER tests pass
    bash scripts/build_and_test.sh
-   Lint → type check → security → 81 tests → docker build → smoke test
-                                       ↑                ↑
-                                  tests first      build only if tests pass
+   │
+   ├── Stage 1: ruff lint
+   ├── Stage 2: mypy type check
+   ├── Stage 3: bandit security scan
+   ├── Stage 4: pytest (81 tests + 70% coverage gate)  ← GATE
+   ├── Stage 5: docker build rag-api:TAG               ← image built locally only if tests pass
+   ├── Stage 6: docker build rag-frontend:TAG          ← image built locally only if tests pass
+   └── Stage 7: smoke test (start container → curl /api/health → stop)
+
+   Output: Docker images sitting on YOUR LOCAL MACHINE only.
+           They are NOT pushed to Artifact Registry yet.
       │
       ▼
 4. (Optional) Verify full stack with Docker Compose
    docker-compose up --build
-   Only needed if you want to test postgres + redis + all services together locally
-   Skip this step if you are confident from Step 3
+   │
+   What this adds over Step 3:
+   ├── Starts postgres container     ← Step 3 smoke test has no real DB
+   ├── Starts redis container        ← Step 3 smoke test has no real Redis
+   ├── Starts API + Frontend together as a complete system
+   └── You can open http://localhost:3000 and manually test end-to-end
+   │
+   Skip this step if you only changed backend logic and Step 3 passed.
+   Use this step if you changed DB queries, Redis caching, or cross-service behaviour.
       │
       ▼
-5. Push to git
-   bash scripts/git_manager.sh   (option 2)  — or —  git push enterprise main
-   Cloud Build triggers automatically → tests → build → deploy to Cloud Run
+5. (Optional) Manually push image to Artifact Registry
+   Only needed if you want to deploy a specific locally-built image
+   WITHOUT going through Cloud Build (e.g. hotfix or manual override)
+
+   # Authenticate Docker to Artifact Registry (one-time)
+   gcloud auth configure-docker us-central1-docker.pkg.dev
+
+   # Tag the locally built image with the Artifact Registry path
+   docker tag rag-api:TAG us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:TAG
+   docker tag rag-frontend:TAG us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:TAG
+
+   # Push to Artifact Registry
+   docker push us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-api:TAG
+   docker push us-central1-docker.pkg.dev/PROJECT_ID/rag-repo/rag-frontend:TAG
+
+   Skip this step in normal workflow — Step 6 (git push) triggers
+   Cloud Build which builds and pushes automatically.
+      │
+      ▼
+6. Push to git                       ← normal workflow ends here
+   bash scripts/git_manager.sh  (option 2)
+   — or —
+   git push enterprise main
+
+   Cloud Build triggers automatically:
+   tests → build → push to Artifact Registry → deploy to Cloud Run
 ```
 
-> **Why tests before Docker Compose?** `build_and_test.sh` runs all 81 tests and the 70% coverage gate before building any Docker image. If you run `docker-compose up --build` first and tests fail afterwards, you have built and run untested code — defeating the purpose of the gate. Always run `build_and_test.sh` before Docker Compose.
+**Summary — what each step builds and where the image goes:**
 
-You **do not** need to manually build Docker images and push them. Step 5 (`git push`) triggers Cloud Build which handles the full build, test, and deployment pipeline automatically.
+| Step | Builds image? | Where the image lives | Pushed to Artifact Registry? |
+|------|-------------|----------------------|------------------------------|
+| 2 — Dev servers | No | Nowhere — raw code only | No |
+| 3 — build_and_test.sh | Yes — locally | Your machine only | No |
+| 4 — Docker Compose | Yes — locally | Your machine only | No |
+| 5 — Manual push (optional) | No — uses Step 3 image | Artifact Registry | Yes — manually |
+| 6 — git push → Cloud Build | Yes — on GCP | Artifact Registry | Yes — automatically |
 
 ---
 
