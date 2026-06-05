@@ -83,20 +83,24 @@ steps:
       - .
     waitFor: [test]
 
-  # ── Stage 7: Build Frontend image ────────────────────────────────────────────
+  # ── Stage 7: Build Frontend image (Next.js — replaces Streamlit) ─────────────
+  # NEXT_PUBLIC_API_URL is baked in at build time; the deploy step below reads
+  # the live API URL after rag-api is deployed and passes it as a build-arg.
   - name: gcr.io/cloud-builders/docker
     id: build-frontend
+    entrypoint: bash
     args:
-      - build
-      - -f
-      - Dockerfile.streamlit
-      - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA
-      - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:latest
-      - --label
-      - git.sha=$COMMIT_SHA
-      - .
+      - -c
+      - |
+        API_URL=$(gcloud run services describe rag-api \
+          --region=${_REGION} --project=$PROJECT_ID --format="value(status.url)" 2>/dev/null \
+          || echo "https://rag-api-placeholder.a.run.app")
+        docker build -f Dockerfile.nextjs \
+          --build-arg NEXT_PUBLIC_API_URL="$API_URL" \
+          -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA \
+          -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:latest \
+          --label git.sha=$COMMIT_SHA \
+          .
     waitFor: [test]
 
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
@@ -111,7 +115,7 @@ steps:
     args: [push, --all-tags, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend]
     waitFor: [build-frontend]
 
-  # ── Stage 10: Deploy API to Cloud Run ────────────────────────────────────────
+  # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-api
     entrypoint: gcloud
@@ -134,27 +138,28 @@ steps:
       - --cpu=2
     waitFor: [push-api]
 
-  # ── Stage 11: Deploy Frontend to Cloud Run ────────────────────────────────────
+  # ── Stage 11: Deploy Frontend (Next.js) to Cloud Run ─────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-frontend
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - rag-frontend
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA
-      - --region=${_REGION}
-      - --platform=managed
-      - --allow-unauthenticated
-      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag
-      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest
-      - --service-account=rag-cloudrun-sa@$PROJECT_ID.iam.gserviceaccount.com
-      - --min-instances=1
-      - --max-instances=100
-      - --concurrency=20
-      - --memory=4Gi
-      - --cpu=2
-    waitFor: [push-frontend]
+      - -c
+      - |
+        API_URL=$(gcloud run services describe rag-api \
+          --region=${_REGION} --project=$PROJECT_ID --format="value(status.url)")
+        gcloud run deploy rag-frontend \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend:$COMMIT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --set-env-vars="NEXT_PUBLIC_API_URL=${API_URL},ENVIRONMENT=production" \
+          --service-account=rag-cloudrun-sa@$PROJECT_ID.iam.gserviceaccount.com \
+          --min-instances=1 \
+          --max-instances=100 \
+          --concurrency=80 \
+          --memory=1Gi \
+          --cpu=1
+    waitFor: [push-frontend, deploy-api]
 
   # ── Stage 12: Upload coverage report as build artifact ────────────────────────
   - name: gcr.io/cloud-builders/gsutil

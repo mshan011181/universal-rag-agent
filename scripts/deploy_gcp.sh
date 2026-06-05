@@ -265,32 +265,38 @@ IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "v1")
 API_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/rag-api:${IMAGE_TAG}"
 FRONTEND_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/rag-frontend:${IMAGE_TAG}"
 
-echo "  Building API image..."
+echo "  Building API image (FastAPI)..."
 docker build -f Dockerfile \
   -t "$API_IMAGE" -t "${API_IMAGE%:*}:latest" \
   --label "git.sha=${IMAGE_TAG}" .
 
-echo "  Building Frontend image..."
-docker build -f Dockerfile.streamlit \
+# Get the API URL first so the Next.js build can bake it in
+# (If re-deploying, read the existing URL; on first deploy it won't exist yet
+#  so use a placeholder — set NEXT_PUBLIC_API_URL in env to override)
+API_URL_BUILD="${NEXT_PUBLIC_API_URL:-https://rag-api-placeholder.a.run.app}"
+
+echo "  Building Frontend image (Next.js) with API_URL=${API_URL_BUILD}..."
+docker build -f Dockerfile.nextjs \
+  --build-arg NEXT_PUBLIC_API_URL="$API_URL_BUILD" \
   -t "$FRONTEND_IMAGE" -t "${FRONTEND_IMAGE%:*}:latest" \
   --label "git.sha=${IMAGE_TAG}" .
 
-echo "  Pushing images..."
+echo "  Pushing images to Artifact Registry..."
 docker push --all-tags "${API_IMAGE%:*}"
 docker push --all-tags "${FRONTEND_IMAGE%:*}"
 
-COMMON_ENV="LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production"
-COMMON_SECRETS="PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest"
+API_ENV="LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production"
+API_SECRETS="PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,JWT_SECRET=jwt-secret:latest"
 
-echo "  Deploying API to Cloud Run..."
+echo "  Deploying API (FastAPI) to Cloud Run..."
 gcloud run deploy rag-api \
   --image="$API_IMAGE" \
   --region="$REGION" \
   --platform=managed \
   --allow-unauthenticated \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="$COMMON_ENV" \
-  --set-secrets="${COMMON_SECRETS},DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,JWT_SECRET=jwt-secret:latest" \
+  --set-env-vars="$API_ENV" \
+  --set-secrets="$API_SECRETS" \
   --add-cloudsql-instances="${PROJECT_ID}:${REGION}:${DB_INSTANCE}" \
   --vpc-connector="$VPC_CONNECTOR" \
   --vpc-egress=private-ranges-only \
@@ -302,42 +308,49 @@ gcloud run deploy rag-api \
   --project="$PROJECT_ID" \
   --quiet
 
-echo "  Deploying Frontend to Cloud Run..."
+# Get the live API URL and redeploy the frontend with the correct URL baked in
+API_URL=$(gcloud run services describe rag-api \
+  --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")
+
+echo "  Rebuilding Frontend with live API URL: $API_URL"
+docker build -f Dockerfile.nextjs \
+  --build-arg NEXT_PUBLIC_API_URL="$API_URL" \
+  -t "$FRONTEND_IMAGE" -t "${FRONTEND_IMAGE%:*}:latest" \
+  --label "git.sha=${IMAGE_TAG}" .
+docker push --all-tags "${FRONTEND_IMAGE%:*}"
+
+echo "  Deploying Frontend (Next.js) to Cloud Run..."
 gcloud run deploy rag-frontend \
   --image="$FRONTEND_IMAGE" \
   --region="$REGION" \
   --platform=managed \
   --allow-unauthenticated \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="$COMMON_ENV" \
-  --set-secrets="$COMMON_SECRETS" \
-  --vpc-connector="$VPC_CONNECTOR" \
-  --vpc-egress=private-ranges-only \
+  --set-env-vars="NEXT_PUBLIC_API_URL=${API_URL},ENVIRONMENT=production" \
   --min-instances=1 \
   --max-instances=100 \
-  --concurrency=20 \
-  --memory=4Gi \
-  --cpu=2 \
+  --concurrency=80 \
+  --memory=1Gi \
+  --cpu=1 \
   --project="$PROJECT_ID" \
   --quiet
 
 # ── Print URLs ─────────────────────────────────────────────────────────────────
-API_URL=$(gcloud run services describe rag-api \
-  --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")
 FRONTEND_URL=$(gcloud run services describe rag-frontend \
   --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")
 
 echo ""
 echo "============================================================"
-echo " Deployment complete — AFTER (managed services)"
+echo " Deployment complete"
 echo "============================================================"
 echo ""
-echo "  API      : $API_URL"
-echo "  Frontend : $FRONTEND_URL"
-echo "  Vector DB: Pinecone  (index: universal-rag)"
-echo "  DB       : Cloud SQL ${PROJECT_ID}:${REGION}:${DB_INSTANCE}"
-echo "  Cache    : Memorystore ${REDIS_IP}:6379 (via VPC connector)"
-echo "  LLM      : Vertex AI Claude (claude-sonnet-4-5)"
+echo "  UI  (Next.js)  : $FRONTEND_URL"
+echo "  API (FastAPI)  : $API_URL"
+echo "  Vector DB      : Pinecone (index: universal-rag)"
+echo "  DB             : Cloud SQL ${PROJECT_ID}:${REGION}:${DB_INSTANCE}"
+echo "  Cache          : Memorystore ${REDIS_IP}:6379 (via VPC connector)"
+echo "  LLM            : Anthropic Claude (claude-sonnet-4-5)"
+echo "  Monitoring     : LangSmith (project: universal-rag-enterprise)"
 echo ""
 echo "  REQUIRED NEXT STEP — run the DB schema:"
 echo "    gcloud sql connect $DB_INSTANCE --user=$DB_USER --database=$DB_NAME \\"

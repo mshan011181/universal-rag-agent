@@ -1,0 +1,46 @@
+# =============================================================================
+# Dockerfile.nextjs — Production Next.js build
+# Multi-stage: builder → standalone runtime image (~150MB)
+# Cloud Run injects PORT env var; Next.js reads it automatically.
+# =============================================================================
+
+# ── Stage 1: Install dependencies ─────────────────────────────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY frontend/package.json ./
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
+
+# ── Stage 2: Build ────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY frontend/ .
+
+# NEXT_PUBLIC_API_URL is baked in at build time.
+# Override with --build-arg NEXT_PUBLIC_API_URL=https://rag-api-xxx.a.run.app
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN npm run build
+
+# ── Stage 3: Production runtime ───────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# Cloud Run injects PORT; Next.js standalone respects it
+ENV PORT=3000
+
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+
+# Copy only the standalone output (no dev deps, no source)
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "server.js"]
