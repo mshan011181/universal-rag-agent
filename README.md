@@ -514,11 +514,14 @@ The rule is simple: **tests always come before any Docker build.** You never bui
    docker-compose up --build
    │
    What this adds over Step 3:
-   ├── Rebuilds API + Frontend images (same code, fresh build)
-   ├── Starts postgres container     ← real DB — Step 3 has no DB
-   ├── Starts redis container        ← real Redis — Step 3 has no Redis
-   ├── Starts API + Frontend + postgres + redis all together
+   ├── Rebuilds rag-api + rag-frontend images (our code — built from Dockerfile + Dockerfile.nextjs)
+   ├── Pulls postgres:16-alpine from Docker Hub  ← official image, no Dockerfile for this
+   ├── Pulls redis:7-alpine from Docker Hub      ← official image, no Dockerfile for this
+   ├── Starts all 4 together: API + Frontend + postgres + redis
    └── Open http://localhost:3000 — manually test the full system end-to-end
+   │
+   Note: postgres and redis have NO custom Dockerfile — Docker Compose pulls
+         the official images directly. Only API and Frontend are our own images.
    │
    Output: Full stack running locally. API + Frontend images refreshed on your machine.
            Use THESE images (from Step 4) for the manual push in Step 5.
@@ -560,10 +563,10 @@ The rule is simple: **tests always come before any Docker build.** You never bui
 | Step | What is built | API image | Frontend image | postgres + redis | Pushed to Artifact Registry? |
 |------|--------------|-----------|---------------|-----------------|------------------------------|
 | 2 — Dev servers | Nothing | Raw code only | Raw code only | No | No |
-| 3 — build_and_test.sh | API + Frontend locally | ✓ local | ✓ local | No | No |
-| 4 — Docker Compose | API + Frontend + full stack | ✓ local (rebuilt) | ✓ local (rebuilt) | ✓ running | No |
-| 5 — Manual push (optional) | Nothing new — pushes Step 4 images | ✓ Artifact Registry | ✓ Artifact Registry | — | Yes — manually |
-| 6 — git push → Cloud Build | API + Frontend on GCP | ✓ Artifact Registry | ✓ Artifact Registry | — (managed) | Yes — automatically |
+| 3 — build_and_test.sh | Our API + Frontend images only | ✓ local | ✓ local | No (not needed) | No |
+| 4 — Docker Compose | Our API + Frontend rebuilt; postgres + redis pulled from Docker Hub | ✓ local (rebuilt) | ✓ local (rebuilt) | ✓ official images pulled | No |
+| 5 — Manual push (optional) | Nothing new — pushes Step 4 images | ✓ Artifact Registry | ✓ Artifact Registry | Not pushed (not our images) | Yes — manually |
+| 6 — git push → Cloud Build | Our API + Frontend on GCP | ✓ Artifact Registry | ✓ Artifact Registry | Not pushed (Cloud SQL + Memorystore used instead) | Yes — automatically |
 
 ---
 
