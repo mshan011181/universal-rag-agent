@@ -592,8 +592,9 @@ The table below shows every API key the system uses, whether it is required for 
 |-----------|--------------|
 | **Local dev (writing code)** | `GROQ_API_KEY` + `PINECONE_API_KEY` |
 | **Local dev with monitoring** | Above + `LANGSMITH_API_KEY` |
-| **Production deploy** | `ANTHROPIC_API_KEY` + `PINECONE_API_KEY` + `LANGSMITH_API_KEY` + `GROQ_API_KEY` + `TAVILY_API_KEY` + `COHERE_API_KEY` |
-| **GCP infra only (no LLM calls)** | `PINECONE_API_KEY` + `GROQ_API_KEY` (at minimum) |
+| **Production deploy** | All 6 — `GROQ_API_KEY` + `PINECONE_API_KEY` + `ANTHROPIC_API_KEY` + `LANGSMITH_API_KEY` + `TAVILY_API_KEY` + `COHERE_API_KEY` |
+
+> `deploy_gcp.sh` always prompts for all 6 keys — none can be skipped during production setup.
 
 ---
 
