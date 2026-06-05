@@ -876,6 +876,108 @@ At high traffic (millions of requests/month), the gap narrows — GKE can be mor
 
 ---
 
+## Deployment vs Build/Test Pipeline — What Is the Difference?
+
+Before reading the sections below, it helps to understand that these are **two completely separate concerns** that work together.
+
+---
+
+**Build/Test Pipeline** answers: *"Is the code good enough to ship?"*
+- Runs quality checks — lint, type check, security scan
+- Runs 81 tests and enforces 70% coverage
+- If all checks pass, builds Docker images and stores them in Artifact Registry
+- **Output: Docker images sitting in Artifact Registry, ready to be deployed**
+
+**Deployment (Option A — Cloud Run, or Option B — GKE)** answers: *"Where do those images run?"*
+- Takes the Docker images from Artifact Registry
+- Provisions the infrastructure — Cloud SQL, Memorystore, Pinecone, Secret Manager
+- Puts the containers live on Cloud Run or GKE
+- **Output: A live running application with a public HTTPS URL**
+
+---
+
+Think of it like a restaurant kitchen:
+
+```
+Build/Test Pipeline           Deployment
+────────────────────          ──────────────────────────────────
+"Prepare and quality-         "Serve it to customers"
+ check the dish"
+                        →
+Code → Test → Docker          Infrastructure → Live App
+image in Artifact             with public URL
+Registry
+```
+
+The Build/Test Pipeline **never touches live infrastructure**. It only validates code and produces images. The Deployment step is what actually makes the application reachable.
+
+---
+
+**How the two connect — three scenarios:**
+
+```
+─────────────────────────────────────────────────────────────────────
+Scenario 1: Day-to-day development (after first-time setup)
+─────────────────────────────────────────────────────────────────────
+
+  You write code
+       │
+       ▼
+  git push
+       │
+       └──► Cloud Build triggers automatically (cloudbuild.yaml)
+                 │
+                 ├── Steps 1–9  : Build/Test Pipeline
+                 │   (lint → typecheck → security → tests → docker build → push)
+                 │
+                 └── Steps 10–11: Deployment
+                     (gcloud run deploy → live on Cloud Run)
+
+  Cloud Build runs BOTH in one automated pipeline on every push.
+  You never run either script manually after first-time setup.
+
+─────────────────────────────────────────────────────────────────────
+Scenario 2: First-time infrastructure setup (run once only)
+─────────────────────────────────────────────────────────────────────
+
+  bash scripts/preflight_check.sh    ← verify prerequisites
+  bash scripts/deploy_gcp.sh         ← provision ALL GCP infrastructure
+                                        (Cloud SQL, Memorystore, Pinecone,
+                                         Secret Manager, VPC connector,
+                                         Service Account, IAM roles)
+                                        + build images + deploy to Cloud Run
+
+  After this runs once, all future deploys happen via Cloud Build (Scenario 1).
+  You do not run deploy_gcp.sh again unless rebuilding from scratch.
+
+─────────────────────────────────────────────────────────────────────
+Scenario 3: Local check before pushing (optional but recommended)
+─────────────────────────────────────────────────────────────────────
+
+  bash scripts/build_and_test.sh     ← runs the Build/Test pipeline locally
+                                        catches failures before Cloud Build does
+                                        does NOT deploy anything
+
+  git push                           ← then push — Cloud Build takes over
+```
+
+---
+
+**Summary table:**
+
+| | Build/Test Pipeline | Deployment |
+|---|---|---|
+| **Script (local)** | `scripts/build_and_test.sh` | `scripts/deploy_gcp.sh` (first time) |
+| **Script (K8s)** | Same | `scripts/setup_gke.sh` (first time) |
+| **Automated** | `cloudbuild.yaml` steps 1–9 | `cloudbuild.yaml` steps 10–11 |
+| **What it does** | Validates code, builds Docker images | Provisions infra, puts images live |
+| **Touches live infra?** | No | Yes |
+| **Runs how often?** | Every `git push` | Once for setup; then Cloud Build handles it |
+| **Output** | Docker images in Artifact Registry | Live app with public URL |
+| **If it fails** | No images produced, nothing deployed | Infrastructure may be partially created |
+
+---
+
 ## Build and Test Pipeline
 
 The pipeline answers one question before every deployment: **"Is this code safe to ship?"**
