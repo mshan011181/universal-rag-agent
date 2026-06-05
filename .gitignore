@@ -1,3 +1,6 @@
+# Git manager config — contains GitHub token, never commit this
+.git_manager_config
+
 # Virtual environments
 .venv/
 venv/
