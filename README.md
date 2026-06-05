@@ -174,8 +174,8 @@ All Enterprise Tenants                        All Enterprise Tenants
 | **Vector DB** | Pinecone (same in both) | Pinecone — unlimited, per-tenant namespaces |
 | **Relational DB** | PostgreSQL container | Cloud SQL PostgreSQL — 4000 conns, auto-failover, 64TB |
 | **Cache / Rate limit** | Redis container | Memorystore — 300GB, persistent, sharded |
-| **API** | FastAPI + uvicorn | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
-| **UI** | Next.js 14 + Tailwind CSS (replaces Streamlit) | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
+| **API** | FastAPI + uvicorn | **Cloud Run** — 1→100 auto-scale, serverless (GKE Autopilot if K8s required) |
+| **UI** | Next.js 14 + Tailwind CSS (replaces Streamlit) | **Cloud Run** — 1→100 auto-scale, serverless (GKE Autopilot if K8s required) |
 | **Container Registry** | Local | **Artifact Registry** (not Docker Hub) |
 | **Embeddings** | sentence-transformers all-MiniLM-L6-v2 (local) | Same — no API key needed |
 | **Transcription** | Groq Whisper large-v3 | Same |
