@@ -8,7 +8,7 @@
 [![Anthropic](https://img.shields.io/badge/Anthropic-Claude%20Sonnet-blueviolet)](https://www.anthropic.com/)
 [![LangSmith](https://img.shields.io/badge/LangSmith-Observability-orange)](https://smith.langchain.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.55-red?logo=streamlit)](https://streamlit.io/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
 
 ---
@@ -31,7 +31,7 @@ All Enterprise Tenants                        All Enterprise Tenants
       ├── FastAPI container   ~50 concurrent            │
       ├── Streamlit container ~20 concurrent            ▼
       ├── ChromaDB container  slows/crashes    Cloud Run (FastAPI)     1 → 100 containers
-      ├── PostgreSQL container hits conn limit  Cloud Run (Streamlit)   1 → 100 containers
+      ├── PostgreSQL container hits conn limit  Cloud Run (Next.js UI)  1 → 100 containers
       └── Redis container     runs OOM                  │         ─ or ─
                                                GKE Autopilot           2 → 100 pods
       LLM: Groq (hardcoded)                            │
@@ -54,6 +54,7 @@ All Enterprise Tenants                        All Enterprise Tenants
 - **3 LLM Providers** — `anthropic` (production default), `vertexai` (GCP-native), `groq` (local dev/CI)
 - **LangSmith Monitoring** — every LLM call traced with token counts, latency, cost, and quality scores
 - **Production API** — FastAPI with JWT + OAuth2 + API Key auth, Redis-backed rate limiting, audit log
+- **Production UI** — Next.js 14 (replaces Streamlit) — login, query, ingest, admin dashboard, role-based nav
 - **Observability** — Prometheus metrics, Grafana dashboards, structured logging, LangSmith traces
 - **Two Deployment Targets** — Cloud Run (serverless) or GKE Autopilot (K8s), same images
 - **Cloud Build CI/CD** — lint → typecheck → security → tests → build → push to Artifact Registry → deploy
@@ -98,7 +99,7 @@ All Enterprise Tenants                        All Enterprise Tenants
                     ▼                                             ▼
        ┌────────────────────────┐               ┌────────────────────────────┐
        │  Cloud Run / GKE       │               │  Cloud Run / GKE           │
-       │  FastAPI (rag-api)     │               │  Streamlit (rag-frontend)  │
+       │  FastAPI (rag-api)     │               │  Next.js 14 (rag-frontend) │
        │  1–100 containers      │               │  1–100 containers          │
        └────────────┬───────────┘               └────────────────────────────┘
                     │
@@ -174,7 +175,7 @@ All Enterprise Tenants                        All Enterprise Tenants
 | **Relational DB** | PostgreSQL container | Cloud SQL PostgreSQL — 4000 conns, auto-failover, 64TB |
 | **Cache / Rate limit** | Redis container | Memorystore — 300GB, persistent, sharded |
 | **API** | FastAPI + uvicorn | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
-| **UI** | Streamlit | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
+| **UI** | Next.js 14 + Tailwind CSS (replaces Streamlit) | Cloud Run **or** GKE Autopilot (1–100 auto-scale) |
 | **Container Registry** | Local | **Artifact Registry** (not Docker Hub) |
 | **Embeddings** | sentence-transformers all-MiniLM-L6-v2 (local) | Same — no API key needed |
 | **Transcription** | Groq Whisper large-v3 | Same |
@@ -250,24 +251,47 @@ export LANGSMITH_API_KEY=ls__your_key_here
 
 ```
 universal-rag-agent-enterprise/
-├── app.py                            # Streamlit UI entry point
-├── Dockerfile                        # API image (Cloud Run PORT env var aware)
-├── Dockerfile.streamlit              # Frontend image
-├── docker-compose.yml                # Local dev stack (postgres + redis containers)
-├── cloudbuild.yaml                   # Cloud Build CI/CD pipeline (12 stages)
-├── pytest.ini                        # Test config — 70% coverage gate
-├── requirements.txt                  # Core dependencies
-├── requirements-api.txt              # API container deps (langchain-anthropic, langsmith)
-├── requirements-streamlit.txt        # Frontend container deps
-├── requirements-dev.txt              # Test/lint tools
-├── .env.example                      # Full env template with all variables
+├── Dockerfile                        # FastAPI API image (Cloud Run PORT env var aware)
+├── Dockerfile.nextjs                 # Next.js UI image — multi-stage, ~150MB standalone
+├── Dockerfile.streamlit              # Streamlit image — local data exploration only
+├── docker-compose.yml                # Local dev: API + Next.js UI + postgres + redis
+├── cloudbuild.yaml                   # Cloud Build CI/CD — 12 stages, images gated on tests
+├── pytest.ini                        # Test config — 70% coverage gate, asyncio auto
+├── requirements.txt                  # Core shared deps
+├── requirements-api.txt              # API container: langchain-anthropic, langsmith, pinecone
+├── requirements-dev.txt              # Test/lint tools: pytest, ruff, mypy, bandit
+├── .env.example                      # Full env template
 ├── setup.sh                          # One-command local setup
 │
-├── src/
+├── frontend/                         # ── Next.js 14 Production UI ──────────────────
+│   ├── package.json                  # Next 14, React 18, Tailwind, TypeScript
+│   ├── next.config.js                # standalone output + /api/* dev proxy to FastAPI
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   └── src/
+│       ├── types/index.ts            # Shared TypeScript types (QueryResponse, AuthTokens…)
+│       ├── lib/
+│       │   ├── api.ts                # Fetch wrapper — auto-refresh on 401, all endpoints
+│       │   └── auth.ts               # restoreSession, getUserRole, clearSession
+│       ├── app/
+│       │   ├── layout.tsx            # Root layout + global CSS
+│       │   ├── page.tsx              # Root → redirect to /query
+│       │   ├── login/page.tsx        # Sign in → POST /api/auth/token
+│       │   ├── register/page.tsx     # Create account → POST /api/auth/register
+│       │   ├── query/page.tsx        # RAG query — pattern picker, quality badge, sources
+│       │   ├── ingest/page.tsx       # Drag-drop file upload + paste text, per-tenant namespace
+│       │   └── admin/page.tsx        # KPI cards + RAG pattern usage bar chart (admin only)
+│       └── components/
+│           ├── AuthGuard.tsx         # Redirects to /login if session invalid
+│           └── layout/
+│               ├── Sidebar.tsx       # Dark sidebar — role-based nav (admin link hidden for users)
+│               └── AppShell.tsx      # AuthGuard + Sidebar wrapper for all authenticated pages
+│
+├── src/                              # ── Python backend (shared by FastAPI) ─────────
 │   ├── config.py                     # All config: Pinecone, Anthropic, Vertex AI, LangSmith
-│   ├── agent.py                      # Main orchestrator
-│   ├── query_analyzer.py             # 5-dimension analyzer
-│   ├── pattern_router.py             # Routes queries to patterns
+│   ├── agent.py                      # Main RAG orchestrator
+│   ├── query_analyzer.py             # 5-dimension query analyzer
+│   ├── pattern_router.py             # Routes queries to optimal RAG pattern(s)
 │   ├── security.py                   # Prompt injection + PII detection/redaction
 │   ├── observability.py              # Prometheus metrics + structlog
 │   │
@@ -283,13 +307,13 @@ universal-rag-agent-enterprise/
 │   │   └── reranker.py               # Cohere + RRF reranking
 │   │
 │   ├── generation/
-│   │   └── llm.py                    # 3-provider factory + LangSmith bootstrap
+│   │   └── llm.py                    # 3-provider factory (anthropic/vertexai/groq) + LangSmith
 │   │
 │   └── memory/
 │       └── sqlite_store.py           # 4-layer local memory store
 │
-├── api/
-│   ├── main.py                       # FastAPI app — middleware + routers
+├── api/                              # ── FastAPI backend ────────────────────────────
+│   ├── main.py                       # App entry — CORS, middleware, routers
 │   ├── auth_utils.py                 # JWT + API Key auth
 │   ├── middleware/
 │   │   ├── rate_limit.py             # Redis-backed sliding window (Memorystore in prod)
@@ -299,28 +323,28 @@ universal-rag-agent-enterprise/
 │
 ├── infra/
 │   ├── gcp/
-│   │   ├── cloudrun-api.yaml         # Cloud Run service spec — API (1–100 containers)
-│   │   └── cloudrun-frontend.yaml    # Cloud Run service spec — Frontend
+│   │   ├── cloudrun-api.yaml         # Cloud Run service spec — FastAPI
+│   │   └── cloudrun-frontend.yaml    # Cloud Run service spec — Next.js
 │   ├── k8s/
-│   │   └── deployment.yml            # GKE manifests — Anthropic + LangSmith + HPAs
+│   │   └── deployment.yml            # GKE — Anthropic + LangSmith env, HPAs (2–100 pods)
 │   └── postgres/
 │       └── init.sql                  # 10-table multi-tenant schema
 │
 ├── scripts/
-│   ├── deploy_gcp.sh                 # One-command GCP provisioning (9 steps) → Cloud Run
-│   ├── setup_gke.sh                  # Build → Artifact Registry → GKE Autopilot (8 steps)
-│   ├── preflight_check.sh            # Pre-deploy validation (runs in <5 seconds)
-│   ├── build_and_test.sh             # Local pipeline: lint→test→build→smoke test
-│   └── create_pinecone_index.py      # Auto-creates Pinecone index (dim=384, cosine)
+│   ├── deploy_gcp.sh                 # 9-step GCP provisioning → Cloud Run (FastAPI + Next.js)
+│   ├── setup_gke.sh                  # 8-step GKE Autopilot deploy (same images)
+│   ├── preflight_check.sh            # Pre-deploy validation — completes in <5 seconds
+│   ├── build_and_test.sh             # Local pipeline: lint → test → docker build → smoke test
+│   └── create_pinecone_index.py      # Idempotent Pinecone index creation (dim=384, cosine)
 │
 └── tests/
-    ├── conftest.py                   # Fixtures: mocks Pinecone, Redis, LLM (zero network calls)
-    ├── test_api.py                   # Health, auth, protected routes (14 tests)
-    ├── test_vector_store.py          # Pinecone ingest/retrieve/namespace (13 tests)
-    ├── test_rate_limit.py            # Redis rate limiter, 429, fail-open (8 tests)
-    ├── test_llm.py                   # Provider switching, grade, faithfulness, retry (11 tests)
-    ├── test_query_analyzer.py        # 5-dimension routing, pattern selection (15 tests)
-    └── test_security.py              # Injection, PII, sanitization, upload validation (20 tests)
+    ├── conftest.py                   # Autouse mocks: Pinecone, Redis, LLM (zero network calls)
+    ├── test_api.py                   # Health, auth register/login/refresh, protected routes (14)
+    ├── test_vector_store.py          # Pinecone ingest/retrieve, namespace isolation (13)
+    ├── test_rate_limit.py            # Redis rate limiter, 429, fail-open, expire (8)
+    ├── test_llm.py                   # All 3 provider switching, grade, faithfulness, retry (11)
+    ├── test_query_analyzer.py        # 5 dimensions, pattern selection, deduplication (15)
+    └── test_security.py              # Injection, PII, sanitization, upload validation (20)
 ```
 
 ---
@@ -373,20 +397,72 @@ COHERE_API_KEY=your_cohere_key_here
 
 ### 3. Run Locally
 
+**Option A — Docker Compose (recommended, runs everything)**
 ```bash
-# Streamlit UI only
-streamlit run app.py
-
-# Full Docker stack (postgres + redis for local dev)
 docker-compose up -d --build
 ```
 
 | Service | URL |
 |---------|-----|
-| Streamlit UI | http://localhost:8501 |
+| Next.js UI | http://localhost:3000 |
 | FastAPI Swagger | http://localhost:8000/api/docs |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 (admin/admin) |
+
+**Option B — Next.js dev server** (hot-reload, faster iteration)
+```bash
+cd frontend
+npm install
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+# Open http://localhost:3000
+```
+Then start the FastAPI backend separately:
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+---
+
+## Production UI — Next.js 14 (replaces Streamlit)
+
+Streamlit is a data-science prototyping tool — not suitable for production enterprise. It was replaced with **Next.js 14** which calls the FastAPI backend via REST API. They are fully decoupled services.
+
+### Why Next.js over Streamlit
+
+| | Streamlit | Next.js 14 |
+|---|---|---|
+| Auth UI | Hacked via session_state | Proper login / register pages |
+| Routing | No real routing | `/login` `/register` `/query` `/ingest` `/admin` |
+| Role-based views | Not possible | Admin-only Dashboard — hidden for regular users |
+| SSO / SAML readiness | No | Standard OAuth2 flow plugs in |
+| Mobile responsive | No | Yes — Tailwind responsive layout |
+| Concurrency | 1 Python process per user | Node.js — 80 concurrent users per instance |
+| Docker image size | ~500MB Python | ~150MB standalone Node output |
+| Production SLA | Not designed for it | Vercel/Cloud Run production-grade |
+
+### Pages
+
+| Route | What It Does |
+|-------|-------------|
+| `/login` | Email + password → POST `/api/auth/token` → JWT stored in memory |
+| `/register` | Create account → POST `/api/auth/register` |
+| `/query` | RAG query with pattern picker (auto or any of 14), namespace selector, quality badge, collapsible sources, click-to-ask follow-up questions |
+| `/ingest` | Drag-and-drop file upload (PDF/DOCX/TXT/CSV) or paste text — per-tenant namespace |
+| `/admin` | KPI cards (total queries, users, documents, avg quality score) + RAG pattern usage bar chart — **admin role only** |
+
+### Auth Flow
+
+```
+User logs in → POST /api/auth/token
+             ← access_token (stored in JS memory, not localStorage)
+             ← refresh_token (stored in sessionStorage)
+
+Every API call → Authorization: Bearer <access_token>
+On 401        → auto-retry with refresh_token → POST /api/auth/refresh
+On refresh fail → redirect to /login
+```
+
+Access token is never written to localStorage — mitigates XSS token theft.
 
 ---
 
@@ -466,8 +542,8 @@ gcloud sql connect rag-postgres --user=raguser --database=ragdb --project=your-p
 
 Output after deploy:
 ```
-  API      : https://rag-api-xxxx-uc.a.run.app
-  Frontend : https://rag-frontend-xxxx-uc.a.run.app
+  UI  (Next.js)  : https://rag-frontend-xxxx-uc.a.run.app
+  API (FastAPI)  : https://rag-api-xxxx-uc.a.run.app/api/docs
 ```
 
 ---
@@ -620,7 +696,7 @@ Coverage gate: **70% minimum** enforced in both local pipeline and Cloud Build.
 | No monitoring | **LangSmith** | Full LLM trace, cost, latency, quality per query |
 | Docker Hub | **Artifact Registry** | Private GCP registry, IAM-controlled, VPC-native pulls |
 | FastAPI VM container | **Cloud Run / GKE** | 1→100 auto-scale, pay per request |
-| Streamlit VM container | **Cloud Run / GKE** | Same auto-scaling |
+| Streamlit VM container | **Next.js 14 on Cloud Run / GKE** | Proper auth, role-based UI, responsive, 1→100 auto-scale |
 
 ---
 
@@ -733,6 +809,6 @@ Viewing and downloading this code is permitted for reference and educational pur
 
 **Shan** — AI Engineer
 
-Built with Anthropic Claude, LangSmith, LangChain, Pinecone, Google Cloud Run, GKE, and Artifact Registry.
+Built with Anthropic Claude, LangSmith, LangChain, Pinecone, Next.js 14, FastAPI, Google Cloud Run, GKE, and Artifact Registry.
 
 GitHub: [https://github.com/mshan011181/universal-rag-agent-enterprise](https://github.com/mshan011181/universal-rag-agent-enterprise)
