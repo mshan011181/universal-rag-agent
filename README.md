@@ -544,35 +544,46 @@ Next.js middleware runs before the page is rendered — unauthenticated users ar
 
 ### Option A — Cloud Run (Serverless, Recommended)
 
-Fully managed — no cluster, no nodes, no infrastructure to maintain.
+Fully managed — no cluster, no nodes, no infrastructure to maintain. Two scripts do everything.
 
-**Step 1 — Pre-flight check**
+---
+
+#### Script 1 — Pre-flight check (`scripts/preflight_check.sh`)
+
+Run this **before** the deploy. It checks every prerequisite and tells you exactly what to fix before you start.
+
 ```bash
+cd universal-rag-agent-enterprise
 export PROJECT_ID=your-gcp-project-id
 bash scripts/preflight_check.sh
 ```
-Validates tools, credentials, env vars, and ADC. Completes in under 5 seconds.
 
-**Step 2 — Deploy everything**
+What it checks:
+- `gcloud`, `docker`, `git`, `python` are installed and on PATH
+- You are in the correct repo root directory
+- `PROJECT_ID` env var is exported
+- GCP Application Default Credentials (ADC) file exists locally
+- All API keys are exported (warns — not fails — if missing, since `deploy_gcp.sh` prompts for them)
+
+Completes in under 5 seconds — no network calls, no processes spawned.
+
+> **One manual step that cannot be scripted:** Before deploying, enable Vertex AI Claude in the GCP Console:
+> `console.cloud.google.com/vertex-ai/model-garden` → search **Claude** → **Enable**
+> If you skip this, Cloud Run deploys fine but every LLM call returns `403 Permission Denied`.
+
+Once preflight shows all green, run the deploy script.
+
+---
+
+#### Script 2 — Full GCP deploy (`scripts/deploy_gcp.sh`)
+
 ```bash
 bash scripts/deploy_gcp.sh
 ```
 
-The script provisions 9 steps end-to-end (~15 minutes total):
+Provisions your **entire production infrastructure** in 9 sequential steps (~15 minutes total). Each step is idempotent — safe to re-run if anything fails midway.
 
-| Step | What It Provisions | Time |
-|------|--------------------|------|
-| 1 | Enable 10 GCP APIs | ~1 min |
-| 2 | Artifact Registry repo | ~30s |
-| 3 | Cloud SQL PostgreSQL (auto-grow, daily backup, point-in-time recovery) | ~5 min |
-| 4 | Serverless VPC connector (required for Memorystore access) | ~2 min |
-| 5 | Memorystore Redis 7 (5GB, VPC-internal) | ~2 min |
-| 6 | Pinecone index (idempotent — skips if exists) | ~30s |
-| 7 | Service account + 4 IAM roles | ~30s |
-| 8 | All secrets in Secret Manager (Anthropic, LangSmith, Pinecone, DB, Redis, JWT) | ~30s |
-| 9 | Docker build → push to Artifact Registry → Cloud Run deploy (API + Frontend) | ~5 min |
-
-**What the deploy script prompts for:**
+**What the script prompts for (paste keys when asked):**
 ```
 PINECONE_API_KEY   → pinecone.io dashboard
 ANTHROPIC_API_KEY  → console.anthropic.com
@@ -582,17 +593,126 @@ TAVILY_API_KEY     → tavily.com
 COHERE_API_KEY     → cohere.com
 ```
 
-**Step 3 — Run DB schema**
+---
+
+**Step 1 — Enable GCP APIs** (~1 min)
+
+Turns on 10 GCP services your project needs: Cloud Run, Cloud SQL Admin, Redis (Memorystore), VPC Access, Vertex AI, Artifact Registry, Secret Manager, Cloud Build, Compute Engine, and Service Networking. These are off by default on a new GCP project.
+
+---
+
+**Step 2 — Artifact Registry** (~30s)
+
+Creates a private Docker image repository called `rag-repo` in your region. All built images (FastAPI + Next.js) are stored here — not on Docker Hub. Also runs `gcloud auth configure-docker` so your local Docker can push to it. Skips silently if the repo already exists.
+
+---
+
+**Step 3 — Cloud SQL PostgreSQL** (~5 min) *(replaces postgres container)*
+
+- Creates a PostgreSQL 16 instance named `rag-postgres` with auto-growing storage, daily backups at 2am, and point-in-time recovery enabled
+- Creates the `ragdb` database inside it
+- Creates the `raguser` account with a randomly generated 24-character password
+- Saves the password to Secret Manager as `db-password` on first run — re-uses it on subsequent runs so the connection string stays consistent
+- Builds the connection string using the Unix socket path format Cloud Run requires (`?host=/cloudsql/...`) — no public IP needed
+
+---
+
+**Step 4 — Serverless VPC Access connector** (~2 min)
+
+Creates a VPC connector (`rag-vpc-connector`) that bridges Cloud Run to your VPC. This is required because Memorystore Redis is VPC-internal only — Cloud Run containers cannot reach it without this connector. Without this step, all Redis calls would fail silently.
+
+---
+
+**Step 5 — Memorystore Redis** (~2 min) *(replaces redis container)*
+
+Creates a managed Redis 7 instance named `rag-redis` (5GB, VPC-internal). After creation it fetches the private VPC IP address and constructs the `REDIS_URL` (`redis://IP:6379/0`) that the app uses for rate limiting and session caching.
+
+---
+
+**Step 6 — Pinecone index** (~30s) *(replaces ChromaDB container)*
+
+Calls `scripts/create_pinecone_index.py` — creates the `universal-rag` index with `dimension=384` and `metric=cosine` if it does not already exist, then polls until Pinecone reports it ready. Idempotent — skips if the index already exists.
+
+---
+
+**Step 7 — Service account + IAM roles** (~30s)
+
+Creates a GCP service account `rag-cloudrun-sa` and grants it exactly 4 roles:
+
+| Role | Why |
+|------|-----|
+| `roles/aiplatform.user` | Cloud Run can call Vertex AI Claude without an API key |
+| `roles/cloudsql.client` | Connect to Cloud SQL via Unix socket |
+| `roles/secretmanager.secretAccessor` | Read secrets at runtime |
+| `roles/vpcaccess.user` | Use the VPC connector to reach Memorystore |
+
+---
+
+**Step 8 — Secret Manager** (~30s)
+
+Stores every credential the app needs as a named secret. If a secret already exists it adds a new version rather than failing. Also grants the Cloud Build service account access to secrets so the CI/CD pipeline can deploy without storing keys in the build config.
+
+| Secret name | Value |
+|-------------|-------|
+| `db-password` | Auto-generated, persisted across re-runs |
+| `database-url` | Cloud SQL Unix socket connection string |
+| `redis-url` | Memorystore private IP URL |
+| `jwt-secret` | Auto-generated 64-char hex |
+| `anthropic-api-key` | From prompt |
+| `langsmith-api-key` | From prompt |
+| `pinecone-api-key` | From prompt |
+| `groq-api-key` | From prompt |
+| `tavily-api-key` | From prompt |
+| `cohere-api-key` | From prompt |
+
+---
+
+**Step 9 — Build images → push → deploy Cloud Run** (~5 min)
+
+Builds Docker images for both services, tags each with the current git commit SHA + `latest`, pushes to Artifact Registry, then deploys two Cloud Run services:
+
+**`rag-api` (FastAPI backend):**
+- Secrets pulled from Secret Manager at runtime — never baked into the image
+- Cloud SQL attached via Unix socket (`--add-cloudsql-instances`)
+- VPC connector attached for Memorystore access (`--vpc-connector`)
+- `LLM_PROVIDER=anthropic` — uses Anthropic Claude in production
+- `LANGCHAIN_TRACING_V2=true` — LangSmith traces every LLM call
+- `--min-instances=1` (no cold starts) · `--max-instances=100` · `--concurrency=80` · 4GB RAM · 2 vCPU
+
+**`rag-frontend` (Next.js UI):**
+- `NEXT_PUBLIC_API_URL` baked in at build time pointing to the live FastAPI URL
+- No secrets needed — all API calls go through the FastAPI backend
+- `--min-instances=1` · `--max-instances=100` · `--concurrency=80` · 1GB RAM · 1 vCPU
+- Cloud Run automatically provisions HTTPS with TLS certificates — no nginx, no load balancer config
+
+Using the commit SHA tag means every deploy is traceable and rollbacks are one command:
+```bash
+gcloud run deploy rag-api --image=REGION-docker.pkg.dev/PROJECT/rag-repo/rag-api:<previous-sha>
+```
+
+---
+
+**Step 3 — Run the DB schema** (after deploy)
+
+Cloud SQL starts empty. Connect and apply the 10-table multi-tenant schema:
+
 ```bash
 gcloud sql connect rag-postgres --user=raguser --database=ragdb --project=your-project-id
 # At the psql prompt:
 \i infra/postgres/init.sql
 ```
 
-Output after deploy:
+---
+
+**Output after successful deploy:**
 ```
   UI  (Next.js)  : https://rag-frontend-xxxx-uc.a.run.app
   API (FastAPI)  : https://rag-api-xxxx-uc.a.run.app/api/docs
+  Vector DB      : Pinecone (index: universal-rag)
+  DB             : Cloud SQL PROJECT:REGION:rag-postgres
+  Cache          : Memorystore IP:6379 (via VPC connector)
+  LLM            : Anthropic Claude (claude-sonnet-4-5)
+  Monitoring     : LangSmith (project: universal-rag-enterprise)
 ```
 
 ---
