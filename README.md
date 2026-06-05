@@ -778,15 +778,101 @@ The `deploy_gcp.sh` and `setup_gke.sh` scripts handle this automatically.
 
 ### Cloud Run vs GKE — When to Use Which
 
+Both options run the **same Docker images** from Artifact Registry. The choice is purely about the hosting model — not the application code.
+
 | | Cloud Run | GKE Autopilot |
 |---|---|---|
-| Node management | None | None (Autopilot) |
-| Cold starts | Yes (min-instances=1 avoids) | No |
-| Persistent WebSockets | No | Yes |
-| Custom sidecars | No | Yes |
-| Cost at low traffic | Lower (pay per request) | Higher (min 2 pods always running) |
-| Setup complexity | Simpler | More control |
-| Best for | Most enterprise deployments | Specific K8s requirements |
+| **Node management** | None | None (Autopilot manages nodes) |
+| **Cold starts** | Yes — mitigated by `--min-instances=1` | No — pods are always running |
+| **Persistent WebSockets** | No | Yes |
+| **Custom sidecars** | No | Yes |
+| **Cost at low traffic** | Lower — pay per request, scales to zero | Higher — min 2 pods always running (~$50–80/month minimum) |
+| **Setup complexity** | ~15 min via `deploy_gcp.sh` | ~25 min via `setup_gke.sh` + GKE cluster |
+| **Best for** | Most enterprise deployments | Specific K8s requirements only |
+
+---
+
+#### Node management
+
+**Cloud Run** — Google manages everything. There are no nodes, no node pools, no VM sizes to choose, no OS patches. You deploy a container image and Cloud Run handles the rest.
+
+**GKE Autopilot** — Google manages the nodes for you (unlike Standard GKE where you manage node pools yourself). However, you still manage Kubernetes objects — Deployments, Services, HPAs, Secrets, Namespaces. There is more control but also more responsibility.
+
+---
+
+#### Cold starts
+
+**Cloud Run** — when a service receives a request and no container is running, GCP spins one up. This takes 2–8 seconds depending on image size and startup time. For the FastAPI container this means the first request after a period of inactivity is slow.
+
+**Fix used in this project:** `--min-instances=1` keeps one container always warm. This adds a small cost (~$5–10/month) but eliminates cold starts entirely. The trade-off is worth it for production enterprise.
+
+**GKE** — pods are always running (min 2 replicas in `deployment.yml`). No cold starts, but you pay for those pods 24/7 regardless of traffic.
+
+---
+
+#### Persistent WebSockets
+
+**Cloud Run** — HTTP/2 streaming is supported but true long-lived WebSocket connections are unreliable. Cloud Run has a request timeout (max 3600s) and no guarantee the same container handles both sides of a WebSocket upgrade. Not suitable for real-time bidirectional communication.
+
+**GKE** — pods are long-running processes. WebSocket connections persist for as long as the pod is alive. Use GKE if your enterprise needs real-time features like live document collaboration, streaming query results, or push notifications.
+
+---
+
+#### Custom sidecars
+
+**Cloud Run** — one container per service. You cannot run a second container alongside it (e.g. a logging agent, a secrets sync container, a service mesh proxy like Envoy).
+
+**GKE** — a Pod can have multiple containers. Common enterprise sidecars include:
+- **Cloud SQL Auth Proxy** — sidecar handles Cloud SQL auth instead of Unix socket
+- **Envoy / Istio** — service mesh for mTLS between microservices
+- **Fluent Bit** — log forwarding sidecar
+- **Secrets Store CSI driver** — syncs Secret Manager into pod filesystem
+
+---
+
+#### Cost at low traffic
+
+**Cloud Run** — billed per request (CPU + memory × seconds of actual request handling). If no requests come in, you pay only for the 1 warm instance (`--min-instances=1`). At low traffic this is the cheapest option.
+
+**GKE Autopilot** — billed per pod by CPU + memory × time running. With `minReplicas=2` in the HPA, you always pay for at least 2 pods. At 4Gi/2CPU per pod, the minimum cost is roughly $80–120/month even with zero traffic.
+
+**Cost comparison at 10,000 requests/month (typical early enterprise):**
+
+| | Cloud Run | GKE Autopilot |
+|---|---|---|
+| Compute | ~$5–15 | ~$80–120 |
+| Pay model | Per request | Per pod-hour |
+| Scales to zero | Yes (but min-instances=1 keeps 1 warm) | No |
+
+At high traffic (millions of requests/month), the gap narrows — GKE can be more cost-efficient at sustained load.
+
+---
+
+#### Setup complexity
+
+**Cloud Run** — `bash scripts/deploy_gcp.sh` provisions everything in ~15 minutes. No `kubectl`, no YAML manifests to manage, no cluster to maintain.
+
+**GKE Autopilot** — requires running `deploy_gcp.sh` first (for shared infrastructure), then `bash scripts/setup_gke.sh` for the cluster. You also need `kubectl` installed and manage K8s objects (Deployments, Services, HPAs, Secrets). Total setup ~25 minutes. Ongoing maintenance is higher.
+
+---
+
+#### Decision guide — which to pick
+
+**Choose Cloud Run if:**
+- You are starting a new enterprise deployment
+- Your team does not already use Kubernetes
+- You want zero infrastructure maintenance
+- Traffic is bursty or unpredictable
+- You do not need WebSockets or sidecars
+
+**Choose GKE Autopilot if:**
+- Your organisation already has a GKE cluster and K8s expertise
+- You need persistent WebSocket connections (real-time features)
+- You need sidecar containers (service mesh, custom log agents)
+- You have sustained high traffic where pod-hour pricing is cheaper
+- You need fine-grained pod placement or node selectors
+
+> **This project defaults to Cloud Run.** GKE support is fully wired via `scripts/setup_gke.sh` and `infra/k8s/deployment.yml` for teams that need it.
 
 ---
 
