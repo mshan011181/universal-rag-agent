@@ -432,6 +432,155 @@ All Enterprise Tenants                All Enterprise Tenants
 │  Workload Identity for GKE — no key files on pods                          │
 └────────────────────────────────────────────────────────────────────────────┘</pre></div>
 
+<h3>Architecture — Step by Step</h3>
+<p>Each layer in the diagram above has a specific role. Here is what every step does and why it exists.</p>
+
+<div style="display:flex;flex-direction:column;gap:0;margin:28px 0 40px;">
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--amber);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--warm);border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Enterprise Tenants</div>
+      <p style="margin:0;font-size:.9rem;">Every enterprise customer is completely isolated — their documents, query history, and data live in a <strong>dedicated Pinecone namespace and a separate database schema</strong>. Tenant A can never see Tenant B's data, even though both share the same underlying infrastructure.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--amber);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--warm);border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Cloud Load Balancer</div>
+      <p style="margin:0;font-size:.9rem;">All incoming traffic — from both the UI and direct API calls — passes through GCP's managed load balancer. It <strong>distributes requests across all running containers, handles HTTPS termination, and provisions TLS certificates automatically</strong>. No nginx or manual certificate management needed.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--amber);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--warm);border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Cloud Run / GKE — FastAPI (rag-api)</div>
+      <p style="margin:0;font-size:.9rem;">The FastAPI backend handles all authentication, query processing, document ingestion, and rate limiting. It runs as a <strong>stateless Docker container that auto-scales from 1 to 100 instances</strong> based on traffic — with <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;background:var(--amber-p);padding:1px 5px;border-radius:3px;">min-instances=1</code> keeping one container always warm to eliminate cold starts.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--amber);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--warm);border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Cloud Run / GKE — Next.js 14 (rag-frontend)</div>
+      <p style="margin:0;font-size:.9rem;">The production UI — built in Next.js 14 + React — runs as a separate Cloud Run service. It <strong>calls the FastAPI backend via REST API</strong> and handles login, document ingestion, RAG queries, and an admin dashboard with role-based access. It replaced Streamlit, which was not suitable for enterprise multi-user production use.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--teal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">5</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--teal-l);border:1px solid rgba(42,123,123,.2);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--teal-d);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Query Analyzer — 5 Dimensions</div>
+      <p style="margin:0;font-size:.9rem;">Before any retrieval happens, every query is scored across 5 dimensions: <strong>length, ambiguity, complexity, data type, and conversation state</strong>. This produces a profile that determines which RAG pattern — or combination of patterns — is best suited for this specific query. A short ambiguous query routes to HyDE; a complex multi-step query routes to Self-RAG or Agentic RAG.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--teal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">6</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--teal-l);border:1px solid rgba(42,123,123,.2);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--teal-d);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Pattern Router — 14 RAG Patterns</div>
+      <p style="margin:0;font-size:.9rem;">The router takes the analyzer's output and selects the optimal RAG pattern. Patterns can run <strong>sequentially</strong> (one feeds the output of the previous) or in <strong>parallel fan-out</strong> (multiple patterns run simultaneously and results are merged). This is what makes the system work well across completely different query types without any manual configuration.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--teal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">7</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--teal-l);border:1px solid rgba(42,123,123,.2);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--teal-d);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Retrieval — Pinecone + Tavily</div>
+      <p style="margin:0;font-size:.9rem;">Documents are converted to 384-dimensional vector embeddings using <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;background:var(--amber-p);padding:1px 5px;border-radius:3px;">all-MiniLM-L6-v2</code> and searched in <strong>Pinecone with the tenant's namespace</strong> — ensuring strict data isolation. If retrieved chunks have low confidence scores, the CRAG pattern falls back to <strong>Tavily web search</strong> to supplement with live external information.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--teal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">8</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--teal-l);border:1px solid rgba(42,123,123,.2);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--teal-d);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Reranker — Cohere + RRF</div>
+      <p style="margin:0;font-size:.9rem;">Pinecone returns the top-K chunks by vector similarity, but similarity is not the same as relevance. The <strong>Cohere cross-encoder reranker re-scores each chunk against the original query</strong> and reorders them. If Cohere is unavailable, Reciprocal Rank Fusion (RRF) provides a built-in fallback. This step significantly improves answer quality by ensuring the most relevant chunks reach the LLM first.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--teal);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">9</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:var(--teal-l);border:1px solid rgba(42,123,123,.2);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--teal-d);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Generation Layer — 3 LLM Providers + 4 Roles</div>
+      <p style="margin:0;font-size:.9rem;">The LLM is used four times per query in different roles: <strong>Synthesizer</strong> generates the answer from retrieved chunks only; <strong>Grader</strong> scores it on relevance, completeness, and hallucination risk (0.0–1.0); <strong>Verifier</strong> maps every sentence to a source chunk and flags unsupported claims; <strong>Judge</strong> resolves conflicting information across chunks. The provider is switchable via one env var — Anthropic Claude for production, Groq for development.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--char);color:var(--amber-l);font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">10</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:#F5F5F5;border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--char);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">LangSmith Tracing</div>
+      <p style="margin:0;font-size:.9rem;">Every LangChain call — synthesize, grade, faithfulness check, follow-up generation — is <strong>automatically captured in LangSmith with full prompt text, token counts, latency, cost, and quality scores</strong>. No code instrumentation needed. When an answer is wrong, you can replay the exact prompt in LangSmith to diagnose why — something Prometheus metrics alone cannot provide.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--char);color:var(--amber-l);font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">11</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:#F5F5F5;border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--char);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Pinecone · Cloud SQL · Memorystore Redis</div>
+      <p style="margin:0;font-size:.9rem;"><strong>Pinecone</strong> stores vector embeddings per tenant namespace. <strong>Cloud SQL</strong> holds the 10-table relational schema — users, documents, sessions, audit logs — with 4,000 connection support and auto-failover. <strong>Memorystore Redis</strong> is VPC-internal, used for rate limiting state (consistent across all containers) and session caching. All three are fully managed — no containers to maintain, no manual backups.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--char);color:var(--amber-l);font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">12</div>
+      <div style="width:2px;background:var(--bord);flex:1;margin-top:4px;"></div>
+    </div>
+    <div style="background:#F5F5F5;border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:8px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--char);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">4-Layer Memory Store</div>
+      <p style="margin:0;font-size:.9rem;">The system remembers across four dimensions: <strong>Conversation History</strong> (enables follow-up questions without re-stating context); <strong>Pattern Performance</strong> (routing improves as it learns which patterns work for which query types); <strong>Routing Signals</strong> (5-dimension analyzer gets more accurate with usage); <strong>Verified Knowledge Cache</strong> (answers scoring ≥ 0.85 are cached — identical queries return in &lt;50ms with zero LLM cost).</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:0;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;align-items:center;min-width:44px;">
+      <div style="background:var(--char);color:var(--amber-l);font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">13</div>
+    </div>
+    <div style="background:#F5F5F5;border:1px solid var(--bord);border-radius:6px;padding:16px 20px;margin:0 0 0 14px;flex:1;margin-bottom:0;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--char);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">GCP Infrastructure — Secret Manager + IAM</div>
+      <p style="margin:0;font-size:.9rem;">Every API key (Anthropic, Pinecone, LangSmith, Groq, Tavily, Cohere) is stored in <strong>Secret Manager and injected into containers at runtime</strong> — never baked into Docker images or stored in .env files. Cloud Run reads secrets via its service account; GKE pods use Workload Identity (no key files on pods). IAM grants the minimum permissions required — no over-privileged service accounts.</p>
+    </div>
+  </div>
+
+</div>
+
 <!-- 06 Tech Stack -->
 <div class="sec-head" id="techstack">
   <span class="sec-num">06</span>
