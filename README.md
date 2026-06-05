@@ -421,29 +421,94 @@ COHERE_API_KEY=your_cohere_key_here
 
 ### 3. Run Locally
 
-**Option A — Docker Compose (recommended, runs everything)**
+There are two ways to run the app locally. They serve **different purposes** in your development workflow — use Step 1 first, Step 2 only when you are ready to verify the Docker build.
+
+---
+
+#### Step 1 — Dev servers (while actively writing code)
+
+Use this during development. Both servers have **hot-reload** — any code change is reflected instantly without restarting.
+
+**Terminal 1 — FastAPI backend:**
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+**Terminal 2 — Next.js frontend:**
+```bash
+cd frontend
+npm install          # first time only
+npm run dev          # starts on http://localhost:3000
+```
+
+The Next.js dev server automatically proxies all `/api/*` calls to `http://localhost:8000` — no CORS configuration needed. Both services see your code changes live as you type.
+
+| Service | URL | Hot-reload |
+|---------|-----|-----------|
+| Next.js UI | http://localhost:3000 | Yes — instant on save |
+| FastAPI Swagger | http://localhost:8000/api/docs | Yes — on save |
+
+Use this step for the **majority of your development time** — it is the fastest feedback loop.
+
+---
+
+#### Step 2 — Docker Compose (before pushing — verify the Docker build works)
+
+Once your feature is working in Step 1, run Docker Compose to verify that the app **behaves the same way inside a Docker container** as it did in the dev server. This is important because the Docker image is what actually gets deployed to Cloud Run — differences between the dev server and the container can cause production bugs.
+
 ```bash
 docker-compose up -d --build
 ```
 
-| Service | URL |
-|---------|-----|
-| Next.js UI | http://localhost:3000 |
-| FastAPI Swagger | http://localhost:8000/api/docs |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3001 (admin/admin) |
+`--build` rebuilds the Docker images from scratch every time, so you are always testing the latest code.
 
-**Option B — Next.js dev server** (hot-reload, faster iteration)
+| Service | URL | Notes |
+|---------|-----|-------|
+| Next.js UI | http://localhost:3000 | Running inside Docker container |
+| FastAPI Swagger | http://localhost:8000/api/docs | Running inside Docker container |
+| Prometheus | http://localhost:9090 | Metrics scraping |
+| Grafana | http://localhost:3001 | Login: admin / admin |
+
+Things Docker Compose catches that the dev server does not:
+- Missing dependencies not listed in `requirements-api.txt` or `package.json`
+- Environment variable configuration errors
+- File permission issues inside the container
+- Port binding conflicts
+
+To stop:
 ```bash
-cd frontend
-npm install
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
-# Open http://localhost:3000
+docker-compose down
 ```
-Then start the FastAPI backend separately:
-```bash
-uvicorn api.main:app --reload --port 8000
+
+---
+
+#### Typical local development workflow
+
 ```
+1. Write code
+      │
+      ▼
+2. Test with dev servers (Step 1 above)
+   uvicorn + npm run dev
+   Fast feedback, hot-reload
+      │
+      ▼
+3. Verify with Docker Compose (Step 2 above)
+   docker-compose up --build
+   Confirms the Docker image works correctly
+      │
+      ▼
+4. Run the full quality gate
+   bash scripts/build_and_test.sh
+   Lint → type check → security → 81 tests → docker build → smoke test
+      │
+      ▼
+5. Push to git
+   git push
+   Cloud Build triggers automatically → tests → build → deploy to Cloud Run
+```
+
+You **do not** need to manually build Docker images and push them. Step 5 (`git push`) triggers Cloud Build which handles the full build, test, and deployment pipeline automatically.
 
 ---
 
