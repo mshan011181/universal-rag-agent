@@ -447,7 +447,7 @@ uvicorn api.main:app --reload --port 8000
 
 ---
 
-## Production UI — Next.js 14 (replaces Streamlit)
+## Frontend UI — Next.js 14 (replaces Streamlit)
 
 Streamlit is a data-science prototyping tool — not suitable for production enterprise. It was replaced with **Next.js 14** which calls the FastAPI backend via REST API. They are fully decoupled services.
 
