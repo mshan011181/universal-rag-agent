@@ -1,8 +1,9 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { MessageSquare, Upload, BarChart2, LogOut, Database, Settings } from 'lucide-react'
+import { MessageSquare, Upload, BarChart2, LogOut, Database, User } from 'lucide-react'
 import clsx from 'clsx'
 import { logout } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
@@ -20,9 +21,17 @@ export default function Sidebar() {
   const path = usePathname()
   const router = useRouter()
   const role = getUserRole()
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Get user email from sessionStorage (set during login)
+    const email = sessionStorage.getItem('user_email')
+    setUserEmail(email)
+  }, [])
 
   function handleLogout() {
     logout()
+    sessionStorage.removeItem('user_email')
     router.push('/login')
   }
 
@@ -81,8 +90,16 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* Logout */}
-      <div className="px-3 py-4 border-t border-gray-700">
+      {/* User info */}
+      <div className="px-3 py-4 border-t border-gray-700 space-y-2">
+        <div className="flex items-start gap-2 px-2 py-2">
+          <User className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Logged in as</p>
+            <p className="text-sm text-white truncate font-medium">{userEmail || 'Loading...'}</p>
+            <p className="text-xs text-gray-500 mt-1 capitalize">Role: {role || 'user'}</p>
+          </div>
+        </div>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400

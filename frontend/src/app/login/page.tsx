@@ -22,6 +22,8 @@ function LoginForm() {
     setLoading(true)
     try {
       await login(email, password)
+      // Save user email to sessionStorage for sidebar display
+      sessionStorage.setItem('user_email', email)
       router.push('/query')
     } catch (err: unknown) {
       // Extract plain string from error — handles both Error objects and API error shapes

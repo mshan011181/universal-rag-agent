@@ -4,8 +4,9 @@ import { useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { submitQuery } from '@/lib/api'
 import type { QueryResponse } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Clock, Gauge, BarChart3 } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Clock, Gauge, BarChart3, Info, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
+import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 
 const PATTERNS = [
   'auto', 'naive_rag', 'hyde', 'query_rewriting', 'crag',
@@ -42,6 +43,8 @@ export default function QueryPage() {
   const [showSources, setShowSources] = useState(false)
   const [history, setHistory] = useState<QueryHistory[]>([])
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
+  const [showModelsInfo, setShowModelsInfo] = useState(false)
+  const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -349,6 +352,84 @@ export default function QueryPage() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Models Info */}
+          <div className="card p-4 sticky top-96">
+            <button
+              onClick={() => setShowModelsInfo(!showModelsInfo)}
+              className="flex items-center justify-between w-full"
+            >
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-brand-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Models & Patterns</h3>
+              </div>
+              {showModelsInfo ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
+            {showModelsInfo && (
+              <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+                {/* Environments */}
+                <div className="space-y-2 border-b border-gray-200 pb-3">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">LLM Models by Environment</p>
+                  {Object.entries(MODELS_BY_ENVIRONMENT).map(([env, roles]) => {
+                    const synthesizer = roles.synthesizer
+                    return (
+                      <div key={env} className="bg-gray-50 rounded p-2 text-xs">
+                        <div
+                          onClick={() => setExpandedEnv(expandedEnv === env ? null : env)}
+                          className="cursor-pointer flex items-center justify-between"
+                        >
+                          <div className="font-medium text-gray-900 capitalize">{env}</div>
+                          <ChevronRight
+                            className={clsx('w-3 h-3 transition-transform', expandedEnv === env && 'rotate-90')}
+                          />
+                        </div>
+                        {expandedEnv === env && (
+                          <div className="mt-2 space-y-1 pt-2 border-t border-gray-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Model:</span>
+                              <span className="text-gray-900 font-medium">{synthesizer.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Provider:</span>
+                              <span className="text-gray-900">{synthesizer.provider}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600">Context:</span>
+                              <span className="text-gray-900">{synthesizer.contextWindow.toLocaleString()} tokens</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Patterns */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">RAG Patterns</p>
+                  {Object.entries(PATTERNS_INFO).map(([key, info]) => (
+                    <div key={key} className="bg-gray-50 rounded p-2 text-xs">
+                      <div className="font-medium text-gray-900">{info.name}</div>
+                      <p className="text-gray-600 text-xs mt-0.5">{info.description}</p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-gray-500">{info.useCase}</span>
+                        <span
+                          className={clsx(
+                            'px-1.5 py-0.5 rounded text-white text-xs font-medium',
+                            info.complexity === 'simple' ? 'bg-green-600' :
+                            info.complexity === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
+                          )}
+                        >
+                          {info.complexity}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
