@@ -129,19 +129,19 @@ export default function QueryPage() {
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-brand-600" />
                   <span className="text-sm font-medium text-gray-700">
-                    Pattern: <span className="text-brand-600">{result.pattern_used.replace(/_/g, ' ')}</span>
+                    Pattern: <span className="text-brand-600">{(result.pattern_used || 'auto').replace(/_/g, ' ')}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <QualityBadge score={result.quality_score} />
-                  <span className="text-xs text-gray-400">{result.latency_ms}ms</span>
+                  <QualityBadge score={result.quality_score ?? 0.5} />
+                  <span className="text-xs text-gray-400">{result.latency_ms ?? 0}ms</span>
                 </div>
               </div>
               <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{result.answer}</p>
             </div>
 
             {/* Follow-ups */}
-            {result.follow_up_questions.length > 0 && (
+            {(result.follow_up_questions ?? []).length > 0 && (
               <div className="card p-4">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Follow-up questions</p>
                 <ul className="space-y-1">
@@ -160,7 +160,7 @@ export default function QueryPage() {
             )}
 
             {/* Sources */}
-            {result.sources.length > 0 && (
+            {(result.sources ?? []).length > 0 && (
               <div className="card overflow-hidden">
                 <button
                   onClick={() => setShowSources(!showSources)}
