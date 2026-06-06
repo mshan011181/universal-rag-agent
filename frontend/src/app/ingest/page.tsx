@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, getIngestHistory, deleteIngest } from '@/lib/api'
+import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, getIngestHistory, deleteIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
 import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
@@ -26,11 +26,15 @@ export default function IngestPage() {
 
   // Form fields
   const [file, setFile] = useState<File | null>(null)
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
   const [source, setSource] = useState('manual')
   const inputRef = useRef<HTMLInputElement>(null)
+  const audioInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
 
   const loadHistory = async () => {
     try {
@@ -138,6 +142,42 @@ export default function IngestPage() {
       loadHistory()
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : `${type} ingestion failed`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleIngestAudioFile = async () => {
+    if (!audioFile) {
+      showMessage('error', 'Please select an audio file')
+      return
+    }
+    setLoading(true)
+    try {
+      await ingestAudioFile(audioFile)
+      showMessage('success', `${audioFile.name} queued for transcription`)
+      setAudioFile(null)
+      loadHistory()
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Audio upload failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleIngestVideoFile = async () => {
+    if (!videoFile) {
+      showMessage('error', 'Please select a video file')
+      return
+    }
+    setLoading(true)
+    try {
+      await ingestVideoFile(videoFile)
+      showMessage('success', `${videoFile.name} queued for transcription`)
+      setVideoFile(null)
+      loadHistory()
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Video upload failed')
     } finally {
       setLoading(false)
     }
@@ -264,19 +304,47 @@ export default function IngestPage() {
 
               {activeTab === 'audio' && (
                 <div className="space-y-3">
-                  <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/audio.mp3" className="input w-full text-sm" />
-                  <button onClick={() => handleIngestMedia('audio')} disabled={loading || !url.trim()} className="btn-primary w-full text-sm">
-                    {loading ? 'Processing…' : 'Add Audio'}
-                  </button>
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2 font-medium">Upload File</p>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 mb-2 cursor-pointer hover:border-brand-600 transition-colors" onClick={() => audioInputRef.current?.click()}>
+                      <input ref={audioInputRef} type="file" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} accept=".mp3,.wav,.m4a,.aac,.flac,.ogg" className="hidden" />
+                      <Upload className="w-4 h-4 mx-auto mb-1 text-gray-400" />
+                      <span className="text-xs">{audioFile ? audioFile.name : 'Click to select'}</span>
+                    </div>
+                    <button onClick={handleIngestAudioFile} disabled={loading || !audioFile} className="btn-primary w-full text-sm">
+                      {loading ? 'Uploading…' : 'Upload Audio'}
+                    </button>
+                  </div>
+                  <div className="border-t pt-3">
+                    <p className="text-xs text-gray-600 mb-2 font-medium">Or Use URL</p>
+                    <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/audio.mp3" className="input w-full text-sm mb-2" />
+                    <button onClick={() => handleIngestMedia('audio')} disabled={loading || !url.trim()} className="w-full px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">
+                      {loading ? 'Processing…' : 'Add from URL'}
+                    </button>
+                  </div>
                 </div>
               )}
 
               {activeTab === 'video' && (
                 <div className="space-y-3">
-                  <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/video.mp4" className="input w-full text-sm" />
-                  <button onClick={() => handleIngestMedia('video')} disabled={loading || !url.trim()} className="btn-primary w-full text-sm">
-                    {loading ? 'Processing…' : 'Add Video'}
-                  </button>
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2 font-medium">Upload File</p>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 mb-2 cursor-pointer hover:border-brand-600 transition-colors" onClick={() => videoInputRef.current?.click()}>
+                      <input ref={videoInputRef} type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} accept=".mp4,.webm,.avi,.mov,.mkv,.flv" className="hidden" />
+                      <Upload className="w-4 h-4 mx-auto mb-1 text-gray-400" />
+                      <span className="text-xs">{videoFile ? videoFile.name : 'Click to select'}</span>
+                    </div>
+                    <button onClick={handleIngestVideoFile} disabled={loading || !videoFile} className="btn-primary w-full text-sm">
+                      {loading ? 'Uploading…' : 'Upload Video'}
+                    </button>
+                  </div>
+                  <div className="border-t pt-3">
+                    <p className="text-xs text-gray-600 mb-2 font-medium">Or Use URL</p>
+                    <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/video.mp4" className="input w-full text-sm mb-2" />
+                    <button onClick={() => handleIngestMedia('video')} disabled={loading || !url.trim()} className="w-full px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">
+                      {loading ? 'Processing…' : 'Add from URL'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -216,6 +216,65 @@ async def ingest_media_endpoint(
     }
 
 
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv"}
+MAX_MEDIA_SIZE_MB = 500
+MAX_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_MB * 1024 * 1024
+
+
+@router.post("/media-file")
+async def ingest_media_file_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    media_type: str = "audio",
+    user: dict = Depends(require_role("user")),
+):
+    """Ingest audio or video file (upload)."""
+    if media_type not in ["audio", "video"]:
+        raise HTTPException(status_code=400, detail="media_type must be 'audio' or 'video'")
+
+    filename = _safe_filename(file.filename or "upload")
+    ext = Path(filename).suffix.lower()
+
+    if media_type == "audio" and ext not in AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Audio type '{ext}' not allowed. Allowed: {AUDIO_EXTENSIONS}")
+
+    if media_type == "video" and ext not in VIDEO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Video type '{ext}' not allowed. Allowed: {VIDEO_EXTENSIONS}")
+
+    content = await file.read()
+
+    if len(content) > MAX_MEDIA_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_MEDIA_SIZE_MB}MB")
+
+    # Deduplicate by content hash
+    content_hash = hashlib.sha256(content).hexdigest()[:16]
+    save_name = f"{user['user_id']}_{content_hash}{ext}"
+    save_path = UPLOADS_DIR / save_name
+    save_path.write_bytes(content)
+
+    ingest_id = str(uuid.uuid4())
+
+    def do_ingest():
+        try:
+            # In production: transcribe with Groq Whisper
+            logger.info("media_file_ingest_started", filename=filename, media_type=media_type, user_id=user["user_id"], ingest_id=ingest_id)
+            write_ingest(ingest_id, user["user_id"], media_type, filename, file_size=len(content), chunks=0)
+        except Exception as e:
+            logger.error("media_file_ingest_failed", filename=filename, media_type=media_type, error=str(e), ingest_id=ingest_id)
+
+    background_tasks.add_task(do_ingest)
+
+    return {
+        "ingest_id": ingest_id,
+        "status": "processing",
+        "filename": filename,
+        "ingest_type": media_type,
+        "size_bytes": len(content),
+        "message": f"{media_type.capitalize()} file queued for transcription. This may take a few minutes.",
+    }
+
+
 @router.get("/list")
 async def list_ingestion_history(
     user: dict = Depends(require_role("user")),

@@ -162,6 +162,20 @@ export async function deleteIngest(ingestId: string): Promise<{ status: string; 
   return request(`/api/ingest/${ingestId}`, { method: 'DELETE' })
 }
 
+export async function ingestAudioFile(file: File): Promise<IngestResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('media_type', 'audio')
+  return request('/api/ingest/media-file', { method: 'POST', body: form })
+}
+
+export async function ingestVideoFile(file: File): Promise<IngestResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('media_type', 'video')
+  return request('/api/ingest/media-file', { method: 'POST', body: form })
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminStats(): Promise<AdminStats> {
