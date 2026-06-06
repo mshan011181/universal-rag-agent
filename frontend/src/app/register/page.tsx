@@ -19,6 +19,7 @@ export default function RegisterPage() {
     setError('')
     if (password !== confirm) { setError('Passwords do not match'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
+    if (password.length > 72) { setError('Password must be 72 characters or fewer (bcrypt limit)'); return }
     setLoading(true)
     try {
       await register(email, password)

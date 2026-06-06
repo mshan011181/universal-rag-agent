@@ -18,6 +18,13 @@ class RegisterRequest(BaseModel):
     password: str
     org_name: str = "default"
 
+    def validate_password(self) -> None:
+        if len(self.password.encode("utf-8")) > 72:
+            raise HTTPException(
+                status_code=422,
+                detail="Password must be 72 characters or fewer (bcrypt limit)"
+            )
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -27,6 +34,7 @@ class TokenResponse(BaseModel):
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest):
+    body.validate_password()
     if body.email in _users_store:
         raise HTTPException(status_code=409, detail="Email already registered")
 
