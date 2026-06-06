@@ -1,21 +1,21 @@
 # API container — FastAPI backend only (no Streamlit, no media tools)
 
 # Core LLM & Orchestration
-langchain==0.3.25
-langchain-core==0.3.61
-langchain-community==0.3.24
-langchain-groq==0.3.2
-langgraph==0.4.7
+langchain>=0.3.25
+langchain-core>=0.3.61
+langchain-community>=0.3.24
+langchain-groq>=0.3.2
+langgraph>=0.4.7
 
 # Groq (local dev / CI fallback — LLM_PROVIDER=groq)
-groq==0.28.0
+groq>=0.28.0
 
 # Anthropic Claude — direct API (recommended production enterprise — LLM_PROVIDER=anthropic)
-langchain-anthropic==0.3.15
+langchain-anthropic>=0.3.15
 anthropic>=0.40.0
 
 # Vertex AI Claude — GCP-native production via ADC (LLM_PROVIDER=vertexai)
-langchain-google-vertexai==2.0.14
+langchain-google-vertexai>=2.0.14
 google-cloud-aiplatform>=1.60.0
 
 # LangSmith — LLM observability, tracing, and monitoring for all providers
@@ -25,50 +25,50 @@ langsmith>=0.2.0
 pinecone>=3.0.0
 
 # Embeddings (local — no API key needed)
-sentence-transformers==3.4.1
+sentence-transformers>=3.4.1
 
 # Web Search fallback
-tavily-python==0.5.1
+tavily-python>=0.5.1
 
 # Document loaders
-pypdf==5.4.0
-pdfplumber==0.11.6
-python-docx==1.1.2
-openpyxl==3.1.5
+pypdf>=5.4.0
+pdfplumber>=0.11.6
+python-docx>=1.1.2
+openpyxl>=3.1.5
 
 # Reranking
-cohere==5.15.0
+cohere>=5.15.0
 
 # Graph
-networkx==3.4.2
+networkx>=3.4.2
 
 # API server
-fastapi==0.115.12
-uvicorn[standard]==0.34.2
-python-multipart==0.0.20
+fastapi>=0.115.12
+uvicorn[standard]>=0.34.2
+python-multipart>=0.0.20
 
 # Auth
-python-jose[cryptography]==3.4.0
-passlib[bcrypt]==1.7.4
-email-validator==2.2.0
+python-jose[cryptography]>=3.4.0
+passlib[bcrypt]>=1.7.4
+email-validator>=2.2.0
 
 # DB — Cloud SQL (same asyncpg driver; only the connection string changes)
-asyncpg==0.30.0
-sqlalchemy[asyncio]==2.0.41
+asyncpg>=0.30.0
+sqlalchemy[asyncio]>=2.0.41
 
 # Cache — Memorystore / Redis (same protocol; only the URL changes)
 redis[asyncio]>=5.0.0
 
 # Observability
-structlog==25.3.0
-prometheus-fastapi-instrumentator==7.1.0
-prometheus-client==0.21.1
-opentelemetry-sdk==1.32.1
-opentelemetry-instrumentation-fastapi==0.53b1
+structlog>=25.3.0
+prometheus-fastapi-instrumentator>=7.1.0
+prometheus-client>=0.21.1
+opentelemetry-sdk>=1.32.1
+opentelemetry-instrumentation-fastapi>=0.53b1
 
 # Utils
-python-dotenv==1.1.0
-pydantic==2.11.4
-tenacity==9.1.2
-numpy==2.2.5
-pandas==2.2.3
+python-dotenv>=1.1.0
+pydantic>=2.11.4
+tenacity>=9.1.2
+numpy>=2.2.5
+pandas>=2.2.3

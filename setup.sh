@@ -68,8 +68,8 @@ ok "pip upgraded"
 
 # ── Step 3: Install dependencies ──────────────────────────────────────────────
 info "Step 3/5 — Installing Python dependencies..."
-pip install -q -r requirements-api.txt
-pip install -q -r requirements-dev.txt
+pip install -r requirements-api.txt || fail "Dependency install failed — check requirements-api.txt for conflicts"
+pip install -r requirements-dev.txt || fail "Dev dependency install failed — check requirements-dev.txt"
 ok "Python dependencies installed"
 
 # ── Step 4: Copy .env template ────────────────────────────────────────────────
