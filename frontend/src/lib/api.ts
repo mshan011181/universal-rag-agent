@@ -34,7 +34,8 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${_accessToken}`
   }
 
-  if (!(options.body instanceof FormData)) {
+  // Only set JSON content-type if caller hasn't already set one (e.g. form-urlencoded for OAuth2)
+  if (!(options.body instanceof FormData) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json'
   }
 
