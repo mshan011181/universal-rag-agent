@@ -79,12 +79,12 @@ export default function AdminPage() {
           <>
             {/* KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <StatCard label="Total Queries" value={stats.total_queries.toLocaleString()} icon={MessageSquare} />
-              <StatCard label="Users" value={stats.total_users.toLocaleString()} icon={Users} />
-              <StatCard label="Documents" value={stats.total_documents.toLocaleString()} icon={FileText} />
+              <StatCard label="Total Queries" value={(stats.total_queries ?? 0).toLocaleString()} icon={MessageSquare} />
+              <StatCard label="Users" value={(stats.total_users ?? 0).toLocaleString()} icon={Users} />
+              <StatCard label="Documents" value={(stats.total_documents ?? 0).toLocaleString()} icon={FileText} />
               <StatCard
                 label="Avg Quality"
-                value={`${(stats.avg_quality_score * 100).toFixed(1)}%`}
+                value={`${((stats.avg_quality_score ?? 0) * 100).toFixed(1)}%`}
                 icon={Zap}
                 sub="0.0 – 1.0 graded scale"
               />

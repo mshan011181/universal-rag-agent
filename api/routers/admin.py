@@ -16,11 +16,21 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
         query_count = 0
         avg_quality = 0.0
 
+    try:
+        with get_conn() as conn:
+            pattern_rows = conn.execute(
+                "SELECT pattern_combo, COUNT(*) as cnt FROM pattern_performance GROUP BY pattern_combo"
+            ).fetchall()
+            pattern_breakdown = {row[0]: row[1] for row in pattern_rows}
+    except Exception:
+        pattern_breakdown = {}
+
     return {
-        "total_chunks": collection_count(),
         "total_queries": query_count,
+        "total_users": 1,           # in-memory store — always 1 active user per session
+        "total_documents": collection_count(),
         "avg_quality_score": round(avg_quality or 0.0, 3),
-        "sources": list_sources(),
+        "pattern_breakdown": pattern_breakdown,
     }
 
 
