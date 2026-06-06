@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Database, CheckCircle } from 'lucide-react'
 import { login } from '@/lib/api'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const justRegistered = searchParams.get('registered') === '1'
@@ -24,7 +24,15 @@ export default function LoginPage() {
       await login(email, password)
       router.push('/query')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Invalid credentials')
+      // Extract plain string from error — handles both Error objects and API error shapes
+      if (err instanceof Error) {
+        setError(err.message)
+      } else if (typeof err === 'object' && err !== null && 'detail' in err) {
+        const detail = (err as { detail: unknown }).detail
+        setError(Array.isArray(detail) ? 'Invalid credentials' : String(detail))
+      } else {
+        setError('Invalid credentials')
+      }
     } finally {
       setLoading(false)
     }
@@ -104,5 +112,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50" />}>
+      <LoginForm />
+    </Suspense>
   )
 }

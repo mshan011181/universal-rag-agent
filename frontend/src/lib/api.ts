@@ -54,7 +54,14 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
-    throw Object.assign(new Error(body.detail || 'Request failed'), { status: res.status })
+    // detail can be a string or a FastAPI validation array — always extract a plain string
+    let detail = body.detail || 'Request failed'
+    if (Array.isArray(detail)) {
+      detail = detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ')
+    } else if (typeof detail !== 'string') {
+      detail = JSON.stringify(detail)
+    }
+    throw Object.assign(new Error(detail), { status: res.status })
   }
 
   return res.json() as Promise<T>
