@@ -1,6 +1,9 @@
 # Git manager config — contains GitHub token, never commit this
 .git_manager_config
 
+# Next.js local env — contains local URLs, not for version control
+frontend/.env.local
+
 # Virtual environments
 .venv/
 venv/
