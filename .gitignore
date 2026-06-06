@@ -1,6 +1,12 @@
 # Git manager config — contains GitHub token, never commit this
 .git_manager_config
 
+# Next.js build and cache
+frontend/.next/
+frontend/node_modules/
+frontend/package-lock.json
+frontend/next-env.d.ts
+
 # Next.js local env — contains local URLs, not for version control
 frontend/.env.local
 
