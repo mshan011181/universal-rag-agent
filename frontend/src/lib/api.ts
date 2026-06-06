@@ -133,6 +133,35 @@ export async function ingestText(text: string, source: string, namespace = 'defa
   })
 }
 
+export async function ingestYouTube(url: string): Promise<IngestResponse> {
+  return request('/api/ingest/youtube', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}
+
+export async function ingestWebLink(url: string): Promise<IngestResponse> {
+  return request('/api/ingest/weblink', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}
+
+export async function ingestMedia(url: string, type: 'audio' | 'video'): Promise<IngestResponse> {
+  return request('/api/ingest/media', {
+    method: 'POST',
+    body: JSON.stringify({ url, type }),
+  })
+}
+
+export async function getIngestHistory(): Promise<IngestHistory> {
+  return request('/api/ingest/list', { method: 'GET' })
+}
+
+export async function deleteIngest(ingestId: string): Promise<{ status: string; ingest_id: string }> {
+  return request(`/api/ingest/${ingestId}`, { method: 'DELETE' })
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminStats(): Promise<AdminStats> {

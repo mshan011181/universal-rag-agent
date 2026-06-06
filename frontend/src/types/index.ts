@@ -33,9 +33,28 @@ export interface QueryResponse {
 }
 
 export interface IngestResponse {
+  ingest_id: string
   status: string
-  chunks_indexed: number
-  document_id: string
+  ingest_type: string
+  filename?: string
+  url?: string
+  size_bytes?: number
+  chunks?: number
+  message?: string
+}
+
+export interface IngestedItem {
+  ingest_id: string
+  name: string
+  url?: string
+  size_bytes?: number
+  chunks: number
+  created_at: string
+}
+
+export interface IngestHistory {
+  by_type: Record<string, IngestedItem[]>
+  total: number
 }
 
 export interface AdminStats {

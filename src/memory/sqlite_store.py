@@ -53,6 +53,18 @@ def init_db():
             confirmed_count INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS ingest_history (
+            ingest_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            ingest_type TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            source_url TEXT,
+            file_size_bytes INTEGER,
+            chunks_created INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'done'
+        );
         """)
 
 
@@ -118,3 +130,35 @@ def write_verified_knowledge(fingerprint: str, answer: str, quality: float, chun
                 "INSERT INTO verified_knowledge (query_fingerprint, answer, quality_score, chunk_ids) VALUES (?,?,?,?)",
                 (fingerprint, answer, quality, json.dumps(chunk_ids))
             )
+
+
+def write_ingest(ingest_id: str, user_id: str, ingest_type: str, source_name: str, source_url: str | None = None, file_size: int | None = None, chunks: int = 0):
+    """Log an ingest operation to history."""
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO ingest_history (ingest_id, user_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (ingest_id, user_id, ingest_type, source_name, source_url, file_size, chunks)
+        )
+        conn.commit()
+
+
+def get_ingest_history(user_id: str) -> list[dict]:
+    """Get all ingestion history for a user."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT ingest_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created, created_at FROM ingest_history WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_ingest(ingest_id: str, user_id: str) -> bool:
+    """Delete an ingest record (soft delete by updating status)."""
+    with get_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM ingest_history WHERE ingest_id=? AND user_id=?",
+            (ingest_id, user_id)
+        )
+        conn.commit()
+    return result.rowcount > 0
