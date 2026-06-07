@@ -7,23 +7,34 @@ router = APIRouter()
 
 @router.get("/stats")
 async def get_stats(user: dict = Depends(require_role("admin"))):
+    user_id = user["user_id"]
+    org_id = user.get("org_id", "")
     try:
         with get_conn() as conn:
-            query_count = conn.execute("SELECT COUNT(*) FROM conversation_history").fetchone()[0]
+            # Queries scoped to this user's session prefix
+            query_count = conn.execute(
+                "SELECT COUNT(*) FROM conversation_history WHERE session_id LIKE ?",
+                (f"{user_id}:%",)
+            ).fetchone()[0]
             avg_quality = conn.execute("SELECT AVG(quality_score) FROM pattern_performance").fetchone()[0]
             pattern_rows = conn.execute(
                 "SELECT pattern_combo, COUNT(*) as cnt FROM pattern_performance GROUP BY pattern_combo"
             ).fetchall()
+            # Documents: count of actual files this user has indexed (not chunk sum)
             doc_count = conn.execute(
-                "SELECT COALESCE(SUM(chunks_created), 0) FROM ingest_history WHERE status = 'done'"
+                "SELECT COUNT(*) FROM ingest_history WHERE user_id = ? AND status = 'done' AND chunks_created > 0",
+                (user_id,)
             ).fetchone()[0]
-            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            # Users in same org
+            user_count = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE org_id = ?", (org_id,)
+            ).fetchone()[0]
             pattern_breakdown = {row[0]: row[1] for row in pattern_rows}
     except Exception:
         query_count = 0
         avg_quality = 0.0
         doc_count = 0
-        user_count = 0
+        user_count = 1
         pattern_breakdown = {}
 
     return {
