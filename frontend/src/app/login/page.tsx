@@ -36,8 +36,6 @@ function LoginForm() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setEmailError('')
-    setPasswordError('')
     setLoading(true)
     try {
       await login(email, password)
@@ -51,6 +49,10 @@ function LoginForm() {
         const d = (err as { detail: unknown }).detail
         detail = Array.isArray(d) ? 'Invalid credentials' : String(d)
       }
+
+      // Clear previous errors only after the API responds, not before
+      setEmailError('')
+      setPasswordError('')
 
       if (detail === 'email_not_found') {
         setEmailError('No account found with this email address')
