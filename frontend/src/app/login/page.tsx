@@ -162,7 +162,14 @@ function LoginForm() {
               {emailError && <p className="mt-1 text-xs text-red-600">{emailError}</p>}
             </div>
             <div>
-              <label className="label" htmlFor="password">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="label" htmlFor="password">Password</label>
+                {!isAdminMode && (
+                  <Link href="/forgot-password" className="text-xs text-brand-600 hover:underline">
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
               <input
                 ref={passwordInputRef}
                 id="password"

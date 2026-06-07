@@ -1,4 +1,6 @@
 import uuid
+import secrets
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -28,6 +30,23 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+def _ensure_reset_table() -> None:
+    """Create password_reset_tokens table if missing."""
+    try:
+        with get_conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used INTEGER DEFAULT 0
+                )
+            """)
+            conn.commit()
+    except Exception:
+        pass
 
 
 def _ensure_users_table() -> None:
@@ -114,3 +133,92 @@ async def refresh(refresh_token: str):
         access_token=create_access_token(new_payload),
         refresh_token=create_refresh_token(new_payload),
     )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest):
+    """Generate a password reset token. Returns the token in response (no email server needed)."""
+    _ensure_users_table()
+    _ensure_reset_table()
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM users WHERE email = ?", (body.email,)
+        ).fetchone()
+
+    # Always return 200 to avoid email enumeration
+    if not row:
+        return {"message": "If that email exists, a reset link has been generated.", "token": None}
+
+    user_id = row[0]
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+
+    with get_conn() as conn:
+        # Invalidate any existing unused tokens for this user
+        conn.execute(
+            "UPDATE password_reset_tokens SET used=1 WHERE user_id=? AND used=0",
+            (user_id,)
+        )
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at)
+        )
+        conn.commit()
+
+    return {
+        "message": "Password reset link generated. Copy the link below and open it in your browser.",
+        "token": token,
+        "expires_in": "1 hour",
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    """Reset password using a valid token."""
+    _ensure_reset_table()
+
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=422, detail="Password must be at least 6 characters")
+
+    if len(body.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password must be 72 characters or fewer")
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, expires_at, used FROM password_reset_tokens WHERE token=?",
+            (body.token,)
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    user_id, expires_at, used = row
+    if used:
+        raise HTTPException(status_code=400, detail="This reset link has already been used")
+    if datetime.utcnow() > datetime.fromisoformat(expires_at):
+        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+    new_hash = hash_password(body.new_password)
+
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET hashed_password=? WHERE user_id=?",
+            (new_hash, user_id)
+        )
+        conn.execute(
+            "UPDATE password_reset_tokens SET used=1 WHERE token=?",
+            (body.token,)
+        )
+        conn.commit()
+
+    return {"message": "Password updated successfully. You can now sign in."}
