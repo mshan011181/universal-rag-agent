@@ -500,7 +500,7 @@ export default function IngestPage() {
                         </div>
                         <div className="flex items-center gap-1 ml-2 shrink-0">
                           {/* Retry button for failed image ingestions */}
-                          {isFailed && activeTab === 'images' && (
+                          {isFailed && ['images', 'video', 'audio'].includes(activeTab) && (
                             <button
                               onClick={() => handleRetry(item.ingest_id, item.name)}
                               className="p-1 text-blue-500 hover:text-blue-700 transition-colors"

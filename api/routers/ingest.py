@@ -583,11 +583,90 @@ async def ingest_media_file_endpoint(
     write_ingest(ingest_id, user_id, media_type, filename, file_size=len(content), chunks=0)
 
     def do_process():
+        import tempfile as _tempfile
+        import pathlib as _pathlib
+        import subprocess as _subprocess
+        from src.memory.sqlite_store import get_conn as _get_conn
+
+        def _set_status(status: str, chunks: int = 0):
+            with _get_conn() as c:
+                c.execute(
+                    "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                    (status, chunks, ingest_id),
+                )
+                c.commit()
+
+        tmp_dir = _tempfile.mkdtemp()
         try:
-            # In production: transcribe with Groq Whisper
-            logger.info("media_file_processing", filename=filename, media_type=media_type, user_id=user_id, ingest_id=ingest_id)
+            from groq import Groq as _Groq
+            import imageio_ffmpeg as _ffmpeg
+
+            logger.info("media_file_processing", filename=filename, media_type=media_type,
+                        user_id=user_id, ingest_id=ingest_id, size_mb=round(len(content)/1024/1024, 1))
+
+            audio_path = save_path  # default: use file directly (works for mp3/wav/m4a etc.)
+
+            # For video files — extract audio track with ffmpeg first
+            if media_type == "video" or ext in {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv", ".m4v", ".3gp"}:
+                ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+                extracted_audio = _pathlib.Path(tmp_dir) / "extracted_audio.mp3"
+                cmd = [
+                    ffmpeg_exe, "-y",
+                    "-i", str(save_path),
+                    "-vn",                    # drop video stream
+                    "-acodec", "libmp3lame",
+                    "-ab", "64k",             # 64kbps — good balance for Whisper
+                    "-ar", "16000",           # 16kHz sample rate (Whisper optimal)
+                    str(extracted_audio),
+                ]
+                result = _subprocess.run(cmd, capture_output=True, timeout=300)
+                if result.returncode != 0:
+                    raise RuntimeError(f"ffmpeg audio extraction failed: {result.stderr.decode()[:500]}")
+                audio_path = extracted_audio
+                logger.info("media_audio_extracted", ingest_id=ingest_id,
+                            audio_size_mb=round(audio_path.stat().st_size/1024/1024, 1))
+
+            # Transcribe with Groq Whisper
+            groq_client = _Groq()
+            audio_size_mb = audio_path.stat().st_size / 1024 / 1024
+
+            # Groq Whisper limit is 25MB — warn but attempt anyway
+            if audio_size_mb > 25:
+                logger.warning("media_file_large_for_whisper", size_mb=round(audio_size_mb, 1), ingest_id=ingest_id)
+
+            with open(audio_path, "rb") as af:
+                transcription = groq_client.audio.transcriptions.create(
+                    model="whisper-large-v3",
+                    file=af,
+                    response_format="text",
+                )
+
+            transcript = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+
+            if not transcript:
+                raise ValueError("Whisper returned empty transcript")
+
+            logger.info("media_whisper_done", ingest_id=ingest_id, chars=len(transcript))
+
+            # Build document and ingest into Pinecone
+            doc_text = (
+                f"[{media_type.capitalize()} File] {filename}\n\n"
+                f"## Audio Transcript (Whisper — high accuracy)\n\n"
+                f"{transcript}"
+            )
+            chunks = ingest_text(doc_text, source=f"{media_type}:{filename}", namespace=org_id)
+            _set_status("done", chunks)
+
+            logger.info("media_file_done", ingest_id=ingest_id, filename=filename,
+                        chunks=chunks, chars=len(transcript))
+
         except Exception as e:
-            logger.error("media_file_processing_failed", filename=filename, media_type=media_type, error=str(e), ingest_id=ingest_id)
+            logger.error("media_file_processing_failed", filename=filename,
+                         media_type=media_type, error=str(e), ingest_id=ingest_id)
+            _set_status("failed", 0)
+        finally:
+            import shutil as _shutil
+            _shutil.rmtree(tmp_dir, ignore_errors=True)
 
     background_tasks.add_task(do_process)
 
@@ -597,7 +676,7 @@ async def ingest_media_file_endpoint(
         "filename": filename,
         "ingest_type": media_type,
         "size_bytes": len(content),
-        "message": f"{media_type.capitalize()} file queued for transcription. This may take a few minutes.",
+        "message": f"{media_type.capitalize()} queued — extracting audio and transcribing with Whisper. This may take 1–2 minutes.",
     }
 
 
@@ -654,7 +733,7 @@ async def retry_ingest_endpoint(
 
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT source_name, file_size_bytes, status FROM ingest_history WHERE ingest_id=? AND user_id=? AND ingest_type='image'",
+            "SELECT source_name, file_size_bytes, status, ingest_type FROM ingest_history WHERE ingest_id=? AND user_id=? AND ingest_type IN ('image','video','audio')",
             (ingest_id, user_id)
         ).fetchone()
 
