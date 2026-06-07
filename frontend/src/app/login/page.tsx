@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent, Suspense } from 'react'
+import { useState, FormEvent, Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Database, CheckCircle } from 'lucide-react'
@@ -15,6 +15,13 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Clear form on mount and focus email field
+  useEffect(() => {
+    setEmail('')
+    setPassword('')
+    setError('')
+  }, [])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -79,6 +86,7 @@ function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
+                autoComplete="off"
               />
             </div>
             <div>
@@ -91,6 +99,7 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="off"
               />
             </div>
 
