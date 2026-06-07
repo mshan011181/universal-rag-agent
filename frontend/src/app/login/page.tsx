@@ -101,7 +101,7 @@ function LoginForm() {
                 className={`input ${emailError ? 'border-red-400 focus:ring-red-400' : ''}`}
                 placeholder="you@company.com"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setEmailError('') }}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
                 autoComplete="username"
@@ -119,7 +119,7 @@ function LoginForm() {
                 className={`input ${passwordError ? 'border-red-400 focus:ring-red-400' : ''}`}
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setPasswordError('') }}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="new-password"
               />
