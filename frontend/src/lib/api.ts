@@ -183,6 +183,10 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   return request('/api/admin/stats')
 }
 
+export async function fetchAdminUsers(): Promise<import('@/types').AdminUser[]> {
+  return request('/api/admin/users')
+}
+
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
   return request('/api/health')
 }

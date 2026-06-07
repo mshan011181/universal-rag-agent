@@ -46,6 +46,25 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
     }
 
 
+@router.get("/users")
+async def list_users(user: dict = Depends(require_role("admin"))):
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("""
+                SELECT u.user_id, u.email, u.org_id, u.role, u.created_at,
+                       COUNT(i.ingest_id) as doc_count,
+                       COALESCE(SUM(i.file_size_bytes), 0) as storage_used_bytes,
+                       COALESCE(SUM(i.chunks_created), 0) as total_chunks
+                FROM users u
+                LEFT JOIN ingest_history i ON u.user_id = i.user_id AND i.status = 'done' AND i.chunks_created > 0
+                GROUP BY u.user_id
+                ORDER BY u.created_at DESC
+            """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 @router.get("/pattern-performance")
 async def get_pattern_performance(user: dict = Depends(require_role("admin"))):
     try:

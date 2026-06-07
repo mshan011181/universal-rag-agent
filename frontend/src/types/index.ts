@@ -65,6 +65,17 @@ export interface AdminStats {
   pattern_breakdown: Record<string, number>
 }
 
+export interface AdminUser {
+  user_id: string
+  email: string
+  org_id: string
+  role: string
+  created_at: string
+  doc_count: number
+  storage_used_bytes: number
+  total_chunks: number
+}
+
 export interface ApiError {
   detail: string
   status: number
