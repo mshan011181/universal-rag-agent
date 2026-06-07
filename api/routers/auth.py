@@ -31,7 +31,7 @@ class TokenResponse(BaseModel):
 
 
 def _ensure_users_table() -> None:
-    """Create users table if it doesn't exist (idempotent)."""
+    """Create users table if it doesn't exist and migrate columns (idempotent)."""
     try:
         with get_conn() as conn:
             conn.execute("""
@@ -41,12 +41,17 @@ def _ensure_users_table() -> None:
                     hashed_password TEXT NOT NULL,
                     org_id TEXT NOT NULL,
                     role TEXT DEFAULT 'user',
+                    storage_quota_bytes INTEGER DEFAULT 524288000,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # Migrate: add storage_quota_bytes if missing
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+            if "storage_quota_bytes" not in cols:
+                conn.execute("ALTER TABLE users ADD COLUMN storage_quota_bytes INTEGER DEFAULT 524288000")
             conn.commit()
     except Exception:
-        pass  # Table may already exist
+        pass
 
 
 @router.post("/register", status_code=201)

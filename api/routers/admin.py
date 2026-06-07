@@ -1,8 +1,25 @@
-from fastapi import APIRouter, Depends
+import uuid
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, EmailStr
+from typing import Optional
 from api.auth_utils import require_role
+from api.auth_utils import hash_password
 from src.memory.sqlite_store import get_conn
 
 router = APIRouter()
+
+UNLIMITED = -1  # sentinel for unlimited quota
+
+
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "user"
+
+
+class UpdateQuotaRequest(BaseModel):
+    quota_bytes: Optional[int] = None   # None or -1 = unlimited
+    unlimited: bool = False
 
 
 @router.get("/stats")
@@ -11,7 +28,6 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
     org_id = user.get("org_id", "")
     try:
         with get_conn() as conn:
-            # Queries scoped to this user's session prefix
             query_count = conn.execute(
                 "SELECT COUNT(*) FROM conversation_history WHERE session_id LIKE ?",
                 (f"{user_id}:%",)
@@ -20,12 +36,10 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
             pattern_rows = conn.execute(
                 "SELECT pattern_combo, COUNT(*) as cnt FROM pattern_performance GROUP BY pattern_combo"
             ).fetchall()
-            # Documents: count of actual files this user has indexed (not chunk sum)
             doc_count = conn.execute(
                 "SELECT COUNT(*) FROM ingest_history WHERE user_id = ? AND status = 'done' AND chunks_created > 0",
                 (user_id,)
             ).fetchone()[0]
-            # Users in same org
             user_count = conn.execute(
                 "SELECT COUNT(*) FROM users WHERE org_id = ?", (org_id,)
             ).fetchone()[0]
@@ -51,7 +65,9 @@ async def list_users(user: dict = Depends(require_role("admin"))):
     try:
         with get_conn() as conn:
             rows = conn.execute("""
-                SELECT u.user_id, u.email, u.org_id, u.role, u.created_at,
+                SELECT u.user_id, u.email, u.org_id, u.role,
+                       COALESCE(u.storage_quota_bytes, 524288000) as storage_quota_bytes,
+                       u.created_at,
                        COUNT(i.ingest_id) as doc_count,
                        COALESCE(SUM(i.file_size_bytes), 0) as storage_used_bytes,
                        COALESCE(SUM(i.chunks_created), 0) as total_chunks
@@ -63,6 +79,69 @@ async def list_users(user: dict = Depends(require_role("admin"))):
         return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+@router.post("/users", status_code=201)
+async def create_user(body: CreateUserRequest, admin: dict = Depends(require_role("admin"))):
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if body.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
+
+    user_id = str(uuid.uuid4())
+    org_id = str(uuid.uuid4())
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """INSERT INTO users (user_id, email, hashed_password, org_id, role, storage_quota_bytes)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, body.email, hash_password(body.password), org_id, body.role, 524288000)
+            )
+            conn.commit()
+    except Exception as e:
+        if "UNIQUE constraint failed" in str(e):
+            raise HTTPException(status_code=409, detail="Email already registered")
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+    return {"user_id": user_id, "email": body.email, "org_id": org_id, "role": body.role}
+
+
+@router.delete("/users/{target_user_id}", status_code=200)
+async def delete_user(target_user_id: str, admin: dict = Depends(require_role("admin"))):
+    if target_user_id == admin["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT email FROM users WHERE user_id = ?", (target_user_id,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="User not found")
+            conn.execute("DELETE FROM ingest_history WHERE user_id = ?", (target_user_id,))
+            conn.execute("DELETE FROM users WHERE user_id = ?", (target_user_id,))
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+
+    return {"deleted": target_user_id}
+
+
+@router.patch("/users/{target_user_id}/quota", status_code=200)
+async def update_quota(target_user_id: str, body: UpdateQuotaRequest, admin: dict = Depends(require_role("admin"))):
+    quota = UNLIMITED if body.unlimited else (body.quota_bytes if body.quota_bytes is not None else 524288000)
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (target_user_id,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="User not found")
+            conn.execute("UPDATE users SET storage_quota_bytes = ? WHERE user_id = ?", (quota, target_user_id))
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to update quota")
+
+    return {"user_id": target_user_id, "storage_quota_bytes": quota}
 
 
 @router.get("/pattern-performance")

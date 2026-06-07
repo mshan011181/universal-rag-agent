@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
-import { fetchAdminStats, fetchHealth, fetchAdminUsers } from '@/lib/api'
+import { fetchAdminStats, fetchHealth, fetchAdminUsers, createAdminUser, deleteAdminUser, updateUserQuota } from '@/lib/api'
 import type { AdminStats, AdminUser } from '@/types'
-import { BarChart2, Users, FileText, MessageSquare, Zap, AlertCircle, HardDrive } from 'lucide-react'
+import { BarChart2, Users, FileText, MessageSquare, Zap, AlertCircle, HardDrive, Trash2, UserPlus, Infinity, X } from 'lucide-react'
 import clsx from 'clsx'
 import { getUserRole } from '@/lib/auth'
 
-// Default quota per user: 500 MB
-const QUOTA_BYTES = 500 * 1024 * 1024
+const DEFAULT_QUOTA = 500 * 1024 * 1024   // 500 MB
+const UNLIMITED = -1
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -37,6 +37,16 @@ function StatCard({ label, value, icon: Icon, sub }: {
 }
 
 function StorageBar({ used, quota }: { used: number; quota: number }) {
+  if (quota === UNLIMITED) {
+    return (
+      <div className="w-full">
+        <div className="text-xs text-gray-500 mb-1">{formatBytes(used)} used</div>
+        <div className="flex items-center gap-1 text-xs text-brand-600 font-medium">
+          <Infinity className="w-3 h-3" /> Unlimited
+        </div>
+      </div>
+    )
+  }
   const pct = Math.min((used / quota) * 100, 100)
   const color = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-brand-500'
   return (
@@ -53,6 +63,151 @@ function StorageBar({ used, quota }: { used: number; quota: number }) {
   )
 }
 
+// ── Add User Modal ────────────────────────────────────────────────────────────
+function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState('user')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await createAdminUser(email, password, role)
+      onCreated()
+      onClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create user')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Add User</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@company.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password" required minLength={6} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 6 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              value={role} onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+              {loading ? 'Creating…' : 'Create User'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Quota Modal ──────────────────────────────────────────────────────────
+function QuotaModal({ user, onClose, onUpdated }: { user: AdminUser; onClose: () => void; onUpdated: () => void }) {
+  const [unlimited, setUnlimited] = useState(user.storage_quota_bytes === UNLIMITED)
+  const [mb, setMb] = useState(
+    user.storage_quota_bytes === UNLIMITED ? 500 : Math.round(user.storage_quota_bytes / (1024 * 1024))
+  )
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSave() {
+    setError('')
+    setLoading(true)
+    try {
+      await updateUserQuota(user.user_id, unlimited ? null : mb * 1024 * 1024, unlimited)
+      onUpdated()
+      onClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update quota')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Edit Storage Quota</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-500">User: <span className="font-medium text-gray-900">{user.email}</span></p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)}
+              className="w-4 h-4 accent-brand-600"
+            />
+            <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+              <Infinity className="w-4 h-4 text-brand-600" /> Unlimited storage
+            </span>
+          </label>
+          {!unlimited && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quota (MB)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={50} step={50} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  value={mb} onChange={(e) => setMb(Number(e.target.value))}
+                />
+                <span className="text-sm text-gray-500">MB</span>
+              </div>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {[100, 250, 500, 1000, 2000].map((v) => (
+                  <button key={v} onClick={() => setMb(v)}
+                    className={clsx('px-2.5 py-1 rounded text-xs font-medium border transition-colors',
+                      mb === v ? 'bg-brand-600 text-white border-brand-600' : 'border-gray-300 text-gray-600 hover:border-brand-400'
+                    )}>
+                    {v >= 1000 ? `${v / 1000} GB` : `${v} MB`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-3 pt-2">
+            <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button onClick={handleSave} disabled={loading} className="flex-1 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
+              {loading ? 'Saving…' : 'Save Quota'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter()
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -60,20 +215,40 @@ export default function AdminPage() {
   const [health, setHealth] = useState<{ status: string; version: string } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [quotaUser, setQuotaUser] = useState<AdminUser | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
-    // Role guard — non-admins sent back to query page
     const role = getUserRole()
-    if (role && role !== 'admin') {
-      router.replace('/query')
-      return
-    }
-
-    Promise.all([fetchAdminStats(), fetchHealth(), fetchAdminUsers()])
-      .then(([s, h, u]) => { setStats(s); setHealth(h); setUsers(u) })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+    if (role && role !== 'admin') { router.replace('/query'); return }
+    loadData()
   }, [router])
+
+  async function loadData() {
+    try {
+      const [s, h, u] = await Promise.all([fetchAdminStats(), fetchHealth(), fetchAdminUsers()])
+      setStats(s); setHealth(h); setUsers(u)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDelete(userId: string) {
+    setActionLoading(userId)
+    try {
+      await deleteAdminUser(userId)
+      setUsers((prev) => prev.filter((u) => u.user_id !== userId))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setActionLoading(null)
+      setDeleteConfirm(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -105,23 +280,17 @@ export default function AdminPage() {
 
         {error && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            {error}
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{error}
           </div>
         )}
 
-        {/* KPI row */}
+        {/* KPIs */}
         {stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard label="Total Queries" value={(stats.total_queries ?? 0).toLocaleString()} icon={MessageSquare} />
             <StatCard label="Users" value={(stats.total_users ?? 0).toLocaleString()} icon={Users} />
             <StatCard label="Documents Indexed" value={(stats.total_documents ?? 0).toLocaleString()} icon={FileText} />
-            <StatCard
-              label="Avg Quality"
-              value={`${((stats.avg_quality_score ?? 0) * 100).toFixed(1)}%`}
-              icon={Zap}
-              sub="0.0 – 1.0 graded scale"
-            />
+            <StatCard label="Avg Quality" value={`${((stats.avg_quality_score ?? 0) * 100).toFixed(1)}%`} icon={Zap} sub="0.0 – 1.0 graded scale" />
           </div>
         )}
 
@@ -130,7 +299,12 @@ export default function AdminPage() {
           <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
             <Users className="w-4 h-4 text-brand-600" />
             <h2 className="text-sm font-semibold text-gray-700">User Accounts & Storage</h2>
-            <span className="ml-auto text-xs text-gray-400">Default quota: {formatBytes(QUOTA_BYTES)} / user</span>
+            <button
+              onClick={() => setShowAddUser(true)}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Add User
+            </button>
           </div>
 
           {users.length === 0 ? (
@@ -145,48 +319,69 @@ export default function AdminPage() {
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Docs</th>
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Chunks</th>
-                    <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Storage Usage</th>
+                    <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider w-52">Storage</th>
                     <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                    <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {users.map((u) => {
-                    const pct = Math.min((u.storage_used_bytes / QUOTA_BYTES) * 100, 100)
-                    const overQuota = pct >= 100
-                    return (
-                      <tr key={u.user_id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-gray-900 font-medium">{u.email}</td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                            {u.org_id.slice(0, 8)}…
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={clsx(
-                            'px-2 py-0.5 rounded text-xs font-medium',
-                            u.role === 'admin' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'
-                          )}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{u.doc_count}</td>
-                        <td className="px-4 py-3 text-gray-700">{u.total_chunks}</td>
-                        <td className="px-4 py-3">
-                          {overQuota ? (
-                            <div className="flex items-center gap-1 text-xs text-red-600 font-medium">
-                              <HardDrive className="w-3 h-3" />
-                              Over quota ({formatBytes(u.storage_used_bytes)})
+                  {users.map((u) => (
+                    <tr key={u.user_id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-gray-900 font-medium">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded" title={u.org_id}>
+                          {u.org_id.slice(0, 8)}…
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={clsx('px-2 py-0.5 rounded text-xs font-medium',
+                          u.role === 'admin' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'
+                        )}>{u.role}</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">{u.doc_count}</td>
+                      <td className="px-4 py-3 text-gray-700">{u.total_chunks}</td>
+                      <td className="px-4 py-3">
+                        <StorageBar used={u.storage_used_bytes} quota={u.storage_quota_bytes} />
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {new Date(u.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {/* Edit Quota */}
+                          <button
+                            onClick={() => setQuotaUser(u)}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-gray-300 text-gray-600 hover:border-brand-400 hover:text-brand-600 transition-colors"
+                          >
+                            <HardDrive className="w-3 h-3" /> Quota
+                          </button>
+                          {/* Delete */}
+                          {deleteConfirm === u.user_id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleDelete(u.user_id)}
+                                disabled={actionLoading === u.user_id}
+                                className="px-2 py-1 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                              >
+                                {actionLoading === u.user_id ? '…' : 'Confirm'}
+                              </button>
+                              <button onClick={() => setDeleteConfirm(null)} className="px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700">
+                                Cancel
+                              </button>
                             </div>
                           ) : (
-                            <StorageBar used={u.storage_used_bytes} quota={QUOTA_BYTES} />
+                            <button
+                              onClick={() => setDeleteConfirm(u.user_id)}
+                              className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete user"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-400">
-                          {new Date(u.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -207,9 +402,7 @@ export default function AdminPage() {
                 {Object.entries(stats.pattern_breakdown)
                   .sort(([, a], [, b]) => b - a)
                   .map(([pattern, count]) => {
-                    const pct = stats.total_queries > 0
-                      ? Math.round((count / stats.total_queries) * 100)
-                      : 0
+                    const pct = stats.total_queries > 0 ? Math.round((count / stats.total_queries) * 100) : 0
                     return (
                       <div key={pattern}>
                         <div className="flex items-center justify-between text-sm mb-1">
@@ -227,6 +420,14 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      {showAddUser && (
+        <AddUserModal onClose={() => setShowAddUser(false)} onCreated={loadData} />
+      )}
+      {quotaUser && (
+        <QuotaModal user={quotaUser} onClose={() => setQuotaUser(null)} onUpdated={loadData} />
+      )}
     </AppShell>
   )
 }

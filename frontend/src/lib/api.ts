@@ -193,6 +193,24 @@ export async function fetchAdminUsers(): Promise<import('@/types').AdminUser[]> 
   return request('/api/admin/users')
 }
 
+export async function createAdminUser(email: string, password: string, role: string) {
+  return request('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, role }),
+  })
+}
+
+export async function deleteAdminUser(userId: string) {
+  return request(`/api/admin/users/${userId}`, { method: 'DELETE' })
+}
+
+export async function updateUserQuota(userId: string, quotaBytes: number | null, unlimited: boolean) {
+  return request(`/api/admin/users/${userId}/quota`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quota_bytes: quotaBytes, unlimited }),
+  })
+}
+
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
   return request('/api/health')
 }

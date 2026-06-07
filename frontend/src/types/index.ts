@@ -70,6 +70,7 @@ export interface AdminUser {
   email: string
   org_id: string
   role: string
+  storage_quota_bytes: number   // -1 = unlimited
   created_at: string
   doc_count: number
   storage_used_bytes: number
