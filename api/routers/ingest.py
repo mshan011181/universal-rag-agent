@@ -162,12 +162,60 @@ async def ingest_youtube_endpoint(
     logger.info("youtube_queued", ingest_id=ingest_id, url=body.url, user_id=user_id)
     write_ingest(ingest_id, user_id, "youtube", source_name, source_url=body.url, chunks=0)
 
+    org_id = user.get("org_id", "default")
+
     def do_process():
         try:
-            # In production: use yt-dlp to download audio, then transcribe with Groq Whisper
+            import re as _re
+            from youtube_transcript_api import YouTubeTranscriptApi
+            from src.memory.sqlite_store import get_conn as _get_conn
+
             logger.info("youtube_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
+
+            # Extract video ID
+            vid_match = _re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", body.url)
+            if not vid_match:
+                raise ValueError("Could not extract video ID from URL")
+            video_id = vid_match.group(1)
+
+            # Fetch transcript (auto-generated or manual captions)
+            ytt = YouTubeTranscriptApi()
+            transcript_list = ytt.fetch(video_id)
+            # Join all segments into a single readable text
+            full_text = " ".join(seg.text for seg in transcript_list)
+
+            if not full_text.strip():
+                raise ValueError("Transcript is empty")
+
+            # Ingest transcript text into Pinecone under the user's namespace
+            chunks = ingest_text(
+                f"[YouTube] {source_name}\n\n{full_text}",
+                source=f"youtube:{body.url}",
+                namespace=org_id,
+            )
+
+            # Update DB with real chunk count
+            with _get_conn() as conn:
+                conn.execute(
+                    "UPDATE ingest_history SET chunks_created=?, status='done' WHERE ingest_id=?",
+                    (chunks, ingest_id)
+                )
+                conn.commit()
+
+            logger.info("youtube_done", ingest_id=ingest_id, chunks=chunks, video_id=video_id)
+
         except Exception as e:
             logger.error("youtube_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
+            try:
+                from src.memory.sqlite_store import get_conn as _get_conn
+                with _get_conn() as conn:
+                    conn.execute(
+                        "UPDATE ingest_history SET status='failed' WHERE ingest_id=?",
+                        (ingest_id,)
+                    )
+                    conn.commit()
+            except Exception:
+                pass
 
     background_tasks.add_task(do_process)
 
