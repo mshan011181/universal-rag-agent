@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { submitQuery, fetchUserStats } from '@/lib/api'
 import type { QueryResponse } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square } from 'lucide-react'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
+import { useTextToSpeech } from '@/hooks/useTextToSpeech'
+
+const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B'
@@ -59,6 +62,7 @@ export default function QueryPage() {
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
   const [showModelsInfo, setShowModelsInfo] = useState(false)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
+  const tts = useTextToSpeech()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -67,6 +71,7 @@ export default function QueryPage() {
     setResult(null)
     setShowSources(false)
     setLoading(true)
+    tts.stop()
     try {
       const res = await submitQuery({
         query: query.trim(),
@@ -205,6 +210,7 @@ export default function QueryPage() {
             <div className="space-y-4">
               {/* Answer */}
               <div className="card p-5">
+                {/* Header row: pattern + quality */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Zap className="w-4 h-4 text-brand-600" />
@@ -217,7 +223,89 @@ export default function QueryPage() {
                     <span className="text-xs text-gray-400">{result.latency_ms ?? 0}ms</span>
                   </div>
                 </div>
-                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{result.answer}</p>
+
+                {/* Answer text */}
+                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mb-4">{result.answer}</p>
+
+                {/* TTS player */}
+                {tts.supported && (
+                  <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                    <Volume2 className="w-4 h-4 text-gray-400 shrink-0" />
+
+                    {/* Play / Pause / Resume */}
+                    {tts.state === 'idle' && (
+                      <button
+                        onClick={() => tts.play(result.answer)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        Listen
+                      </button>
+                    )}
+                    {tts.state === 'playing' && (
+                      <button
+                        onClick={tts.pause}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500 text-white text-xs font-medium hover:bg-yellow-600 transition-colors"
+                      >
+                        <Pause className="w-3.5 h-3.5" />
+                        Pause
+                      </button>
+                    )}
+                    {tts.state === 'paused' && (
+                      <button
+                        onClick={tts.resume}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        Resume
+                      </button>
+                    )}
+
+                    {/* Stop — only when active */}
+                    {tts.state !== 'idle' && (
+                      <button
+                        onClick={tts.stop}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-100 transition-colors"
+                      >
+                        <Square className="w-3 h-3" />
+                        Stop
+                      </button>
+                    )}
+
+                    {/* Speed selector */}
+                    <div className="ml-auto flex items-center gap-1">
+                      <span className="text-xs text-gray-400">Speed:</span>
+                      <select
+                        value={tts.speed}
+                        onChange={(e) => tts.setSpeed(Number(e.target.value))}
+                        className="text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400"
+                      >
+                        {SPEED_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}×</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Playing indicator */}
+                    {tts.state === 'playing' && (
+                      <span className="flex items-center gap-1 text-xs text-brand-600 font-medium">
+                        <span className="inline-flex gap-0.5">
+                          <span className="w-0.5 h-3 bg-brand-600 rounded animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-0.5 h-3 bg-brand-600 rounded animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-0.5 h-3 bg-brand-600 rounded animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                        Speaking
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {!tts.supported && (
+                  <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                    <VolumeX className="w-4 h-4 text-gray-400" />
+                    <span className="text-xs text-gray-400">Audio not supported in this browser</span>
+                  </div>
+                )}
               </div>
 
               {/* Follow-ups */}
