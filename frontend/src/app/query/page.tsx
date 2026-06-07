@@ -26,10 +26,14 @@ const PATTERNS = [
 function QualityBadge({ score }: { score: number }) {
   const color = score >= 0.8 ? 'bg-green-100 text-green-800'
               : score >= 0.6 ? 'bg-yellow-100 text-yellow-800'
-              : 'bg-red-100 text-red-800'
+              : score >= 0.3 ? 'bg-orange-100 text-orange-800'
+              : 'bg-red-100 text-red-800 ring-1 ring-red-400'
+  const label = score < 0.3 ? 'Poor match — rephrase query'
+              : `Quality ${(score * 100).toFixed(0)}%`
   return (
-    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', color)}>
-      Quality {(score * 100).toFixed(0)}%
+    <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium', color)}>
+      {score < 0.3 && <AlertCircle className="w-3 h-3" />}
+      {label}
     </span>
   )
 }
@@ -202,6 +206,40 @@ export default function QueryPage() {
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               {error}
+            </div>
+          )}
+
+          {/* Low-quality warning — shown when quality < 30% */}
+          {result && (result.quality_score ?? 1) < 0.3 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 mb-4">
+              <div className="flex items-start gap-2 mb-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-sm font-semibold text-amber-800">Low quality response — the system could not find a good match</p>
+              </div>
+              <p className="text-xs text-amber-700 mb-2 ml-6">
+                This usually happens when you query by <strong>filename or label</strong> instead of by <strong>content</strong>.
+                Try rephrasing your question:
+              </p>
+              <ul className="ml-6 space-y-1">
+                {[
+                  { bad: 'Talk about invoice2.jpg', good: 'What is the total amount in the invoice?' },
+                  { bad: 'Tell me about the image', good: 'List all line items and their prices' },
+                  { bad: 'What is in the YouTube video?', good: 'Explain how Machine Learning differs from Deep Learning' },
+                  { bad: 'Summarise my document', good: 'What are the key findings in the report?' },
+                ].map((tip, i) => (
+                  <li key={i} className="text-xs text-amber-700 flex items-start gap-1.5">
+                    <span className="text-red-500 font-mono shrink-0">✗</span>
+                    <span className="line-through text-gray-400">{tip.bad}</span>
+                    <span className="text-amber-500 mx-1">→</span>
+                    <button
+                      onClick={() => { setQuery(tip.good); setResult(null) }}
+                      className="text-brand-600 hover:underline font-medium text-left"
+                    >
+                      {tip.good}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
