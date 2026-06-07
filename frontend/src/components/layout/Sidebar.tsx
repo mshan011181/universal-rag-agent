@@ -30,8 +30,7 @@ export default function Sidebar() {
   }, [])
 
   function handleLogout() {
-    logout()
-    sessionStorage.removeItem('user_email')
+    logout() // clears access token, refresh_token, user_role, user_email
     router.push('/login')
   }
 

@@ -26,9 +26,16 @@ export function decodeToken(token: string): Record<string, unknown> | null {
 
 export function getUserRole(): 'admin' | 'user' | null {
   const token = getAccessToken()
-  if (!token) return null
-  const payload = decodeToken(token)
-  return (payload?.role as 'admin' | 'user') ?? 'user'
+  if (token) {
+    const payload = decodeToken(token)
+    return (payload?.role as 'admin' | 'user') ?? 'user'
+  }
+  // Fallback to sessionStorage (persists across page reload)
+  if (typeof window !== 'undefined') {
+    const r = sessionStorage.getItem('user_role')
+    if (r === 'admin' || r === 'user') return r
+  }
+  return null
 }
 
 export function clearSession() {

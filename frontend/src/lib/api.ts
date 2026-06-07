@@ -79,8 +79,12 @@ export async function login(email: string, password: string): Promise<AuthTokens
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   }, false)
   setAccessToken(data.access_token)
-  // Store refresh token in sessionStorage (httpOnly cookie requires a server)
   sessionStorage.setItem('refresh_token', data.refresh_token)
+  // Decode role from JWT and persist so sidebar/guards survive page reload
+  try {
+    const payload = JSON.parse(atob(data.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    if (payload?.role) sessionStorage.setItem('user_role', payload.role)
+  } catch {}
   return data
 }
 
@@ -110,6 +114,8 @@ export async function refreshToken(): Promise<boolean> {
 export function logout() {
   setAccessToken(null)
   sessionStorage.removeItem('refresh_token')
+  sessionStorage.removeItem('user_role')
+  sessionStorage.removeItem('user_email')
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────

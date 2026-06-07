@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
 import { fetchAdminStats, fetchHealth, fetchAdminUsers } from '@/lib/api'
 import type { AdminStats, AdminUser } from '@/types'
 import { BarChart2, Users, FileText, MessageSquare, Zap, AlertCircle, HardDrive } from 'lucide-react'
 import clsx from 'clsx'
+import { getUserRole } from '@/lib/auth'
 
 // Default quota per user: 500 MB
 const QUOTA_BYTES = 500 * 1024 * 1024
@@ -52,6 +54,7 @@ function StorageBar({ used, quota }: { used: number; quota: number }) {
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [health, setHealth] = useState<{ status: string; version: string } | null>(null)
@@ -59,11 +62,18 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Role guard — non-admins sent back to query page
+    const role = getUserRole()
+    if (role && role !== 'admin') {
+      router.replace('/query')
+      return
+    }
+
     Promise.all([fetchAdminStats(), fetchHealth(), fetchAdminUsers()])
       .then(([s, h, u]) => { setStats(s); setHealth(h); setUsers(u) })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [router])
 
   if (loading) {
     return (
