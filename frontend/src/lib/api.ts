@@ -183,6 +183,10 @@ export async function deleteIngest(ingestId: string): Promise<{ status: string; 
   return request(`/api/ingest/${ingestId}`, { method: 'DELETE' })
 }
 
+export async function retryIngest(ingestId: string): Promise<{ status: string; ingest_id: string }> {
+  return request(`/api/ingest/${ingestId}/retry`, { method: 'POST' })
+}
+
 export async function ingestAudioFile(file: File): Promise<IngestResponse> {
   const form = new FormData()
   form.append('file', file)

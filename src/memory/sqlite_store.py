@@ -147,7 +147,7 @@ def get_ingest_history(user_id: str) -> list[dict]:
     """Get all ingestion history for a user."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT ingest_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created, created_at FROM ingest_history WHERE user_id=? ORDER BY created_at DESC",
+            "SELECT ingest_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created, created_at, status FROM ingest_history WHERE user_id=? ORDER BY created_at DESC",
             (user_id,)
         ).fetchall()
     return [dict(r) for r in rows]

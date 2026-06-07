@@ -368,13 +368,14 @@ async def ingest_image_endpoint(
     def do_process():
         try:
             import base64
-            import anthropic as _anthropic
+            from groq import Groq as _Groq
             from src.memory.sqlite_store import get_conn as _get_conn
 
             mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
             b64_data = base64.standard_b64encode(content).decode("utf-8")
+            data_url = f"data:{mime};base64,{b64_data}"
 
-            client = _anthropic.Anthropic()
+            client = _Groq()
             prompt = (
                 "You are an expert document analysis assistant specialised in extracting structured "
                 "information from images for use in a retrieval-augmented generation (RAG) system.\n\n"
@@ -406,30 +407,23 @@ async def ingest_image_endpoint(
                 "Be exhaustive — every number and label matters for question-answering."
             )
 
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+            response = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 max_tokens=8192,
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": mime,
-                                    "data": b64_data,
-                                },
-                            },
+                            {"type": "image_url", "image_url": {"url": data_url}},
                             {"type": "text", "text": prompt},
                         ],
                     }
                 ],
             )
 
-            extracted = response.content[0].text.strip()
+            extracted = response.choices[0].message.content.strip()
             if not extracted:
-                raise ValueError("Claude Vision returned empty extraction")
+                raise ValueError("Vision model returned empty extraction")
 
             # Prepend image context for RAG retrieval
             doc_text = f"[Image] {filename}\n\n{extracted}"
@@ -565,11 +559,112 @@ async def list_ingestion_history(
                 "size_bytes": item["file_size_bytes"],
                 "chunks": item["chunks_created"],
                 "created_at": item["created_at"],
+                "status": item.get("status", "done"),
             })
         return {"by_type": by_type, "total": len(items)}
     except Exception as e:
         logger.error("list_ingest_failed", user_id=user["user_id"], error=str(e))
         raise HTTPException(status_code=500, detail="Failed to list ingestions")
+
+
+@router.post("/{ingest_id}/retry")
+async def retry_ingest_endpoint(
+    ingest_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_role("user")),
+):
+    """Retry a failed image ingestion."""
+    user_id = user["user_id"]
+    org_id = user.get("org_id", "default")
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT source_name, file_size_bytes, status FROM ingest_history WHERE ingest_id=? AND user_id=? AND ingest_type='image'",
+            (ingest_id, user_id)
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Image ingest record not found")
+
+    filename = row["source_name"]
+    # Find the saved file in uploads
+    saved_files = list(UPLOADS_DIR.glob(f"{user_id}_*"))
+    # Match by filename suffix
+    ext = Path(filename).suffix.lower()
+    matches = [f for f in saved_files if f.suffix.lower() == ext]
+
+    if not matches:
+        raise HTTPException(status_code=404, detail="Original image file not found. Please re-upload.")
+
+    # Use most recent matching file
+    image_path = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
+    content = image_path.read_bytes()
+
+    # Reset status to processing
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ingest_history SET status='processing', chunks_created=0 WHERE ingest_id=?",
+            (ingest_id,)
+        )
+        conn.commit()
+
+    def do_retry():
+        try:
+            import base64
+            from groq import Groq as _Groq
+            from src.memory.sqlite_store import get_conn as _get_conn
+
+            mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
+            b64_data = base64.standard_b64encode(content).decode("utf-8")
+            data_url = f"data:{mime};base64,{b64_data}"
+
+            client = _Groq()
+            prompt = (
+                "You are an expert document analysis assistant. Extract all structured information "
+                "from this image for a RAG system.\n\n"
+                "1. INVOICES/RECEIPTS: vendor, invoice #, date, all line items (Qty/Price/Amount), subtotal, tax, total\n"
+                "2. TABLES/EXCEL: full pipe-separated table with all rows/columns\n"
+                "3. FORMS/REPORTS: all label-value pairs\n"
+                "4. DIAGRAMS/FLOWCHARTS: type, nodes, connections, labels\n"
+                "5. OTHER TEXT: verbatim extraction\n\n"
+                "Use headers: ## Document Type, ## Key Fields, ## Table Data, ## Summary / Totals"
+            )
+
+            response = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                max_tokens=8192,
+                messages=[{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                    {"type": "text", "text": prompt},
+                ]}],
+            )
+            extracted = response.choices[0].message.content.strip()
+            if not extracted:
+                raise ValueError("Empty extraction")
+
+            doc_text = f"[Image] {filename}\n\n{extracted}"
+            chunks = ingest_text(doc_text, source=f"image:{filename}", namespace=org_id)
+
+            with _get_conn() as conn:
+                conn.execute(
+                    "UPDATE ingest_history SET chunks_created=?, status='done' WHERE ingest_id=?",
+                    (chunks, ingest_id)
+                )
+                conn.commit()
+            logger.info("image_retry_done", ingest_id=ingest_id, chunks=chunks)
+
+        except Exception as e:
+            logger.error("image_retry_failed", ingest_id=ingest_id, error=str(e))
+            try:
+                from src.memory.sqlite_store import get_conn as _get_conn
+                with _get_conn() as conn:
+                    conn.execute("UPDATE ingest_history SET status='failed' WHERE ingest_id=?", (ingest_id,))
+                    conn.commit()
+            except Exception:
+                pass
+
+    background_tasks.add_task(do_retry)
+    return {"status": "processing", "ingest_id": ingest_id, "message": "Retrying image extraction"}
 
 
 @router.delete("/{ingest_id}")

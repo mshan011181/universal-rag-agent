@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, getIngestHistory, deleteIngest } from '@/lib/api'
+import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, getIngestHistory, deleteIngest, retryIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
-import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image } from 'lucide-react'
+import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image, RotateCcw } from 'lucide-react'
 
 type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube' | 'images'
 
@@ -227,6 +227,17 @@ export default function IngestPage() {
     }
   }
 
+  const handleRetry = async (ingestId: string, name: string) => {
+    try {
+      await retryIngest(ingestId)
+      showMessage('success', `Retrying extraction for "${name}"…`)
+      loadHistory(true)
+      setTimeout(() => loadHistory(true), 3000)
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Retry failed')
+    }
+  }
+
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragging(false)
@@ -436,6 +447,17 @@ export default function IngestPage() {
                 </button>
               </div>
 
+              {/* Image query hint */}
+              {activeTab === 'images' && currentItems.length > 0 && (
+                <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+                  <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-700">
+                    <span className="font-semibold">Tip:</span> Ask about the <span className="font-semibold">content</span>, not the filename.
+                    E.g. <em>"What is the invoice total?"</em> or <em>"List all line items in the invoice"</em> — not <em>"Tell me about invoice_1.jpg"</em>.
+                  </p>
+                </div>
+              )}
+
               {historyLoading ? (
                 <div className="flex items-center justify-center h-32">
                   <Loader className="w-5 h-5 animate-spin text-brand-600" />
@@ -444,21 +466,56 @@ export default function IngestPage() {
                 <p className="text-sm text-gray-500">No {TAB_CONFIG[activeTab].label.toLowerCase()} ingested yet</p>
               ) : (
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {currentItems.map((item: any) => (
-                    <div key={item.ingest_id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          <span className="text-xs text-gray-500">{formatDate(item.created_at)}</span>
-                          {item.size_bytes && <span className="text-xs text-gray-500">{formatBytes(item.size_bytes)}</span>}
-                          {item.chunks > 0 && <span className="text-xs text-brand-600 font-medium">{item.chunks} chunks</span>}
+                  {currentItems.map((item: any) => {
+                    const status = item.status || 'done'
+                    const isFailed = status === 'failed'
+                    const isProcessing = status === 'processing'
+                    return (
+                      <div key={item.ingest_id} className={`flex items-start justify-between p-3 rounded-lg transition-colors ${isFailed ? 'bg-red-50 border border-red-200' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">{formatDate(item.created_at)}</span>
+                            {item.size_bytes && <span className="text-xs text-gray-500">{formatBytes(item.size_bytes)}</span>}
+                            {item.chunks > 0 && (
+                              <span className="text-xs text-brand-600 font-medium">{item.chunks} chunks</span>
+                            )}
+                            {/* Status badge */}
+                            {isFailed && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                <AlertCircle className="w-3 h-3" /> Failed
+                              </span>
+                            )}
+                            {isProcessing && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                <Loader className="w-3 h-3 animate-spin" /> Processing
+                              </span>
+                            )}
+                            {status === 'done' && item.chunks > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                                <CheckCircle className="w-3 h-3" /> Ready
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2 shrink-0">
+                          {/* Retry button for failed image ingestions */}
+                          {isFailed && activeTab === 'images' && (
+                            <button
+                              onClick={() => handleRetry(item.ingest_id, item.name)}
+                              className="p-1 text-blue-500 hover:text-blue-700 transition-colors"
+                              title="Retry extraction"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(item.ingest_id, item.name)} className="p-1 text-gray-400 hover:text-red-600 transition-colors" title="Delete">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                      <button onClick={() => handleDelete(item.ingest_id, item.name)} className="ml-2 p-1 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
