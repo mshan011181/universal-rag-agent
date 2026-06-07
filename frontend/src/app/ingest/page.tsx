@@ -12,7 +12,7 @@ const TAB_CONFIG: Record<TabType, { label: string; icon: React.ElementType; desc
   documents: { label: 'Documents', icon: FileText, description: 'PDF, DOCX, TXT, MD, CSV' },
   text: { label: 'Text', icon: FileText, description: 'Plain text paste' },
   audio: { label: 'Audio', icon: Music, description: 'MP3, WAV, M4A URLs' },
-  video: { label: 'Video', icon: Video, description: 'MP4, WebM URLs' },
+  video: { label: 'Video', icon: Video, description: 'MP4, WebM, MOV, AVI, MKV' },
   weblinks: { label: 'Web Links', icon: Globe, description: 'Any web page URL' },
   youtube: { label: 'YouTube', icon: Youtube, description: 'YouTube video URLs' },
   images: { label: 'Images', icon: Image, description: 'PNG, JPG, GIF, WebP — text & diagrams extracted via AI Vision' },
@@ -384,7 +384,7 @@ export default function IngestPage() {
                   <div>
                     <p className="text-xs text-gray-600 mb-2 font-medium">Upload File</p>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 mb-2 cursor-pointer hover:border-brand-600 transition-colors" onClick={() => videoInputRef.current?.click()}>
-                      <input ref={videoInputRef} type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} accept=".mp4,.webm,.avi,.mov,.mkv,.flv" className="hidden" />
+                      <input ref={videoInputRef} type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} accept=".mp4,.webm,.avi,.mov,.mkv,.flv,.m4v,.3gp" className="hidden" />
                       <Upload className="w-4 h-4 mx-auto mb-1 text-gray-400" />
                       <span className="text-xs">{videoFile ? videoFile.name : 'Click to select'}</span>
                     </div>

@@ -4,7 +4,7 @@ import hashlib
 import urllib.request
 import json as _json
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 import structlog
 
@@ -538,8 +538,8 @@ async def ingest_image_endpoint(
     }
 
 
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
-VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".mp4"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv", ".m4v", ".3gp"}
 MAX_MEDIA_SIZE_MB = 500
 MAX_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_MB * 1024 * 1024
 
@@ -548,7 +548,7 @@ MAX_MEDIA_SIZE_BYTES = MAX_MEDIA_SIZE_MB * 1024 * 1024
 async def ingest_media_file_endpoint(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    media_type: str = "audio",
+    media_type: str = Form("audio"),
     user: dict = Depends(require_role("user")),
 ):
     """Ingest audio or video file (upload)."""
