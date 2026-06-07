@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, getIngestHistory, deleteIngest } from '@/lib/api'
+import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, getIngestHistory, deleteIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
-import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw } from 'lucide-react'
+import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image } from 'lucide-react'
 
-type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube'
+type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube' | 'images'
 
 const TAB_CONFIG: Record<TabType, { label: string; icon: React.ElementType; description: string }> = {
   documents: { label: 'Documents', icon: FileText, description: 'PDF, DOCX, TXT, MD, CSV' },
@@ -15,6 +15,7 @@ const TAB_CONFIG: Record<TabType, { label: string; icon: React.ElementType; desc
   video: { label: 'Video', icon: Video, description: 'MP4, WebM URLs' },
   weblinks: { label: 'Web Links', icon: Globe, description: 'Any web page URL' },
   youtube: { label: 'YouTube', icon: Youtube, description: 'YouTube video URLs' },
+  images: { label: 'Images', icon: Image, description: 'PNG, JPG, GIF, WebP — text & diagrams extracted via AI Vision' },
 }
 
 export default function IngestPage() {
@@ -28,6 +29,7 @@ export default function IngestPage() {
   const [file, setFile] = useState<File | null>(null)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
@@ -35,6 +37,7 @@ export default function IngestPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // silent=true means background refresh — no spinner shown
   const loadHistory = async (silent = false) => {
@@ -189,6 +192,25 @@ export default function IngestPage() {
       setTimeout(() => loadHistory(true), 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Video upload failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleIngestImage = async () => {
+    if (!imageFile) {
+      showMessage('error', 'Please select an image file')
+      return
+    }
+    setLoading(true)
+    try {
+      await ingestImage(imageFile)
+      showMessage('success', `${imageFile.name} queued for vision extraction. Will appear shortly.`)
+      setImageFile(null)
+      loadHistory(true)
+      setTimeout(() => loadHistory(true), 2000)
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Image ingestion failed')
     } finally {
       setLoading(false)
     }
@@ -366,6 +388,34 @@ export default function IngestPage() {
                       {loading ? 'Processing…' : 'Add from URL'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {activeTab === 'images' && (
+                <div className="space-y-3">
+                  <div
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-brand-600 transition-colors"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                      accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
+                      className="hidden"
+                    />
+                    <Image className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                    <span className="text-xs text-gray-600 block">{imageFile ? imageFile.name : 'Click to select image'}</span>
+                    <span className="text-xs text-gray-400 mt-1 block">PNG, JPG, GIF, WebP, BMP, TIFF</span>
+                  </div>
+                  {imageFile && (
+                    <p className="text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded p-2">
+                      Claude Vision will extract all text and describe any diagrams or flowcharts in this image.
+                    </p>
+                  )}
+                  <button onClick={handleIngestImage} disabled={loading || !imageFile} className="btn-primary w-full text-sm">
+                    {loading ? 'Extracting…' : 'Extract & Ingest'}
+                  </button>
                 </div>
               )}
             </div>

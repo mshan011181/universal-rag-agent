@@ -318,6 +318,140 @@ async def ingest_media_endpoint(
     }
 
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
+MAX_IMAGE_SIZE_MB = 20
+MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+
+IMAGE_MIME_MAP = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".tiff": "image/tiff",
+}
+
+
+@router.post("/image")
+async def ingest_image_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("user")),
+):
+    """Ingest an image (PNG, JPG, etc.) — Claude Vision extracts text/diagrams."""
+    filename = _safe_filename(file.filename or "upload")
+    ext = Path(filename).suffix.lower()
+
+    if ext not in IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not allowed. Allowed: {sorted(IMAGE_EXTENSIONS)}",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"Image too large. Max {MAX_IMAGE_SIZE_MB}MB")
+
+    content_hash = hashlib.sha256(content).hexdigest()[:16]
+    save_name = f"{user['user_id']}_{content_hash}{ext}"
+    save_path = UPLOADS_DIR / save_name
+    save_path.write_bytes(content)
+
+    ingest_id = str(uuid.uuid4())
+    user_id = user["user_id"]
+    org_id = user.get("org_id", "default")
+
+    write_ingest(ingest_id, user_id, "image", filename, file_size=len(content), chunks=0)
+    logger.info("image_queued", ingest_id=ingest_id, filename=filename, user_id=user_id)
+
+    def do_process():
+        try:
+            import base64
+            import anthropic as _anthropic
+            from src.memory.sqlite_store import get_conn as _get_conn
+
+            mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
+            b64_data = base64.standard_b64encode(content).decode("utf-8")
+
+            client = _anthropic.Anthropic()
+            prompt = (
+                "You are an expert OCR and diagram analysis assistant.\n\n"
+                "Look at this image carefully. Extract ALL text visible in the image exactly as written. "
+                "If the image contains diagrams, flowcharts, charts, tables, or visual structures, "
+                "describe them in detail — explain what they show, what each element means, "
+                "and how the parts are connected.\n\n"
+                "Format your response as:\n"
+                "## Extracted Text\n"
+                "<all visible text verbatim>\n\n"
+                "## Visual Content Description\n"
+                "<description of diagrams, charts, flowcharts, images if any>\n\n"
+                "Be thorough — this output will be used for question-answering."
+            )
+
+            response = client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=4096,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": mime,
+                                    "data": b64_data,
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+            )
+
+            extracted = response.content[0].text.strip()
+            if not extracted:
+                raise ValueError("Claude Vision returned empty extraction")
+
+            # Prepend image context for RAG retrieval
+            doc_text = f"[Image] {filename}\n\n{extracted}"
+            chunks = ingest_text(doc_text, source=f"image:{filename}", namespace=org_id)
+
+            with _get_conn() as conn:
+                conn.execute(
+                    "UPDATE ingest_history SET chunks_created=?, status='done' WHERE ingest_id=?",
+                    (chunks, ingest_id),
+                )
+                conn.commit()
+
+            logger.info("image_done", ingest_id=ingest_id, filename=filename, chunks=chunks)
+
+        except Exception as e:
+            logger.error("image_processing_failed", filename=filename, error=str(e), ingest_id=ingest_id)
+            try:
+                from src.memory.sqlite_store import get_conn as _get_conn
+                with _get_conn() as conn:
+                    conn.execute(
+                        "UPDATE ingest_history SET status='failed' WHERE ingest_id=?",
+                        (ingest_id,),
+                    )
+                    conn.commit()
+            except Exception:
+                pass
+
+    background_tasks.add_task(do_process)
+
+    return {
+        "ingest_id": ingest_id,
+        "status": "processing",
+        "filename": filename,
+        "ingest_type": "image",
+        "size_bytes": len(content),
+        "message": "Image queued for vision extraction. Will be available shortly.",
+    }
+
+
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv"}
 MAX_MEDIA_SIZE_MB = 500
@@ -399,6 +533,7 @@ async def list_ingestion_history(
             "video": "video",
             "weblink": "weblinks",
             "youtube": "youtube",
+            "image": "images",
         }
         # Group by type
         by_type = {}

@@ -183,6 +183,12 @@ export async function ingestVideoFile(file: File): Promise<IngestResponse> {
   return request('/api/ingest/media-file', { method: 'POST', body: form })
 }
 
+export async function ingestImage(file: File): Promise<IngestResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  return request('/api/ingest/image', { method: 'POST', body: form })
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function fetchUserStats(): Promise<{
