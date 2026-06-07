@@ -193,6 +193,14 @@ export async function fetchAdminUsers(): Promise<import('@/types').AdminUser[]> 
   return request('/api/admin/users')
 }
 
+export async function fetchAdminQueries(): Promise<import('@/types').AdminQuery[]> {
+  return request('/api/admin/queries')
+}
+
+export async function fetchAdminDocuments(): Promise<import('@/types').AdminDocument[]> {
+  return request('/api/admin/documents')
+}
+
 export async function createAdminUser(email: string, password: string, role: string) {
   return request('/api/admin/users', {
     method: 'POST',

@@ -40,9 +40,7 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
                 "SELECT COUNT(*) FROM ingest_history WHERE user_id = ? AND status = 'done' AND chunks_created > 0",
                 (user_id,)
             ).fetchone()[0]
-            user_count = conn.execute(
-                "SELECT COUNT(*) FROM users WHERE org_id = ?", (org_id,)
-            ).fetchone()[0]
+            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             pattern_breakdown = {row[0]: row[1] for row in pattern_rows}
     except Exception:
         query_count = 0
@@ -58,6 +56,41 @@ async def get_stats(user: dict = Depends(require_role("admin"))):
         "avg_quality_score": round(avg_quality or 0.0, 3),
         "pattern_breakdown": pattern_breakdown,
     }
+
+
+@router.get("/queries")
+async def list_queries(user: dict = Depends(require_role("admin"))):
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("""
+                SELECT ch.session_id, ch.query, ch.answer, ch.timestamp,
+                       u.email
+                FROM conversation_history ch
+                LEFT JOIN users u ON ch.session_id LIKE (u.user_id || ':%')
+                ORDER BY ch.timestamp DESC
+                LIMIT 200
+            """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+@router.get("/documents")
+async def list_documents(user: dict = Depends(require_role("admin"))):
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("""
+                SELECT i.ingest_id, i.ingest_type, i.source_name, i.source_url,
+                       i.file_size_bytes, i.chunks_created, i.created_at, i.status,
+                       u.email
+                FROM ingest_history i
+                LEFT JOIN users u ON i.user_id = u.user_id
+                WHERE i.status = 'done'
+                ORDER BY i.created_at DESC
+            """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 @router.get("/users")

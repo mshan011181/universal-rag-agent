@@ -65,6 +65,26 @@ export interface AdminStats {
   pattern_breakdown: Record<string, number>
 }
 
+export interface AdminQuery {
+  session_id: string
+  query: string
+  answer: string
+  timestamp: string
+  email: string | null
+}
+
+export interface AdminDocument {
+  ingest_id: string
+  ingest_type: string
+  source_name: string | null
+  source_url: string | null
+  file_size_bytes: number | null
+  chunks_created: number
+  created_at: string
+  status: string
+  email: string | null
+}
+
 export interface AdminUser {
   user_id: string
   email: string
