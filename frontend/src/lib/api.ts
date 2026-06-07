@@ -185,6 +185,16 @@ export async function ingestVideoFile(file: File): Promise<IngestResponse> {
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
+export async function fetchUserStats(): Promise<{
+  total_queries: number
+  total_documents: number
+  avg_quality_score: number
+  storage_used_bytes: number
+  storage_quota_bytes: number
+}> {
+  return request('/api/user/stats')
+}
+
 export async function fetchAdminStats(): Promise<AdminStats> {
   return request('/api/admin/stats')
 }

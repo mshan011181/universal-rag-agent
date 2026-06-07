@@ -1,12 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery } from '@/lib/api'
+import { submitQuery, fetchUserStats } from '@/lib/api'
 import type { QueryResponse } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Clock, Gauge, BarChart3, Info, ChevronRight } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText } from 'lucide-react'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B'
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const PATTERNS = [
   'auto', 'naive_rag', 'hyde', 'query_rewriting', 'crag',
@@ -34,6 +40,15 @@ interface QueryHistory {
 }
 
 export default function QueryPage() {
+  const [userStats, setUserStats] = useState<{
+    total_queries: number; total_documents: number; avg_quality_score: number;
+    storage_used_bytes: number; storage_quota_bytes: number;
+  } | null>(null)
+
+  useEffect(() => {
+    fetchUserStats().then(setUserStats).catch(() => {})
+  }, [])
+
   const [query, setQuery] = useState('')
   const [pattern, setPattern] = useState('auto')
   const [result, setResult] = useState<QueryResponse | null>(null)
@@ -58,6 +73,8 @@ export default function QueryPage() {
         pattern: pattern === 'auto' ? undefined : pattern,
       })
       setResult(res)
+      // Refresh personal stats after query
+      fetchUserStats().then(setUserStats).catch(() => {})
       // Add to history
       setHistory([
         {
@@ -103,6 +120,41 @@ export default function QueryPage() {
               Ask anything across your indexed documents. The system auto-selects the optimal RAG pattern.
             </p>
           </div>
+
+          {/* Personal usage stats bar */}
+          {userStats && (
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="card p-4 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                  <MessageSquare className="w-4 h-4 text-brand-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">My Queries</p>
+                  <p className="text-xl font-bold text-gray-900">{userStats.total_queries}</p>
+                </div>
+              </div>
+              <div className="card p-4 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-brand-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Docs Indexed</p>
+                  <p className="text-xl font-bold text-gray-900">{userStats.total_documents}</p>
+                </div>
+              </div>
+              <div className="card p-4 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                  <Zap className="w-4 h-4 text-brand-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Avg Quality</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {(userStats.avg_quality_score * 100).toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Query form */}
           <div className="card p-5 mb-6">
