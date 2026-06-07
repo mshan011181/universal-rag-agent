@@ -1,5 +1,6 @@
 import os
 import time
+import collections
 import redis.asyncio as aioredis
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -14,13 +15,18 @@ RATE_LIMITS = {
 }
 
 _redis: aioredis.Redis | None = None
+_redis_available: bool | None = None  # None = not yet checked
+
+# In-memory fallback rate limiter (used when Redis is unavailable)
+_mem_counters: dict = collections.defaultdict(int)
+_mem_window: int = 0
 
 
 def _get_redis() -> aioredis.Redis:
     global _redis
     if _redis is None:
         url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        _redis = aioredis.from_url(url, decode_responses=True)
+        _redis = aioredis.from_url(url, socket_connect_timeout=0.5, decode_responses=True)
     return _redis
 
 
@@ -44,15 +50,30 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             RATE_LIMITS["default"],
         )
 
-        try:
-            r = _get_redis()
-            count = await r.incr(bucket_key)
-            if count == 1:
-                # TTL covers current window plus the next so the key cleans itself up
-                await r.expire(bucket_key, 120)
-        except Exception:
-            # Redis unavailable — fail open rather than blocking all traffic
-            count = 1
+        count = 1
+        global _redis_available, _mem_counters, _mem_window
+
+        # Reset in-memory counters on new minute window
+        if now != _mem_window:
+            _mem_counters = collections.defaultdict(int)
+            _mem_window = now
+
+        if _redis_available is not False:
+            try:
+                r = _get_redis()
+                count = await r.incr(bucket_key)
+                if count == 1:
+                    await r.expire(bucket_key, 120)
+                _redis_available = True
+            except Exception:
+                # Redis unavailable — use in-memory fallback immediately, no retry delay
+                _redis_available = False
+                _mem_counters[bucket_key] += 1
+                count = _mem_counters[bucket_key]
+        else:
+            # Redis known unavailable — use in-memory counter directly
+            _mem_counters[bucket_key] += 1
+            count = _mem_counters[bucket_key]
 
         if count > limit:
             return JSONResponse(
