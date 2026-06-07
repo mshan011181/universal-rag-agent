@@ -30,7 +30,12 @@ from src.config import UPLOADS_DIR
 logger = structlog.get_logger()
 router = APIRouter()
 
-ALLOWED_FILE_TYPES = {".pdf", ".txt", ".docx", ".md", ".csv"}
+ALLOWED_FILE_TYPES = {
+    ".pdf", ".txt", ".docx", ".doc", ".md", ".csv",   # existing
+    ".pptx", ".ppt",                                   # PowerPoint
+    ".xlsx", ".xls", ".xlsm",                          # Excel
+    ".json", ".geojson", ".gjson",                     # JSON / GeoJSON
+}
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
