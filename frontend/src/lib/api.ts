@@ -72,11 +72,12 @@ async function request<T>(
 
 export async function login(email: string, password: string): Promise<AuthTokens> {
   const form = new URLSearchParams({ username: email, password })
+  // retry=false: login 401s must not trigger auto-refresh (would reload page and wipe error state)
   const data = await request<AuthTokens>('/api/auth/token', {
     method: 'POST',
     body: form.toString(),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  })
+  }, false)
   setAccessToken(data.access_token)
   // Store refresh token in sessionStorage (httpOnly cookie requires a server)
   sessionStorage.setItem('refresh_token', data.refresh_token)
