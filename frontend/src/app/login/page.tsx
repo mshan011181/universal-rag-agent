@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, FormEvent, Suspense, useEffect } from 'react'
+import { useState, FormEvent, Suspense, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Database, CheckCircle } from 'lucide-react'
@@ -15,12 +15,27 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const emailInputRef = useRef<HTMLInputElement>(null)
+  const passwordInputRef = useRef<HTMLInputElement>(null)
 
-  // Clear form on mount and focus email field
+  // Force-clear form on mount and prevent browser autofill
   useEffect(() => {
+    // Clear state
     setEmail('')
     setPassword('')
     setError('')
+
+    // Force clear input fields via refs after a tick to override browser autofill
+    const timer = setTimeout(() => {
+      if (emailInputRef.current) {
+        emailInputRef.current.value = ''
+      }
+      if (passwordInputRef.current) {
+        passwordInputRef.current.value = ''
+      }
+    }, 0)
+
+    return () => clearTimeout(timer)
   }, [])
 
   async function handleSubmit(e: FormEvent) {
@@ -78,6 +93,7 @@ function LoginForm() {
             <div>
               <label className="label" htmlFor="email">Email</label>
               <input
+                ref={emailInputRef}
                 id="email"
                 type="email"
                 className="input"
@@ -86,12 +102,13 @@ function LoginForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
-                autoComplete="off"
+                autoComplete="username"
               />
             </div>
             <div>
               <label className="label" htmlFor="password">Password</label>
               <input
+                ref={passwordInputRef}
                 id="password"
                 type="password"
                 className="input"
@@ -99,7 +116,7 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoComplete="off"
+                autoComplete="new-password"
               />
             </div>
 
