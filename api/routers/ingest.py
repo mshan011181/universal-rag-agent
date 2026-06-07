@@ -1,10 +1,26 @@
 import os
 import uuid
 import hashlib
+import urllib.request
+import json as _json
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel
 import structlog
+
+
+def _youtube_title(url: str) -> str:
+    """Fetch video title via YouTube oEmbed API (no API key needed)."""
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url, safe='')}&format=json"
+        with urllib.request.urlopen(oembed_url, timeout=5) as r:
+            data = _json.loads(r.read())
+            return data.get("title", "")[:120]
+    except Exception:
+        return ""
+
+
+import urllib.parse
 
 from api.auth_utils import get_current_user_or_api_key, require_role
 from src.retrieval.vector_store import ingest_file, ingest_text
@@ -131,8 +147,16 @@ async def ingest_youtube_endpoint(
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
     ingest_id = str(uuid.uuid4())
-    source_name = body.url.split("?")[0].split("/")[-1][:20]  # Extract video ID or short name
     user_id = user["user_id"]
+
+    # Fetch actual video title from oEmbed; fall back to video ID
+    title = _youtube_title(body.url)
+    if not title:
+        # Extract video ID from URL as fallback
+        import re
+        vid_match = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", body.url)
+        title = vid_match.group(1) if vid_match else body.url.split("/")[-1][:30]
+    source_name = title
 
     # Write to database immediately
     logger.info("youtube_queued", ingest_id=ingest_id, url=body.url, user_id=user_id)
@@ -171,7 +195,13 @@ async def ingest_weblink_endpoint(
         raise HTTPException(status_code=400, detail="Invalid URL. Must start with http:// or https://")
 
     ingest_id = str(uuid.uuid4())
-    source_name = body.url.split("?")[0].split("/")[-1][:50] or body.url.split("://")[1].split("/")[0]
+    # Use domain + path as readable name; strip query string
+    try:
+        parsed = urllib.parse.urlparse(body.url)
+        path_part = parsed.path.rstrip("/").split("/")[-1] or parsed.netloc
+        source_name = (f"{parsed.netloc}/{path_part}" if path_part and path_part != parsed.netloc else parsed.netloc)[:80]
+    except Exception:
+        source_name = body.url[:80]
     user_id = user["user_id"]
 
     # Write to database immediately
