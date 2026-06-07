@@ -8,7 +8,7 @@ import structlog
 
 from api.auth_utils import get_current_user_or_api_key, require_role
 from src.retrieval.vector_store import ingest_file, ingest_text
-from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest
+from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, get_conn
 from src.config import UPLOADS_DIR
 
 logger = structlog.get_logger()
@@ -47,22 +47,30 @@ async def ingest_file_endpoint(
     save_path = UPLOADS_DIR / save_name
 
     ingest_id = str(uuid.uuid4())
+    user_id = user["user_id"]
+    org_id = user.get("org_id", "default")
 
     save_path.write_bytes(content)
 
-    # Ingest in background to avoid blocking the response
+    # Write to database immediately so item appears in list right away
+    logger.info("ingest_queued", ingest_id=ingest_id, filename=filename, user_id=user_id)
+    write_ingest(ingest_id, user_id, "document", filename, file_size=len(content), chunks=0)
+
+    # Process file and update chunks count in background
     def do_ingest():
         try:
-            n = ingest_file(str(save_path), namespace=user.get("org_id", "default"))
-            write_ingest(ingest_id, user["user_id"], "document", filename, file_size=len(content), chunks=n)
-            logger.info("ingest_complete", filename=filename, chunks=n, user_id=user["user_id"], ingest_id=ingest_id)
+            logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
+            n = ingest_file(str(save_path), namespace=org_id)
+            # Update chunks count after processing
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE ingest_history SET chunks_created = ? WHERE ingest_id = ?",
+                    (n, ingest_id)
+                )
+                conn.commit()
+            logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
             logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
-            # Still write the ingest record even if vector embedding failed, so user knows file was attempted
-            try:
-                write_ingest(ingest_id, user["user_id"], "document", filename, file_size=len(content), chunks=0)
-            except Exception as write_err:
-                logger.error("ingest_db_write_failed", ingest_id=ingest_id, error=str(write_err))
 
     background_tasks.add_task(do_ingest)
 
@@ -123,17 +131,20 @@ async def ingest_youtube_endpoint(
 
     ingest_id = str(uuid.uuid4())
     source_name = body.url.split("?")[0].split("/")[-1][:20]  # Extract video ID or short name
+    user_id = user["user_id"]
 
-    def do_ingest():
+    # Write to database immediately
+    logger.info("youtube_queued", ingest_id=ingest_id, url=body.url, user_id=user_id)
+    write_ingest(ingest_id, user_id, "youtube", source_name, source_url=body.url, chunks=0)
+
+    def do_process():
         try:
             # In production: use yt-dlp to download audio, then transcribe with Groq Whisper
-            # For now: log as placeholder
-            logger.info("youtube_ingest_started", url=body.url, user_id=user["user_id"], ingest_id=ingest_id)
-            write_ingest(ingest_id, user["user_id"], "youtube", source_name, source_url=body.url, chunks=0)
+            logger.info("youtube_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
-            logger.error("youtube_ingest_failed", url=body.url, error=str(e), ingest_id=ingest_id)
+            logger.error("youtube_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
 
-    background_tasks.add_task(do_ingest)
+    background_tasks.add_task(do_process)
 
     return {
         "ingest_id": ingest_id,
@@ -160,17 +171,20 @@ async def ingest_weblink_endpoint(
 
     ingest_id = str(uuid.uuid4())
     source_name = body.url.split("?")[0].split("/")[-1][:50] or body.url.split("://")[1].split("/")[0]
+    user_id = user["user_id"]
 
-    def do_ingest():
+    # Write to database immediately
+    logger.info("weblink_queued", ingest_id=ingest_id, url=body.url, user_id=user_id)
+    write_ingest(ingest_id, user_id, "weblink", source_name, source_url=body.url, chunks=0)
+
+    def do_process():
         try:
             # In production: use requests + BeautifulSoup to fetch and parse
-            # For now: log as placeholder
-            logger.info("weblink_ingest_started", url=body.url, user_id=user["user_id"], ingest_id=ingest_id)
-            write_ingest(ingest_id, user["user_id"], "weblink", source_name, source_url=body.url, chunks=0)
+            logger.info("weblink_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
-            logger.error("weblink_ingest_failed", url=body.url, error=str(e), ingest_id=ingest_id)
+            logger.error("weblink_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
 
-    background_tasks.add_task(do_ingest)
+    background_tasks.add_task(do_process)
 
     return {
         "ingest_id": ingest_id,
@@ -201,16 +215,20 @@ async def ingest_media_endpoint(
 
     ingest_id = str(uuid.uuid4())
     source_name = body.url.split("?")[0].split("/")[-1][:50] or f"{body.type}_{ingest_id[:8]}"
+    user_id = user["user_id"]
 
-    def do_ingest():
+    # Write to database immediately
+    logger.info("media_queued", ingest_id=ingest_id, url=body.url, media_type=body.type, user_id=user_id)
+    write_ingest(ingest_id, user_id, body.type, source_name, source_url=body.url, chunks=0)
+
+    def do_process():
         try:
             # In production: download media, transcribe with Groq Whisper
-            logger.info("media_ingest_started", url=body.url, media_type=body.type, user_id=user["user_id"], ingest_id=ingest_id)
-            write_ingest(ingest_id, user["user_id"], body.type, source_name, source_url=body.url, chunks=0)
+            logger.info("media_processing", url=body.url, media_type=body.type, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
-            logger.error("media_ingest_failed", url=body.url, media_type=body.type, error=str(e), ingest_id=ingest_id)
+            logger.error("media_processing_failed", url=body.url, media_type=body.type, error=str(e), ingest_id=ingest_id)
 
-    background_tasks.add_task(do_ingest)
+    background_tasks.add_task(do_process)
 
     return {
         "ingest_id": ingest_id,
@@ -259,16 +277,20 @@ async def ingest_media_file_endpoint(
     save_path.write_bytes(content)
 
     ingest_id = str(uuid.uuid4())
+    user_id = user["user_id"]
 
-    def do_ingest():
+    # Write to database immediately
+    logger.info("media_file_queued", ingest_id=ingest_id, filename=filename, media_type=media_type, user_id=user_id)
+    write_ingest(ingest_id, user_id, media_type, filename, file_size=len(content), chunks=0)
+
+    def do_process():
         try:
             # In production: transcribe with Groq Whisper
-            logger.info("media_file_ingest_started", filename=filename, media_type=media_type, user_id=user["user_id"], ingest_id=ingest_id)
-            write_ingest(ingest_id, user["user_id"], media_type, filename, file_size=len(content), chunks=0)
+            logger.info("media_file_processing", filename=filename, media_type=media_type, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
-            logger.error("media_file_ingest_failed", filename=filename, media_type=media_type, error=str(e), ingest_id=ingest_id)
+            logger.error("media_file_processing_failed", filename=filename, media_type=media_type, error=str(e), ingest_id=ingest_id)
 
-    background_tasks.add_task(do_ingest)
+    background_tasks.add_task(do_process)
 
     return {
         "ingest_id": ingest_id,
