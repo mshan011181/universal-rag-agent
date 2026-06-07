@@ -1,3 +1,4 @@
+import re
 import time
 from src.patterns.naive_rag import NaiveRAG
 from src.patterns.hyde import HyDE
@@ -13,6 +14,7 @@ from src.patterns.graph_rag import GraphRAG
 from src.patterns.multimodal_rag import MultiModalRAG
 from src.generation.llm import synthesize, grade, generate_followups
 from src.retrieval.reranker import rerank
+from src.retrieval.vector_store import retrieve_by_source
 from src.models import RAGAgentResponse
 from src.memory.sqlite_store import (
     write_turn, write_performance, write_verified_knowledge,
@@ -66,9 +68,26 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
             verified_knowledge_hit=True,
         )
 
+    # --- Filename-aware pre-fetch ---
+    # If the query mentions a specific file (e.g. "invoice2.jpg"), retrieve
+    # all stored chunks for that file via metadata filter so RAG has the right
+    # content regardless of semantic distance.
+    _FILE_EXT_RE = re.compile(
+        r'\b([\w\-. ()]+\.(jpg|jpeg|png|gif|bmp|webp|pdf|docx?|xlsx?|csv|'
+        r'txt|mp3|mp4|wav|webm|mov|avi|mkv|flac|m4a|ogg))\b',
+        re.IGNORECASE,
+    )
+    _source_seeded_chunks: list[dict] = []
+    for m in _FILE_EXT_RE.finditer(query):
+        fname = m.group(1).strip()
+        namespace = analysis.get("namespace", "default")
+        fetched = retrieve_by_source(fname, namespace=namespace)
+        if fetched:
+            _source_seeded_chunks.extend(fetched)
+
     state = {
         "query": query,
-        "chunks": [],
+        "chunks": _source_seeded_chunks,  # pre-seed with filename-matched chunks
         "answer": None,
         "citation_map": {},
         "faithfulness": "pass",

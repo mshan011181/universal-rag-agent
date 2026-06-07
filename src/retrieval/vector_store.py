@@ -110,6 +110,49 @@ def ingest_text(text: str, source: str = "manual", namespace: str = "default") -
     return len(vectors)
 
 
+def retrieve_by_source(filename: str, namespace: str = "default", k: int = 20) -> list[dict]:
+    """Fetch all chunks whose source metadata contains the given filename.
+
+    Images are stored as  image:<filename>
+    Videos are stored as  video:<filename>
+    Audio  is stored as   audio:<filename>
+    Raw files are stored as <filename>
+    We try all variants so filename-based queries always hit.
+    """
+    # Build candidate source values
+    base = filename.strip()
+    candidates = [
+        base,
+        f"image:{base}",
+        f"video:{base}",
+        f"audio:{base}",
+    ]
+    try:
+        # Use a dummy zero-vector; filter does the real work
+        dim = _get_embedder().get_sentence_embedding_dimension()
+        zero_vec = [0.0] * dim
+        results = _get_index().query(
+            vector=zero_vec,
+            top_k=k,
+            namespace=namespace,
+            include_metadata=True,
+            filter={"source": {"$in": candidates}},
+        )
+        chunks = []
+        for match in results.get("matches", []):
+            meta = dict(match.get("metadata", {}))
+            content = meta.pop("content", "")
+            if content:
+                chunks.append({
+                    "content": content,
+                    "metadata": meta,
+                    "score": round(match.get("score", 0.9), 4),
+                })
+        return chunks
+    except Exception:
+        return []
+
+
 def retrieve(query: str, k: int = TOP_K, namespace: str = "default") -> list[dict]:
     emb = _embed([query])[0]
     results = _get_index().query(vector=emb, top_k=k, namespace=namespace, include_metadata=True)
