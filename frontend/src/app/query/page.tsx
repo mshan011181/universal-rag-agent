@@ -36,7 +36,6 @@ interface QueryHistory {
 export default function QueryPage() {
   const [query, setQuery] = useState('')
   const [pattern, setPattern] = useState('auto')
-  const [namespace, setNamespace] = useState('default')
   const [result, setResult] = useState<QueryResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -57,7 +56,6 @@ export default function QueryPage() {
       const res = await submitQuery({
         query: query.trim(),
         pattern: pattern === 'auto' ? undefined : pattern,
-        namespace,
       })
       setResult(res)
       // Add to history
@@ -121,31 +119,19 @@ export default function QueryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">RAG Pattern</label>
-                  <select
-                    className="input"
-                    value={pattern}
-                    onChange={(e) => setPattern(e.target.value)}
-                  >
-                    {PATTERNS.map((p) => (
-                      <option key={p} value={p}>
-                        {p === 'auto' ? 'Auto (recommended)' : p.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Namespace (tenant)</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={namespace}
-                    onChange={(e) => setNamespace(e.target.value)}
-                    placeholder="default"
-                  />
-                </div>
+              <div>
+                <label className="label">RAG Pattern</label>
+                <select
+                  className="input"
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                >
+                  {PATTERNS.map((p) => (
+                    <option key={p} value={p}>
+                      {p === 'auto' ? 'Auto (recommended)' : p.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <button type="submit" disabled={loading || !query.trim()} className="btn-primary flex items-center gap-2">
