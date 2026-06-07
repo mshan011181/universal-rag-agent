@@ -57,7 +57,12 @@ async def ingest_file_endpoint(
             write_ingest(ingest_id, user["user_id"], "document", filename, file_size=len(content), chunks=n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user["user_id"], ingest_id=ingest_id)
         except Exception as e:
-            logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id)
+            logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
+            # Still write the ingest record even if vector embedding failed, so user knows file was attempted
+            try:
+                write_ingest(ingest_id, user["user_id"], "document", filename, file_size=len(content), chunks=0)
+            except Exception as write_err:
+                logger.error("ingest_db_write_failed", ingest_id=ingest_id, error=str(write_err))
 
     background_tasks.add_task(do_ingest)
 
