@@ -15,6 +15,7 @@ export interface QueryRequest {
   namespace?: string
   pattern?: string
   top_k?: number
+  language?: string
 }
 
 export interface SourceChunk {

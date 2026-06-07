@@ -15,6 +15,7 @@ class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=4000)
     session_id: Optional[str] = Field(default="default", max_length=64)
     stream: bool = False
+    language: str = Field(default="English", max_length=50)
 
 
 class QueryResponse(BaseModel):
@@ -51,7 +52,7 @@ async def query_endpoint(
     namespace = user.get("org_id") or "default"
 
     try:
-        response, analysis = ask(query, scoped_session, namespace=namespace)
+        response, analysis = ask(query, scoped_session, namespace=namespace, language=body.language)
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
         raise HTTPException(status_code=500, detail="Query processing failed")

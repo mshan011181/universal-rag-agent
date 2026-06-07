@@ -110,13 +110,19 @@ def safe_invoke(llm, messages: list) -> str:
 # RAG chain functions — all calls are traced in LangSmith automatically
 # ---------------------------------------------------------------------------
 
-def synthesize(context: str, query: str) -> str:
+def synthesize(context: str, query: str, language: str = "English") -> str:
     from langchain_core.messages import SystemMessage, HumanMessage
     llm = get_llm(temperature=0.1)
+    lang_instruction = (
+        f" You MUST respond entirely in {language}. "
+        f"Every word of your answer must be in {language}, including headers, labels, and explanations."
+        if language and language.lower() not in ("english", "american english", "british english", "australian english")
+        else ""
+    )
     system = (
         "You are a precise, grounded assistant. Answer ONLY from the provided context. "
         "Do not use prior knowledge for factual claims. "
-        "If the context does not contain sufficient information, say so explicitly."
+        f"If the context does not contain sufficient information, say so explicitly.{lang_instruction}"
     )
     human = f"Context:\n{context}\n\nQuestion: {query}"
     return safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])

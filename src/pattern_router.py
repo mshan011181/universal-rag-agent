@@ -127,7 +127,8 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         if state.get("steps"):
             steps_ctx = "\n".join([f"Step: {s['step']}\nAnswer: {s['answer']}" for s in state["steps"]])
             context = f"Multi-step reasoning:\n{steps_ctx}\n\n{context}"
-        state["answer"] = synthesize(context, query)
+        language = analysis.get("language", "English")
+        state["answer"] = synthesize(context, query, language=language)
 
     # Grade the answer
     grade_result = grade(state["answer"], context, query)

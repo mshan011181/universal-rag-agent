@@ -11,6 +11,31 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
+// All supported answer languages grouped by region
+const LANGUAGE_OPTIONS = [
+  { group: 'English Variants', options: [
+    'American English', 'British English', 'Australian English',
+  ]},
+  { group: 'European', options: [
+    'French', 'Spanish', 'German', 'Italian', 'Dutch', 'Portuguese',
+    'Polish', 'Norwegian', 'Russian', 'Greek', 'Irish',
+  ]},
+  { group: 'South Asian', options: [
+    'Hindi', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Marathi', 'Bengali',
+  ]},
+  { group: 'East & Southeast Asian', options: [
+    'Japanese', 'Chinese', 'Korean', 'Indonesian', 'Malay',
+  ]},
+  { group: 'Middle East & African', options: [
+    'Arabic',
+  ]},
+  { group: 'Other', options: [
+    'Singaporean English', 'Mexican Spanish',
+  ]},
+]
+
+const ALL_LANGUAGES = LANGUAGE_OPTIONS.flatMap(g => g.options)
+
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B'
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -68,6 +93,20 @@ export default function QueryPage() {
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
 
+  const [language, setLanguage] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('rag_answer_language') || 'American English'
+    }
+    return 'American English'
+  })
+
+  const handleLanguageChange = (lang: string) => {
+    setLanguage(lang)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rag_answer_language', lang)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
@@ -80,6 +119,7 @@ export default function QueryPage() {
       const res = await submitQuery({
         query: query.trim(),
         pattern: pattern === 'auto' ? undefined : pattern,
+        language,
       })
       setResult(res)
       // Refresh personal stats after query
@@ -180,19 +220,45 @@ export default function QueryPage() {
                 />
               </div>
 
-              <div>
-                <label className="label">RAG Pattern</label>
-                <select
-                  className="input"
-                  value={pattern}
-                  onChange={(e) => setPattern(e.target.value)}
-                >
-                  {PATTERNS.map((p) => (
-                    <option key={p} value={p}>
-                      {p === 'auto' ? 'Auto (recommended)' : p.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">RAG Pattern</label>
+                  <select
+                    className="input"
+                    value={pattern}
+                    onChange={(e) => setPattern(e.target.value)}
+                  >
+                    {PATTERNS.map((p) => (
+                      <option key={p} value={p}>
+                        {p === 'auto' ? 'Auto (recommended)' : p.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label flex items-center gap-1.5">
+                    Answer Language
+                    {language !== 'American English' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-brand-100 text-brand-700">
+                        {language}
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    className="input"
+                    value={language}
+                    onChange={(e) => handleLanguageChange(e.target.value)}
+                  >
+                    {LANGUAGE_OPTIONS.map(({ group, options }) => (
+                      <optgroup key={group} label={group}>
+                        {options.map((lang) => (
+                          <option key={lang} value={lang}>{lang}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <button type="submit" disabled={loading || !query.trim()} className="btn-primary flex items-center gap-2">
@@ -258,6 +324,9 @@ export default function QueryPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <QualityBadge score={result.quality_score ?? 0.5} />
+                    {language !== 'American English' && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">{language}</span>
+                    )}
                     <span className="text-xs text-gray-400">{result.latency_ms ?? 0}ms</span>
                   </div>
                 </div>
