@@ -86,8 +86,10 @@ async def login(form: OAuth2PasswordRequestForm = Depends()):
     except Exception:
         row = None
 
-    if not row or not verify_password(form.password, row[1]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not row:
+        raise HTTPException(status_code=401, detail="email_not_found")
+    if not verify_password(form.password, row[1]):
+        raise HTTPException(status_code=401, detail="wrong_password")
 
     user_id, org_id, role = row[0], row[2], row[3]
     payload = {"sub": user_id, "org_id": org_id, "role": role}

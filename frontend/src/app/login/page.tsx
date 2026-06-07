@@ -13,26 +13,22 @@ function LoginForm() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [emailError, setEmailError] = useState('')
+  const [passwordError, setPasswordError] = useState('')
   const [loading, setLoading] = useState(false)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const passwordInputRef = useRef<HTMLInputElement>(null)
 
   // Force-clear form on mount and prevent browser autofill
   useEffect(() => {
-    // Clear state
     setEmail('')
     setPassword('')
-    setError('')
+    setEmailError('')
+    setPasswordError('')
 
-    // Force clear input fields via refs after a tick to override browser autofill
     const timer = setTimeout(() => {
-      if (emailInputRef.current) {
-        emailInputRef.current.value = ''
-      }
-      if (passwordInputRef.current) {
-        passwordInputRef.current.value = ''
-      }
+      if (emailInputRef.current) emailInputRef.current.value = ''
+      if (passwordInputRef.current) passwordInputRef.current.value = ''
     }, 0)
 
     return () => clearTimeout(timer)
@@ -40,22 +36,28 @@ function LoginForm() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setError('')
+    setEmailError('')
+    setPasswordError('')
     setLoading(true)
     try {
       await login(email, password)
-      // Save user email to sessionStorage for sidebar display
       sessionStorage.setItem('user_email', email)
       router.push('/query')
     } catch (err: unknown) {
-      // Extract plain string from error — handles both Error objects and API error shapes
+      let detail = 'Invalid credentials'
       if (err instanceof Error) {
-        setError(err.message)
+        detail = err.message
       } else if (typeof err === 'object' && err !== null && 'detail' in err) {
-        const detail = (err as { detail: unknown }).detail
-        setError(Array.isArray(detail) ? 'Invalid credentials' : String(detail))
+        const d = (err as { detail: unknown }).detail
+        detail = Array.isArray(d) ? 'Invalid credentials' : String(d)
+      }
+
+      if (detail === 'email_not_found') {
+        setEmailError('No account found with this email address')
+      } else if (detail === 'wrong_password') {
+        setPasswordError('Incorrect password')
       } else {
-        setError('Invalid credentials')
+        setEmailError(detail)
       }
     } finally {
       setLoading(false)
@@ -96,14 +98,17 @@ function LoginForm() {
                 ref={emailInputRef}
                 id="email"
                 type="email"
-                className="input"
+                className={`input ${emailError ? 'border-red-400 focus:ring-red-400' : ''}`}
                 placeholder="you@company.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setEmailError('') }}
                 required
                 autoFocus
                 autoComplete="username"
               />
+              {emailError && (
+                <p className="mt-1 text-xs text-red-600">{emailError}</p>
+              )}
             </div>
             <div>
               <label className="label" htmlFor="password">Password</label>
@@ -111,20 +116,17 @@ function LoginForm() {
                 ref={passwordInputRef}
                 id="password"
                 type="password"
-                className="input"
+                className={`input ${passwordError ? 'border-red-400 focus:ring-red-400' : ''}`}
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setPasswordError('') }}
                 required
                 autoComplete="new-password"
               />
+              {passwordError && (
+                <p className="mt-1 text-xs text-red-600">{passwordError}</p>
+              )}
             </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
 
             <button type="submit" disabled={loading} className="btn-primary w-full">
               {loading ? 'Signing in…' : 'Sign in'}
