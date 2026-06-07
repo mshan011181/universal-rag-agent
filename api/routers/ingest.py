@@ -376,22 +376,39 @@ async def ingest_image_endpoint(
 
             client = _anthropic.Anthropic()
             prompt = (
-                "You are an expert OCR and diagram analysis assistant.\n\n"
-                "Look at this image carefully. Extract ALL text visible in the image exactly as written. "
-                "If the image contains diagrams, flowcharts, charts, tables, or visual structures, "
-                "describe them in detail — explain what they show, what each element means, "
-                "and how the parts are connected.\n\n"
-                "Format your response as:\n"
-                "## Extracted Text\n"
-                "<all visible text verbatim>\n\n"
-                "## Visual Content Description\n"
-                "<description of diagrams, charts, flowcharts, images if any>\n\n"
-                "Be thorough — this output will be used for question-answering."
+                "You are an expert document analysis assistant specialised in extracting structured "
+                "information from images for use in a retrieval-augmented generation (RAG) system.\n\n"
+                "Analyse this image thoroughly. Follow these rules:\n\n"
+                "1. INVOICES / RECEIPTS — Extract every field explicitly:\n"
+                "   - Vendor/supplier name, address, contact\n"
+                "   - Invoice number, date, due date, PO number\n"
+                "   - Line items as a table: Description | Qty | Unit Price | Amount\n"
+                "   - Subtotal, tax (rate and amount), discounts, TOTAL amount\n"
+                "   - Payment terms, bank details if present\n\n"
+                "2. TABLES / SPREADSHEETS / EXCEL SCREENSHOTS — Reproduce the full table:\n"
+                "   - Use pipe-separated format: Col1 | Col2 | Col3\n"
+                "   - Include ALL rows and columns — do not truncate\n"
+                "   - Preserve numeric values exactly (do not round)\n"
+                "   - Note any column headers, totals rows, or summary rows\n\n"
+                "3. FORMS / REPORTS — Extract every label-value pair verbatim.\n\n"
+                "4. DIAGRAMS / FLOWCHARTS / CHARTS — Describe:\n"
+                "   - What type of diagram it is\n"
+                "   - All nodes/steps and their labels\n"
+                "   - All connections, arrows, and their direction/meaning\n"
+                "   - Any legend, axis labels, or numeric values\n\n"
+                "5. OTHER TEXT — Extract all visible text verbatim, preserving layout.\n\n"
+                "Format your response with clear section headers like:\n"
+                "## Document Type\n"
+                "## Key Fields\n"
+                "## Table Data\n"
+                "## Summary / Totals\n"
+                "## Additional Information\n\n"
+                "Be exhaustive — every number and label matters for question-answering."
             )
 
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=4096,
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=8192,
                 messages=[
                     {
                         "role": "user",
