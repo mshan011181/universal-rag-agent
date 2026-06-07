@@ -47,9 +47,12 @@ trafilatura==2.0.0
 requests>=2.32.4
 
 # YouTube ingestion
-# youtube-transcript-api omitted — v1.0.x fetch() is broken with current YouTube API
-# yt-dlp is used instead: downloads subtitles (no video download) or audio for Whisper fallback
+# youtube-transcript-api: fetches auto-generated / manual captions (caption fallback)
+youtube-transcript-api>=1.2.4
+# yt-dlp: downloads raw audio for Whisper transcription (primary, highest accuracy)
 yt-dlp>=2026.3.17
+# imageio-ffmpeg: bundles ffmpeg binary — no system install needed
+imageio-ffmpeg>=0.6.0
 
 # Utils
 python-dotenv==1.1.0

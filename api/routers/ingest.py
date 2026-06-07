@@ -165,57 +165,132 @@ async def ingest_youtube_endpoint(
     org_id = user.get("org_id", "default")
 
     def do_process():
-        try:
-            import re as _re
-            from youtube_transcript_api import YouTubeTranscriptApi
-            from src.memory.sqlite_store import get_conn as _get_conn
+        import re as _re
+        import tempfile as _tempfile
+        import pathlib as _pathlib
+        from src.memory.sqlite_store import get_conn as _get_conn
 
+        def _set_status(status: str, chunks: int = 0):
+            with _get_conn() as c:
+                c.execute(
+                    "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                    (status, chunks, ingest_id),
+                )
+                c.commit()
+
+        try:
             logger.info("youtube_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
 
-            # Extract video ID
+            # ── Step 1: extract video ID ──────────────────────────────────────
             vid_match = _re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})", body.url)
             if not vid_match:
                 raise ValueError("Could not extract video ID from URL")
             video_id = vid_match.group(1)
 
-            # Fetch transcript (auto-generated or manual captions)
-            ytt = YouTubeTranscriptApi()
-            transcript_list = ytt.fetch(video_id)
-            # Join all segments into a single readable text
-            full_text = " ".join(seg.text for seg in transcript_list)
+            # ── Step 2: Whisper via raw audio download (primary) ──────────────
+            whisper_text = ""
+            tmp_dir = _tempfile.mkdtemp()
+            try:
+                import yt_dlp as _yt_dlp
+                import imageio_ffmpeg as _ffmpeg
+                from groq import Groq as _Groq
 
-            if not full_text.strip():
-                raise ValueError("Transcript is empty")
+                ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+                out_template = str(_pathlib.Path(tmp_dir) / "audio.%(ext)s")
 
-            # Ingest transcript text into Pinecone under the user's namespace
-            chunks = ingest_text(
-                f"[YouTube] {source_name}\n\n{full_text}",
-                source=f"youtube:{body.url}",
-                namespace=org_id,
+                ydl_opts = {
+                    "format": "bestaudio[filesize<24M]/bestaudio/best",
+                    "outtmpl": out_template,
+                    "postprocessors": [{
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "64",
+                    }],
+                    "ffmpeg_location": ffmpeg_exe,
+                    "quiet": True,
+                    "no_warnings": True,
+                }
+
+                logger.info("youtube_audio_download_start", video_id=video_id)
+                with _yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([body.url])
+
+                audio_files = list(_pathlib.Path(tmp_dir).glob("*.mp3"))
+                if audio_files:
+                    audio_path = audio_files[0]
+                    size_mb = audio_path.stat().st_size / 1024 / 1024
+                    logger.info("youtube_audio_downloaded", size_mb=round(size_mb, 1), video_id=video_id)
+
+                    # Groq Whisper transcription
+                    groq_client = _Groq()
+                    with open(audio_path, "rb") as af:
+                        result = groq_client.audio.transcriptions.create(
+                            model="whisper-large-v3",
+                            file=af,
+                            response_format="text",
+                        )
+                    whisper_text = result.strip() if isinstance(result, str) else result.text.strip()
+                    logger.info("youtube_whisper_done", chars=len(whisper_text), video_id=video_id)
+
+            except Exception as whisper_err:
+                logger.warning("youtube_whisper_failed", error=str(whisper_err), video_id=video_id)
+            finally:
+                # Clean up temp audio file
+                import shutil as _shutil
+                try:
+                    _shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+            # ── Step 3: Captions fallback (always attempt) ───────────────────
+            caption_text = ""
+            try:
+                from youtube_transcript_api import YouTubeTranscriptApi
+                ytt = YouTubeTranscriptApi()
+                transcript_list = ytt.fetch(video_id)
+                caption_text = " ".join(seg.text for seg in transcript_list).strip()
+                logger.info("youtube_captions_fetched", chars=len(caption_text), video_id=video_id)
+            except Exception as cap_err:
+                logger.warning("youtube_captions_failed", error=str(cap_err), video_id=video_id)
+
+            # ── Step 4: Build combined transcript ────────────────────────────
+            # Whisper is the primary (raw audio = highest accuracy).
+            # Captions are appended only if they add meaningful extra content
+            # (e.g. manual captions with timestamps, different from auto-gen).
+            if not whisper_text and not caption_text:
+                raise ValueError("Both Whisper and captions failed — no transcript available")
+
+            sections = [f"[YouTube] {source_name}"]
+
+            if whisper_text:
+                sections.append("## Audio Transcript (Whisper — high accuracy)")
+                sections.append(whisper_text)
+
+            if caption_text and caption_text != whisper_text:
+                # Only append captions if they differ meaningfully from Whisper
+                # (e.g. manual captions may contain additional annotations)
+                if not whisper_text or len(caption_text) > len(whisper_text) * 0.2:
+                    sections.append("## YouTube Captions")
+                    sections.append(caption_text)
+
+            full_doc = "\n\n".join(sections)
+
+            # ── Step 5: Ingest into Pinecone ─────────────────────────────────
+            chunks = ingest_text(full_doc, source=f"youtube:{body.url}", namespace=org_id)
+            _set_status("done", chunks)
+
+            logger.info(
+                "youtube_done",
+                ingest_id=ingest_id,
+                chunks=chunks,
+                video_id=video_id,
+                whisper_chars=len(whisper_text),
+                caption_chars=len(caption_text),
             )
-
-            # Update DB with real chunk count
-            with _get_conn() as conn:
-                conn.execute(
-                    "UPDATE ingest_history SET chunks_created=?, status='done' WHERE ingest_id=?",
-                    (chunks, ingest_id)
-                )
-                conn.commit()
-
-            logger.info("youtube_done", ingest_id=ingest_id, chunks=chunks, video_id=video_id)
 
         except Exception as e:
             logger.error("youtube_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
-            try:
-                from src.memory.sqlite_store import get_conn as _get_conn
-                with _get_conn() as conn:
-                    conn.execute(
-                        "UPDATE ingest_history SET status='failed' WHERE ingest_id=?",
-                        (ingest_id,)
-                    )
-                    conn.commit()
-            except Exception:
-                pass
+            _set_status("failed", 0)
 
     background_tasks.add_task(do_process)
 
@@ -224,7 +299,7 @@ async def ingest_youtube_endpoint(
         "status": "processing",
         "url": body.url,
         "ingest_type": "youtube",
-        "message": "YouTube video queued for transcription. This may take a few minutes.",
+        "message": "YouTube video queued — downloading audio and transcribing with Whisper. This may take 1–3 minutes.",
     }
 
 
