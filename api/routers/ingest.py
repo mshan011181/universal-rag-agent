@@ -313,10 +313,19 @@ async def list_ingestion_history(
     try:
         items = get_ingest_history(user_id)
         logger.info("ingest_list_retrieved", user_id=user_id, count=len(items))
+        # Map backend type names to frontend tab keys
+        TYPE_MAP = {
+            "document": "documents",
+            "text": "text",
+            "audio": "audio",
+            "video": "video",
+            "weblink": "weblinks",
+            "youtube": "youtube",
+        }
         # Group by type
         by_type = {}
         for item in items:
-            t = item["ingest_type"]
+            t = TYPE_MAP.get(item["ingest_type"], item["ingest_type"])
             if t not in by_type:
                 by_type[t] = []
             by_type[t].append({
