@@ -25,7 +25,7 @@ class GraphRAG(BasePattern):
 
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
         # Vector retrieval as base
-        chunks = self._retrieve(query)
+        chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
 
         # Extract entities from query
         raw = self._llm_call(

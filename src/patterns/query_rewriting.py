@@ -19,7 +19,7 @@ class QueryRewriting(BasePattern):
 
         all_results = []
         for v in variants[:3]:
-            all_results.append(self._retrieve(v))
+            all_results.append(self._retrieve(v, namespace=analysis.get('namespace', 'default')))
 
         merged = reciprocal_rank_fusion(all_results)
         return {"query": query, "rewritten_variants": variants, "chunks": merged, "channel": "vector"}

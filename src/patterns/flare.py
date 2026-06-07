@@ -6,7 +6,7 @@ class FLARE(BasePattern):
 
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
         # Initial retrieval
-        initial_chunks = self._retrieve(query)
+        initial_chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
         context = "\n\n".join([c["content"] for c in initial_chunks])
 
         # Generate partial answer and detect confidence gaps
@@ -27,7 +27,7 @@ class FLARE(BasePattern):
             import re
             signals = re.findall(r'\[RETRIEVE:\s*(.+?)\]', partial)
             for signal in signals[:3]:
-                extra_chunks = self._retrieve(signal.strip())
+                extra_chunks = self._retrieve(signal.strip(), namespace=analysis.get('namespace', 'default'))
                 all_chunks.extend(extra_chunks)
 
             # Final generation with enriched context

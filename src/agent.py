@@ -13,8 +13,9 @@ def _ensure_init():
         _initialized = True
 
 
-def ask(query: str, session_id: str = "default") -> RAGAgentResponse:
+def ask(query: str, session_id: str = "default", namespace: str = "default") -> RAGAgentResponse:
     _ensure_init()
     analysis = analyze_query(query, session_id)
+    analysis["namespace"] = namespace  # pass namespace into analysis for patterns
     response = route_and_execute(analysis, session_id)
     return response, analysis

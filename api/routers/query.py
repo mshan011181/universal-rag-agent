@@ -47,8 +47,11 @@ async def query_endpoint(
     # Scope session to user
     scoped_session = f"{user['user_id']}:{body.session_id}"
 
+    # Use org_id as namespace so queries search the user's own documents
+    namespace = user.get("org_id") or "default"
+
     try:
-        response, analysis = ask(query, scoped_session)
+        response, analysis = ask(query, scoped_session, namespace=namespace)
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
         raise HTTPException(status_code=500, detail="Query processing failed")

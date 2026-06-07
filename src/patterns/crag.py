@@ -8,7 +8,7 @@ class CRAG(BasePattern):
 
     def run(self, query: str, analysis: dict, chunks: list[dict] = None, **kwargs) -> dict:
         if chunks is None:
-            chunks = self._retrieve(query)
+            chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
 
         graded, fallback_used, channel = self._grade_and_filter(query, chunks)
         return {"query": query, "chunks": graded, "fallback_used": fallback_used, "channel": channel}

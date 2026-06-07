@@ -6,7 +6,7 @@ class MultiModalRAG(BasePattern):
 
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
         # Text retrieval (CLIP/image embeddings would extend this)
-        chunks = self._retrieve(query)
+        chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
         note = {
             "content": "[Multi-Modal RAG] Image/chart analysis requires CLIP embeddings. Text-based retrieval is active.",
             "metadata": {"source": "system_note"},

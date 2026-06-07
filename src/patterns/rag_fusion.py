@@ -18,6 +18,7 @@ class RAGFusion(BasePattern):
         except Exception:
             variants = [query]
 
-        all_results = [self._retrieve(v) for v in [query] + variants[:4]]
+        ns = analysis.get('namespace', 'default')
+        all_results = [self._retrieve(v, namespace=ns) for v in [query] + variants[:4]]
         merged = reciprocal_rank_fusion(all_results)
         return {"query": query, "variants": variants, "chunks": merged, "channel": "vector"}

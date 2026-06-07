@@ -8,7 +8,7 @@ class SelfRAG(BasePattern):
 
     def run(self, query: str, analysis: dict, chunks: list[dict] = None, answer: str = None, **kwargs) -> dict:
         if chunks is None:
-            chunks = self._retrieve(query)
+            chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
 
         if answer is None:
             context = "\n\n".join([c["content"] for c in chunks])

@@ -9,7 +9,7 @@ class SpeculativeRAG(BasePattern):
 
     def run(self, query: str, analysis: dict, chunks: list[dict] = None, **kwargs) -> dict:
         if chunks is None:
-            chunks = self._retrieve(query, k=10)
+            chunks = self._retrieve(query, k=10, namespace=analysis.get('namespace', 'default'))
 
         # Split chunks into subsets for parallel drafting
         n = max(1, len(chunks) // 2)

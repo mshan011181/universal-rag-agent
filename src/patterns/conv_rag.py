@@ -7,7 +7,7 @@ class ConvRAG(BasePattern):
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
         history = analysis.get("history", [])
         if not history:
-            chunks = self._retrieve(query)
+            chunks = self._retrieve(query, namespace=analysis.get('namespace', 'default'))
             return {"query": query, "chunks": chunks, "channel": "vector"}
 
         history_text = "\n".join([f"Turn {h['turn']}: Q: {h['query']} A: {h['answer']}" for h in history[-3:]])
@@ -15,5 +15,5 @@ class ConvRAG(BasePattern):
             system="Rewrite the current query as a fully self-contained question by resolving any pronoun references using the conversation history. Return only the rewritten query.",
             human=f"Conversation history:\n{history_text}\n\nCurrent query: {query}",
         )
-        chunks = self._retrieve(rewritten.strip())
+        chunks = self._retrieve(rewritten.strip(), namespace=analysis.get('namespace', 'default'))
         return {"query": rewritten.strip(), "original_query": query, "chunks": chunks, "channel": "vector"}

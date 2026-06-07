@@ -5,5 +5,6 @@ class NaiveRAG(BasePattern):
     name = "naive_rag"
 
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
-        chunks = self._retrieve(query)
+        namespace = analysis.get("namespace", "default")
+        chunks = self._retrieve(query, namespace=namespace)
         return {"query": query, "chunks": chunks, "channel": "vector"}

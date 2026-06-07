@@ -22,7 +22,7 @@ class AgenticRAG(BasePattern):
 
         for step in steps[:4]:
             enriched = f"{step}\n\nContext so far: {running_context}" if running_context else step
-            chunks = self._retrieve(enriched)
+            chunks = self._retrieve(enriched, namespace=analysis.get('namespace', 'default'))
             all_chunks.extend(chunks)
             context = "\n\n".join([c["content"] for c in chunks])
             step_ans = self._llm_call(

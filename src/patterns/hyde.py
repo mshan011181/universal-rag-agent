@@ -10,5 +10,5 @@ class HyDE(BasePattern):
             human=f"Query: {query}",
             temperature=0.3,
         )
-        chunks = self._retrieve(hypothetical)
+        chunks = self._retrieve(hypothetical, namespace=analysis.get('namespace', 'default'))
         return {"query": hypothetical, "original_query": query, "chunks": chunks, "channel": "vector"}
