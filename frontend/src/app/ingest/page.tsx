@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, getIngestHistory, deleteIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
-import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw } from 'lucide-react'
 
 type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube'
 
@@ -50,6 +50,9 @@ export default function IngestPage() {
 
   useEffect(() => {
     loadHistory()
+    // Poll for updates every 2 seconds to catch newly ingested items
+    const interval = setInterval(loadHistory, 2000)
+    return () => clearInterval(interval)
   }, [])
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -65,9 +68,11 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestFile(file)
-      showMessage('success', `${file.name} queued for ingestion`)
+      showMessage('success', `${file.name} queued for ingestion. Will appear in the list shortly.`)
       setFile(null)
+      // Reload history immediately and after 1 second to catch the item
       loadHistory()
+      setTimeout(loadHistory, 1000)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Upload failed')
     } finally {
@@ -86,6 +91,7 @@ export default function IngestPage() {
       showMessage('success', 'Text ingested successfully')
       setText('')
       loadHistory()
+      setTimeout(loadHistory, 500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Text ingestion failed')
     } finally {
@@ -101,9 +107,10 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestYouTube(url)
-      showMessage('success', 'YouTube video queued for transcription')
+      showMessage('success', 'YouTube video queued for transcription. Will appear shortly.')
       setUrl('')
       loadHistory()
+      setTimeout(loadHistory, 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'YouTube ingestion failed')
     } finally {
@@ -119,9 +126,10 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestWebLink(url)
-      showMessage('success', 'Web page queued for ingestion')
+      showMessage('success', 'Web page queued for ingestion. Will appear shortly.')
       setUrl('')
       loadHistory()
+      setTimeout(loadHistory, 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Web link ingestion failed')
     } finally {
@@ -137,9 +145,10 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestMedia(url, type)
-      showMessage('success', `${type.charAt(0).toUpperCase() + type.slice(1)} queued for transcription`)
+      showMessage('success', `${type.charAt(0).toUpperCase() + type.slice(1)} queued for transcription. Will appear shortly.`)
       setUrl('')
       loadHistory()
+      setTimeout(loadHistory, 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : `${type} ingestion failed`)
     } finally {
@@ -155,9 +164,10 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestAudioFile(audioFile)
-      showMessage('success', `${audioFile.name} queued for transcription`)
+      showMessage('success', `${audioFile.name} queued for transcription. Will appear shortly.`)
       setAudioFile(null)
       loadHistory()
+      setTimeout(loadHistory, 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Audio upload failed')
     } finally {
@@ -173,9 +183,10 @@ export default function IngestPage() {
     setLoading(true)
     try {
       await ingestVideoFile(videoFile)
-      showMessage('success', `${videoFile.name} queued for transcription`)
+      showMessage('success', `${videoFile.name} queued for transcription. Will appear shortly.`)
       setVideoFile(null)
       loadHistory()
+      setTimeout(loadHistory, 1500)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Video upload failed')
     } finally {
@@ -353,7 +364,17 @@ export default function IngestPage() {
           {/* History Section */}
           <div className="lg:col-span-2">
             <div className="card p-5">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">{TAB_CONFIG[activeTab].label} ({currentItems.length})</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold text-gray-900">{TAB_CONFIG[activeTab].label} ({currentItems.length})</h2>
+                <button
+                  onClick={loadHistory}
+                  disabled={historyLoading}
+                  className="p-1 text-gray-500 hover:text-brand-600 transition-colors disabled:opacity-50"
+                  title="Refresh history"
+                >
+                  <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
 
               {historyLoading ? (
                 <div className="flex items-center justify-center h-32">
