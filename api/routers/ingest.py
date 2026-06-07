@@ -55,6 +55,7 @@ async def ingest_file_endpoint(
     # Write to database immediately so item appears in list right away
     logger.info("ingest_queued", ingest_id=ingest_id, filename=filename, user_id=user_id)
     write_ingest(ingest_id, user_id, "document", filename, file_size=len(content), chunks=0)
+    logger.info("ingest_written_to_db", ingest_id=ingest_id, user_id=user_id)
 
     # Process file and update chunks count in background
     def do_ingest():
@@ -307,8 +308,11 @@ async def list_ingestion_history(
     user: dict = Depends(require_role("user")),
 ):
     """List all ingested items for the current user."""
+    user_id = user["user_id"]
+    logger.info("ingest_list_requested", user_id=user_id)
     try:
-        items = get_ingest_history(user["user_id"])
+        items = get_ingest_history(user_id)
+        logger.info("ingest_list_retrieved", user_id=user_id, count=len(items))
         # Group by type
         by_type = {}
         for item in items:
