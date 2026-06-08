@@ -447,11 +447,82 @@ async def ingest_weblink_endpoint(
     write_ingest(ingest_id, user_id, "weblink", source_name, source_url=body.url, chunks=0)
 
     def do_process():
+        from src.memory.sqlite_store import get_conn as _get_conn
+
+        def _set_status(status: str, chunks: int = 0):
+            with _get_conn() as c:
+                c.execute(
+                    "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                    (status, chunks, ingest_id),
+                )
+                c.commit()
+
         try:
-            # In production: use requests + BeautifulSoup to fetch and parse
+            import requests as _requests
+            from bs4 import BeautifulSoup as _BS
+
             logger.info("weblink_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
+
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            resp = _requests.get(body.url, headers=headers, timeout=20, allow_redirects=True)
+            resp.raise_for_status()
+
+            soup = _BS(resp.text, "lxml")
+
+            # Remove navigation, scripts, styles, ads
+            for tag in soup(["script", "style", "nav", "footer", "header",
+                              "aside", "form", "noscript", "iframe"]):
+                tag.decompose()
+
+            # Page title
+            page_title = (soup.title.string.strip() if soup.title and soup.title.string else source_name)
+
+            # Main content: prefer <article>, <main>, or fall back to <body>
+            main_block = (
+                soup.find("article")
+                or soup.find("main")
+                or soup.find("div", {"id": "content"})
+                or soup.find("div", {"class": "mw-parser-output"})   # Wikipedia
+                or soup.body
+            )
+            raw_text = main_block.get_text(separator="\n") if main_block else soup.get_text(separator="\n")
+
+            # Collapse whitespace
+            lines = [ln.strip() for ln in raw_text.splitlines()]
+            lines = [ln for ln in lines if ln]           # drop blank lines
+            # Remove duplicate consecutive lines (nav repeats etc.)
+            deduped = []
+            prev = None
+            for ln in lines:
+                if ln != prev:
+                    deduped.append(ln)
+                prev = ln
+
+            page_text = "\n".join(deduped)
+
+            if len(page_text) < 50:
+                raise ValueError("Extracted text too short — page may be JavaScript-rendered or blocked")
+
+            # Cap at ~200k chars to avoid Pinecone overload
+            page_text = page_text[:200_000]
+
+            doc_text = f"[Web Page] {page_title}\nURL: {body.url}\n\n{page_text}"
+            chunks = ingest_text(doc_text, source=f"weblink:{source_name}", namespace=org_id)
+            _set_status("done", chunks)
+
+            logger.info("weblink_done", url=body.url, source=source_name,
+                        chars=len(page_text), chunks=chunks, ingest_id=ingest_id)
+
         except Exception as e:
             logger.error("weblink_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
+            _set_status("failed", 0)
 
     background_tasks.add_task(do_process)
 
@@ -848,8 +919,8 @@ async def retry_ingest_endpoint(
 
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT source_name, file_size_bytes, status, ingest_type FROM ingest_history "
-            "WHERE ingest_id=? AND user_id=? AND ingest_type IN ('document','image','video','audio')",
+            "SELECT source_name, source_url, file_size_bytes, status, ingest_type FROM ingest_history "
+            "WHERE ingest_id=? AND user_id=? AND ingest_type IN ('document','image','video','audio','weblink')",
             (ingest_id, user_id)
         ).fetchone()
 
@@ -857,8 +928,80 @@ async def retry_ingest_endpoint(
         raise HTTPException(status_code=404, detail="Ingest record not found or type not retryable")
 
     filename = row["source_name"]
+    source_url = row["source_url"]
     ingest_type = row["ingest_type"]
     ext = Path(filename).suffix.lower()
+
+    # Weblink retry — no file on disk, re-fetch from URL
+    if ingest_type == "weblink":
+        if not source_url:
+            raise HTTPException(status_code=400, detail="No source URL stored for this weblink entry.")
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE ingest_history SET status='processing', chunks_created=0 WHERE ingest_id=?",
+                (ingest_id,)
+            )
+            conn.commit()
+
+        def _set_status(status: str, chunks: int = 0):
+            with get_conn() as c:
+                c.execute(
+                    "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                    (status, chunks, ingest_id),
+                )
+                c.commit()
+
+        def do_retry_weblink():
+            try:
+                import requests as _requests
+                from bs4 import BeautifulSoup as _BS
+
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+                resp = _requests.get(source_url, headers=headers, timeout=20, allow_redirects=True)
+                resp.raise_for_status()
+                soup = _BS(resp.text, "lxml")
+                for tag in soup(["script", "style", "nav", "footer", "header",
+                                  "aside", "form", "noscript", "iframe"]):
+                    tag.decompose()
+                page_title = (soup.title.string.strip()
+                              if soup.title and soup.title.string else filename)
+                main_block = (
+                    soup.find("article") or soup.find("main")
+                    or soup.find("div", {"id": "content"})
+                    or soup.find("div", {"class": "mw-parser-output"})
+                    or soup.body
+                )
+                raw_text = main_block.get_text(separator="\n") if main_block else soup.get_text(separator="\n")
+                lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+                deduped, prev = [], None
+                for ln in lines:
+                    if ln != prev:
+                        deduped.append(ln)
+                    prev = ln
+                page_text = "\n".join(deduped)[:200_000]
+                if len(page_text) < 50:
+                    raise ValueError("Extracted text too short")
+                doc_text = f"[Web Page] {page_title}\nURL: {source_url}\n\n{page_text}"
+                chunks = ingest_text(doc_text, source=f"weblink:{filename}", namespace=org_id)
+                _set_status("done", chunks)
+                logger.info("weblink_retry_done", ingest_id=ingest_id, chunks=chunks)
+            except Exception as e:
+                logger.error("weblink_retry_failed", ingest_id=ingest_id, error=str(e))
+                _set_status("failed", 0)
+
+        background_tasks.add_task(do_retry_weblink)
+        return {
+            "status": "processing",
+            "ingest_id": ingest_id,
+            "message": f"Retrying weblink ingestion for '{filename}'",
+        }
 
     # Find the saved file — match by user prefix and extension
     saved_files = list(UPLOADS_DIR.glob(f"{user_id}_*"))
