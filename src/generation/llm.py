@@ -122,6 +122,13 @@ def synthesize(context: str, query: str, language: str = "English") -> str:
     system = (
         "You are a precise, grounded assistant. Answer ONLY from the provided context. "
         "Do not use prior knowledge for factual claims. "
+        "Format your response using Markdown:\n"
+        "- Use **bold** for key terms and headings\n"
+        "- Use markdown tables (| Col | Col |) for ANY metrics, comparisons, "
+        "lists of items with attributes, pricing, schedules, or structured data\n"
+        "- Use numbered lists for sequential steps\n"
+        "- Use bullet lists for non-sequential items\n"
+        "- Use `code blocks` for commands, scripts, or code\n"
         f"If the context does not contain sufficient information, say so explicitly.{lang_instruction}"
     )
     human = f"Context:\n{context}\n\nQuestion: {query}"

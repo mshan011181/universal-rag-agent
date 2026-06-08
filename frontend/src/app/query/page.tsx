@@ -5,6 +5,8 @@ import AppShell from '@/components/layout/AppShell'
 import { submitQuery, fetchUserStats, getIngestHistory } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
 import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
@@ -454,7 +456,24 @@ export default function QueryPage() {
                 </div>
 
                 {/* Answer text */}
-                <p className="text-gray-800 leading-relaxed whitespace-pre-wrap mb-4">{result.answer}</p>
+                <div className="prose prose-sm max-w-none mb-4
+                  prose-p:text-gray-800 prose-p:leading-relaxed
+                  prose-strong:text-gray-900
+                  prose-headings:text-gray-900 prose-headings:font-semibold
+                  prose-ul:text-gray-800 prose-ol:text-gray-800
+                  prose-li:my-0.5
+                  prose-code:bg-gray-100 prose-code:text-brand-700 prose-code:px-1 prose-code:rounded prose-code:text-xs
+                  prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:rounded-lg prose-pre:text-xs
+                  prose-table:w-full prose-table:text-sm
+                  prose-thead:bg-gray-50
+                  prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-gray-700 prose-th:border prose-th:border-gray-200
+                  prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-200 prose-td:text-gray-700
+                  prose-tr:even:bg-gray-50
+                ">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {result.answer}
+                  </ReactMarkdown>
+                </div>
 
                 {/* TTS player */}
                 {tts.supported && (
