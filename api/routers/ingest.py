@@ -78,21 +78,24 @@ async def ingest_file_endpoint(
     write_ingest(ingest_id, user_id, "document", filename, file_size=len(content), chunks=0)
     logger.info("ingest_written_to_db", ingest_id=ingest_id, user_id=user_id)
 
-    # Process file and update chunks count in background
+    # Process file and update status + chunks count in background
     def do_ingest():
+        def _set_status(status: str, chunks: int = 0):
+            with get_conn() as c:
+                c.execute(
+                    "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                    (status, chunks, ingest_id),
+                )
+                c.commit()
+
         try:
             logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
             n = ingest_file(str(save_path), namespace=org_id)
-            # Update chunks count after processing
-            with get_conn() as conn:
-                conn.execute(
-                    "UPDATE ingest_history SET chunks_created = ? WHERE ingest_id = ?",
-                    (n, ingest_id)
-                )
-                conn.commit()
+            _set_status("done", n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
             logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
+            _set_status("failed", 0)
 
     background_tasks.add_task(do_ingest)
 
@@ -732,32 +735,33 @@ async def retry_ingest_endpoint(
     background_tasks: BackgroundTasks,
     user: dict = Depends(require_role("user")),
 ):
-    """Retry a failed image ingestion."""
+    """Retry a failed ingestion — supports document, image, video, audio."""
     user_id = user["user_id"]
     org_id = user.get("org_id", "default")
 
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT source_name, file_size_bytes, status, ingest_type FROM ingest_history WHERE ingest_id=? AND user_id=? AND ingest_type IN ('image','video','audio')",
+            "SELECT source_name, file_size_bytes, status, ingest_type FROM ingest_history "
+            "WHERE ingest_id=? AND user_id=? AND ingest_type IN ('document','image','video','audio')",
             (ingest_id, user_id)
         ).fetchone()
 
     if not row:
-        raise HTTPException(status_code=404, detail="Image ingest record not found")
+        raise HTTPException(status_code=404, detail="Ingest record not found or type not retryable")
 
     filename = row["source_name"]
-    # Find the saved file in uploads
-    saved_files = list(UPLOADS_DIR.glob(f"{user_id}_*"))
-    # Match by filename suffix
+    ingest_type = row["ingest_type"]
     ext = Path(filename).suffix.lower()
+
+    # Find the saved file — match by user prefix and extension
+    saved_files = list(UPLOADS_DIR.glob(f"{user_id}_*"))
     matches = [f for f in saved_files if f.suffix.lower() == ext]
-
     if not matches:
-        raise HTTPException(status_code=404, detail="Original image file not found. Please re-upload.")
+        raise HTTPException(status_code=404, detail=f"Original file not found on disk. Please re-upload '{filename}'.")
 
-    # Use most recent matching file
-    image_path = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
-    content = image_path.read_bytes()
+    # Use the most recently modified matching file
+    file_path = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
+    content = file_path.read_bytes()
 
     # Reset status to processing
     with get_conn() as conn:
@@ -767,63 +771,110 @@ async def retry_ingest_endpoint(
         )
         conn.commit()
 
+    def _set_status(status: str, chunks: int = 0):
+        with get_conn() as c:
+            c.execute(
+                "UPDATE ingest_history SET status=?, chunks_created=? WHERE ingest_id=?",
+                (status, chunks, ingest_id),
+            )
+            c.commit()
+
     def do_retry():
         try:
-            import base64
-            from groq import Groq as _Groq
-            from src.memory.sqlite_store import get_conn as _get_conn
+            if ingest_type == "document":
+                # Re-run the standard file ingest pipeline
+                n = ingest_file(str(file_path), namespace=org_id)
+                _set_status("done", n)
+                logger.info("document_retry_done", ingest_id=ingest_id, chunks=n, filename=filename)
 
-            mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
-            b64_data = base64.standard_b64encode(content).decode("utf-8")
-            data_url = f"data:{mime};base64,{b64_data}"
+            elif ingest_type == "image":
+                import base64
+                from groq import Groq as _Groq
 
-            client = _Groq()
-            prompt = (
-                "You are an expert document analysis assistant. Extract all structured information "
-                "from this image for a RAG system.\n\n"
-                "1. INVOICES/RECEIPTS: vendor, invoice #, date, all line items (Qty/Price/Amount), subtotal, tax, total\n"
-                "2. TABLES/EXCEL: full pipe-separated table with all rows/columns\n"
-                "3. FORMS/REPORTS: all label-value pairs\n"
-                "4. DIAGRAMS/FLOWCHARTS: type, nodes, connections, labels\n"
-                "5. OTHER TEXT: verbatim extraction\n\n"
-                "Use headers: ## Document Type, ## Key Fields, ## Table Data, ## Summary / Totals"
-            )
+                mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
+                b64_data = base64.standard_b64encode(content).decode("utf-8")
+                data_url = f"data:{mime};base64,{b64_data}"
 
-            response = client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                max_tokens=8192,
-                messages=[{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                    {"type": "text", "text": prompt},
-                ]}],
-            )
-            extracted = response.choices[0].message.content.strip()
-            if not extracted:
-                raise ValueError("Empty extraction")
-
-            doc_text = f"[Image] {filename}\n\n{extracted}"
-            chunks = ingest_text(doc_text, source=f"image:{filename}", namespace=org_id)
-
-            with _get_conn() as conn:
-                conn.execute(
-                    "UPDATE ingest_history SET chunks_created=?, status='done' WHERE ingest_id=?",
-                    (chunks, ingest_id)
+                client = _Groq()
+                prompt = (
+                    "You are an expert document analysis assistant. Extract all structured information "
+                    "from this image for a RAG system.\n\n"
+                    "1. INVOICES/RECEIPTS: vendor, invoice #, date, all line items (Qty/Price/Amount), subtotal, tax, total\n"
+                    "2. TABLES/EXCEL: full pipe-separated table with all rows/columns\n"
+                    "3. FORMS/REPORTS: all label-value pairs\n"
+                    "4. DIAGRAMS/FLOWCHARTS: type, nodes, connections, labels\n"
+                    "5. OTHER TEXT: verbatim extraction\n\n"
+                    "Use headers: ## Document Type, ## Key Fields, ## Table Data, ## Summary / Totals"
                 )
-                conn.commit()
-            logger.info("image_retry_done", ingest_id=ingest_id, chunks=chunks)
+                response = client.chat.completions.create(
+                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    max_tokens=8192,
+                    messages=[{"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                        {"type": "text", "text": prompt},
+                    ]}],
+                )
+                extracted = response.choices[0].message.content.strip()
+                if not extracted:
+                    raise ValueError("Empty extraction from vision model")
+                doc_text = f"[Image] {filename}\n\n{extracted}"
+                chunks = ingest_text(doc_text, source=f"image:{filename}", namespace=org_id)
+                _set_status("done", chunks)
+                logger.info("image_retry_done", ingest_id=ingest_id, chunks=chunks)
+
+            elif ingest_type in ("video", "audio"):
+                import tempfile as _tempfile
+                import subprocess as _subprocess
+                import imageio_ffmpeg as _ffmpeg
+                from groq import Groq as _Groq
+
+                tmp_dir = _tempfile.mkdtemp()
+                try:
+                    save_path = Path(tmp_dir) / filename
+                    save_path.write_bytes(content)
+                    audio_path = save_path
+
+                    VIDEO_EXTS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv", ".m4v", ".3gp"}
+                    if ext in VIDEO_EXTS:
+                        extracted_audio = Path(tmp_dir) / "audio.mp3"
+                        ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+                        cmd = [ffmpeg_exe, "-y", "-i", str(save_path), "-vn",
+                               "-acodec", "libmp3lame", "-ab", "64k", "-ar", "16000",
+                               str(extracted_audio)]
+                        _subprocess.run(cmd, capture_output=True, timeout=300, check=True)
+                        audio_path = extracted_audio
+
+                    size_mb = audio_path.stat().st_size / 1024 / 1024
+                    if size_mb > 25:
+                        logger.warning("media_retry_large_file", size_mb=round(size_mb, 1), filename=filename)
+
+                    groq_client = _Groq()
+                    with open(audio_path, "rb") as af:
+                        transcription = groq_client.audio.transcriptions.create(
+                            model="whisper-large-v3", file=af, response_format="text"
+                        )
+                    transcript = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+                    doc_text = (
+                        f"[{ingest_type.capitalize()} File] {filename}\n\n"
+                        f"## Audio Transcript (Whisper — high accuracy)\n\n{transcript}"
+                    )
+                    chunks = ingest_text(doc_text, source=f"{ingest_type}:{filename}", namespace=org_id)
+                    _set_status("done", chunks)
+                    logger.info("media_retry_done", ingest_id=ingest_id, chunks=chunks, filename=filename)
+                finally:
+                    import shutil as _shutil
+                    _shutil.rmtree(tmp_dir, ignore_errors=True)
 
         except Exception as e:
-            logger.error("image_retry_failed", ingest_id=ingest_id, error=str(e))
-            try:
-                from src.memory.sqlite_store import get_conn as _get_conn
-                with _get_conn() as conn:
-                    conn.execute("UPDATE ingest_history SET status='failed' WHERE ingest_id=?", (ingest_id,))
-                    conn.commit()
-            except Exception:
-                pass
+            logger.error("retry_failed", ingest_id=ingest_id, ingest_type=ingest_type, error=str(e))
+            _set_status("failed", 0)
 
     background_tasks.add_task(do_retry)
-    return {"status": "processing", "ingest_id": ingest_id, "message": "Retrying image extraction"}
+    return {
+        "status": "processing",
+        "ingest_id": ingest_id,
+        "message": f"Retrying {ingest_type} ingestion for '{filename}'",
+    }
 
 
 @router.delete("/{ingest_id}")
