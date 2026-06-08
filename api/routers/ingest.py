@@ -90,7 +90,7 @@ async def ingest_file_endpoint(
 
         try:
             logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
-            n = ingest_file(str(save_path), namespace=org_id)
+            n = ingest_file(str(save_path), namespace=org_id, source_name=filename)
             _set_status("done", n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)
         except Exception as e:
@@ -782,8 +782,8 @@ async def retry_ingest_endpoint(
     def do_retry():
         try:
             if ingest_type == "document":
-                # Re-run the standard file ingest pipeline
-                n = ingest_file(str(file_path), namespace=org_id)
+                # Re-run the standard file ingest pipeline with original filename as source
+                n = ingest_file(str(file_path), namespace=org_id, source_name=filename)
                 _set_status("done", n)
                 logger.info("document_retry_done", ingest_id=ingest_id, chunks=n, filename=filename)
 

@@ -101,7 +101,15 @@ def _extract_text_from_json(path: Path) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-def ingest_file(file_path: str, namespace: str = "default") -> int:
+def ingest_file(file_path: str, namespace: str = "default", source_name: str | None = None) -> int:
+    """Ingest a document file into Pinecone.
+
+    Args:
+        file_path:   Path to the saved (possibly hashed) file on disk.
+        namespace:   Pinecone namespace (org_id).
+        source_name: Human-readable original filename to store as metadata
+                     source.  Defaults to path.name if not supplied.
+    """
     path = Path(file_path)
     suffix = path.suffix.lower()
 
@@ -124,6 +132,11 @@ def ingest_file(file_path: str, namespace: str = "default") -> int:
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
 
+    # Resolve the display source name — prefer caller-supplied original filename
+    display_source = source_name or path.name
+    # Use a stable vector ID prefix from the display name (not the hashed disk name)
+    id_prefix = Path(display_source).stem
+
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
     if raw_text is not None:
@@ -134,11 +147,11 @@ def ingest_file(file_path: str, namespace: str = "default") -> int:
         embeddings = _embed(text_chunks)
         vectors = [
             {
-                "id": f"{path.stem}_{i}",
+                "id": f"{id_prefix}_{i}",
                 "values": emb,
                 "metadata": {
                     "content": chunk,
-                    "source": path.name,
+                    "source": display_source,
                     "chunk_idx": i,
                 },
             }
@@ -158,11 +171,11 @@ def ingest_file(file_path: str, namespace: str = "default") -> int:
     embeddings = _embed(texts)
     vectors = [
         {
-            "id": f"{path.stem}_{i}",
+            "id": f"{id_prefix}_{i}",
             "values": emb,
             "metadata": {
                 "content": chunk.page_content,
-                "source": path.name,
+                "source": display_source,
                 "chunk_idx": i,
                 "page": chunk.metadata.get("page", 0),
             },
