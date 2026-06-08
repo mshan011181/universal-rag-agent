@@ -121,7 +121,13 @@ export default function QueryPage() {
   }
 
   const TYPE_ICON: Record<string, string> = {
-    document: '📄', images: '🖼', video: '🎬', audio: '🎵', youtube: '▶', text: '📝', weblink: '🌐',
+    document: '📄', documents: '📄',
+    image: '🖼', images: '🖼',
+    video: '🎬',
+    audio: '🎵',
+    youtube: '▶',
+    text: '📝',
+    weblink: '🌐', weblinks: '🌐',
   }
 
   const [language, setLanguage] = useState<string>(() => {
@@ -327,7 +333,7 @@ export default function QueryPage() {
                       ).map(([type, files]) => (
                         <div key={type} className="mb-3">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 capitalize">
-                            {TYPE_ICON[type] || '📁'} {type}
+                            {TYPE_ICON[type] || '📁'} {type === 'weblinks' ? 'Web Links' : type === 'documents' ? 'Documents' : type}
                           </p>
                           <div className="space-y-1">
                             {files.map(f => (
