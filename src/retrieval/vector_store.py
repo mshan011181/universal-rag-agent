@@ -277,6 +277,25 @@ def _extract_text_from_json(path: Path) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
+def _delete_source_vectors(id_prefix: str, namespace: str) -> int:
+    """Delete all Pinecone vectors whose ID starts with id_prefix.
+
+    Called before every ingest so re-uploading a file never leaves stale
+    chunks behind (e.g. when chunk count changes between uploads).
+    Returns the number of vectors deleted.
+    """
+    try:
+        index = _get_index()
+        ids_to_delete: list[str] = []
+        for page in index.list(prefix=id_prefix, namespace=namespace):
+            ids_to_delete.extend(item.id for item in page)
+        if ids_to_delete:
+            index.delete(ids=ids_to_delete, namespace=namespace)
+        return len(ids_to_delete)
+    except Exception:
+        return 0  # non-fatal — upsert will still overwrite matching IDs
+
+
 def ingest_file(file_path: str, namespace: str = "default", source_name: str | None = None) -> int:
     """Ingest a document file into Pinecone.
 
@@ -313,6 +332,11 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     # Use a stable vector ID prefix from the display name (not the hashed disk name)
     id_prefix = Path(display_source).stem
 
+    # Delete any existing vectors for this source before upserting new ones.
+    # This prevents stale chunks accumulating when a file is re-uploaded with
+    # a different chunk count (e.g. file updated, or chunk size changed).
+    _delete_source_vectors(id_prefix, namespace)
+
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
     if raw_text is not None:
@@ -336,7 +360,7 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
         _get_index().upsert(vectors=vectors, namespace=namespace)
         return len(vectors)
 
-    # LangChain Document path (PDF / TXT / DOCX)
+    # LangChain Document path (TXT / MD / CSV)
     docs = loader.load()
     chunks = splitter.split_documents(docs)
 
@@ -363,6 +387,8 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
 
 
 def ingest_text(text: str, source: str = "manual", namespace: str = "default") -> int:
+    # Delete existing vectors for this source before upserting
+    _delete_source_vectors(source, namespace)
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_text(text)
     if not chunks:
