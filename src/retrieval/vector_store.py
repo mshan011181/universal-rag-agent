@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.config import (
     EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K,
@@ -147,6 +147,102 @@ def _extract_text_from_pptx(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _extract_text_from_pdf(path: Path) -> str:
+    """Extract text AND embedded images from a PDF using pypdf + Groq Vision.
+
+    For each page:
+      - Page text is extracted via pypdf.
+      - Every image object on the page is sent to Groq Vision for description,
+        appended as '### Image N (Page P)'.
+    """
+    import pypdf
+
+    reader = pypdf.PdfReader(str(path), strict=False)
+    lines = []
+
+    for page_num, page in enumerate(reader.pages, start=1):
+        lines.append(f"\n--- Page {page_num} ---")
+
+        # ── Text ────────────────────────────────────────────────────────
+        page_text = page.extract_text() or ""
+        if page_text.strip():
+            lines.append(page_text.strip())
+
+        # ── Images ──────────────────────────────────────────────────────
+        img_count = 0
+        try:
+            for img_obj in page.images:
+                try:
+                    img_bytes = img_obj.data
+                    # pypdf gives .name like 'Im0.png'; derive ext from it
+                    ext = Path(img_obj.name).suffix.lstrip(".") or "png"
+                    img_count += 1
+                    context = f"Page {page_num}, Image {img_count}"
+                    description = _describe_image_bytes(img_bytes, ext, context)
+                    if description:
+                        lines.append(f"\n### Image {img_count} (Page {page_num})")
+                        lines.append(description)
+                except Exception:
+                    pass
+        except Exception:
+            pass  # some PDFs have no extractable image objects
+
+    return "\n".join(lines)
+
+
+def _extract_text_from_docx(path: Path) -> str:
+    """Extract text AND embedded images from a DOCX via python-docx + Groq Vision.
+
+    - Paragraph text extracted in document order.
+    - Inline images (via document part relationships) sent to Groq Vision,
+      appended as '### Embedded Image N'.
+    """
+    import docx
+
+    doc = docx.Document(str(path))
+    lines = []
+
+    # ── Text ────────────────────────────────────────────────────────────
+    for para in doc.paragraphs:
+        if para.text.strip():
+            lines.append(para.text.strip())
+
+    # Also extract text from tables
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = "\t".join(cell.text.strip() for cell in row.cells)
+            if row_text.strip():
+                lines.append(row_text)
+
+    # ── Images ──────────────────────────────────────────────────────────
+    # DOCX stores images as related parts; iterate all image relationships
+    img_count = 0
+    IMAGE_CONTENT_TYPES = {
+        "image/png", "image/jpeg", "image/gif",
+        "image/webp", "image/bmp", "image/tiff",
+    }
+    try:
+        for rel in doc.part.rels.values():
+            try:
+                ct = rel.target_part.content_type
+                if ct not in IMAGE_CONTENT_TYPES:
+                    continue
+                img_bytes = rel.target_part.blob
+                ext = ct.split("/")[-1]  # e.g. 'png', 'jpeg'
+                img_count += 1
+                context = f"Image {img_count}"
+                description = _describe_image_bytes(img_bytes, ext, context)
+                if description:
+                    lines.append(f"\n### Embedded Image {img_count}")
+                    lines.append(description)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
 def _extract_text_from_xls(path: Path) -> str:
     """Extract all text from a legacy Excel file (.xls)."""
     import xlrd
@@ -196,11 +292,11 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     raw_text: str | None = None  # set when we produce text directly
 
     if suffix == ".pdf":
-        loader = PyPDFLoader(str(path))
+        raw_text = _extract_text_from_pdf(path)
     elif suffix in (".txt", ".md", ".csv"):
         loader = TextLoader(str(path), encoding="utf-8")
     elif suffix in (".docx", ".doc"):
-        loader = Docx2txtLoader(str(path))
+        raw_text = _extract_text_from_docx(path)
     elif suffix in (".pptx", ".ppt"):
         raw_text = _extract_text_from_pptx(path)
     elif suffix == ".xls":
