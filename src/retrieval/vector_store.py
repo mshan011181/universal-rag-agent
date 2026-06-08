@@ -54,16 +54,96 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return _get_embedder().encode(texts, show_progress_bar=False).tolist()
 
 
+def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "") -> str:
+    """Send raw image bytes to Groq Vision and return a description.
+
+    Args:
+        image_bytes: Raw bytes of the image.
+        ext:         Image format extension (png/jpg/gif/webp/bmp).
+        context:     Hint (e.g. slide number) added to the prompt.
+    Returns:
+        Vision model description, or empty string on failure.
+    """
+    import base64
+    try:
+        from groq import Groq
+    except ImportError:
+        return ""
+
+    mime_map = {
+        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+        "tiff": "image/tiff", "emf": "image/png", "wmf": "image/png",
+    }
+    mime = mime_map.get(ext.lower().lstrip("."), "image/png")
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:{mime};base64,{b64}"
+
+    prompt = (
+        f"You are analyzing an image embedded in a PowerPoint slide{' (' + context + ')' if context else ''}.\n"
+        "Extract ALL information visible:\n"
+        "1. DIAGRAMS/FLOWCHARTS: describe each node, arrow, label, and flow\n"
+        "2. CHARTS/GRAPHS: type, axes, values, trends, legend items\n"
+        "3. TABLES: reproduce all rows and columns as pipe-separated text\n"
+        "4. SCREENSHOTS/UI: describe the interface, visible text, key actions\n"
+        "5. ARCHITECTURE DIAGRAMS: components, connections, data flow\n"
+        "6. ANY TEXT: transcribe verbatim\n\n"
+        "Be thorough — this text will be the only representation of this image in the RAG system."
+    )
+
+    try:
+        client = Groq()
+        response = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return ""
+
+
 def _extract_text_from_pptx(path: Path) -> str:
-    """Extract all text from a PowerPoint file (.pptx)."""
+    """Extract text AND embedded images from a PowerPoint file (.pptx).
+
+    For each slide:
+      - All text shapes are extracted verbatim.
+      - All Picture shapes have their image sent to Groq Vision for
+        description, which is appended under '### Embedded Image N'.
+    """
     from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
     prs = Presentation(str(path))
     lines = []
+
     for slide_num, slide in enumerate(prs.slides, start=1):
         lines.append(f"\n--- Slide {slide_num} ---")
+
+        img_count = 0
         for shape in slide.shapes:
+            # ── Text ─────────────────────────────────────────────────────
             if hasattr(shape, "text") and shape.text.strip():
                 lines.append(shape.text.strip())
+
+            # ── Embedded images (Picture shapes) ─────────────────────────
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                try:
+                    img = shape.image
+                    ext = img.ext  # e.g. 'png', 'jpeg'
+                    img_bytes = img.blob
+                    img_count += 1
+                    context = f"Slide {slide_num}, Image {img_count}"
+                    description = _describe_image_bytes(img_bytes, ext, context)
+                    if description:
+                        lines.append(f"\n### Embedded Image {img_count} (Slide {slide_num})")
+                        lines.append(description)
+                except Exception:
+                    pass  # skip unreadable images silently
+
     return "\n".join(lines)
 
 
