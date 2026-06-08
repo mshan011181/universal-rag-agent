@@ -129,7 +129,7 @@ export default function QueryPage() {
         {
           query: query.trim(),
           answer: res.answer,
-          pattern: res.pattern_used || 'auto',
+          pattern: (res.patterns_used && res.patterns_used.length > 0) ? res.patterns_used.join(' → ') : (res.pattern_used || 'auto'),
           latency: res.latency_ms || 0,
           quality: res.quality_score ?? 0.5,
         },
@@ -319,7 +319,24 @@ export default function QueryPage() {
                   <div className="flex items-center gap-2">
                     <Zap className="w-4 h-4 text-brand-600" />
                     <span className="text-sm font-medium text-gray-700">
-                      Pattern: <span className="text-brand-600">{(result.pattern_used || 'auto').replace(/_/g, ' ')}</span>
+                      Pattern:{' '}
+                      {(result.patterns_used && result.patterns_used.length > 0
+                        ? result.patterns_used
+                        : ['auto']
+                      ).map((p, i) => (
+                        <span key={p}>
+                          {i > 0 && <span className="text-gray-400 mx-1">→</span>}
+                          <span className="text-brand-600 capitalize">{p.replace(/_/g, ' ')}</span>
+                        </span>
+                      ))}
+                      {result.retrieval_channel && result.retrieval_channel !== 'vector' && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">
+                          via {result.retrieval_channel}
+                        </span>
+                      )}
+                      {result.verified_knowledge_hit && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">cached</span>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -413,6 +430,48 @@ export default function QueryPage() {
                     <span className="text-xs text-gray-400">Audio not supported in this browser</span>
                   </div>
                 )}
+
+                {/* Source documents panel */}
+                {result.citation_map && Object.keys(result.citation_map).length > 0 && (() => {
+                  // Deduplicate sources by name, keep highest score
+                  const seen = new Map<string, number>()
+                  Object.values(result.citation_map).forEach(({ source, score }) => {
+                    const name = source.replace(/^(image|video|audio|youtube):/, '')
+                    const prev = seen.get(name) ?? 0
+                    if (score > prev) seen.set(name, score)
+                  })
+                  const sources = Array.from(seen.entries()).sort((a, b) => b[1] - a[1])
+                  return (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        Sources retrieved
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {sources.map(([name, score]) => {
+                          const isWeb = name.startsWith('http')
+                          const isPpt = name.toLowerCase().endsWith('.pptx') || name.toLowerCase().endsWith('.ppt')
+                          const isPdf = name.toLowerCase().endsWith('.pdf')
+                          const isDocx = name.toLowerCase().endsWith('.docx') || name.toLowerCase().endsWith('.doc')
+                          const isYT = name.startsWith('https://www.youtube') || name.startsWith('https://youtu')
+                          const isImg = /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(name)
+                          const icon = isYT ? '▶' : isWeb ? '🌐' : isPpt ? '📊' : isPdf ? '📄' : isDocx ? '📝' : isImg ? '🖼' : '📁'
+                          const pct = Math.round(score * 100)
+                          const colorClass = pct >= 70 ? 'bg-green-50 border-green-200 text-green-800'
+                            : pct >= 40 ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                            : 'bg-gray-50 border-gray-200 text-gray-600'
+                          return (
+                            <div key={name} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${colorClass}`}>
+                              <span>{icon}</span>
+                              <span className="max-w-[200px] truncate" title={name}>{name}</span>
+                              <span className="opacity-60">·</span>
+                              <span>{pct}%</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Follow-ups */}

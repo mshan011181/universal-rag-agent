@@ -26,11 +26,17 @@ export interface SourceChunk {
 
 export interface QueryResponse {
   answer: string
-  pattern_used: string
+  pattern_used: string        // kept for backward compat (mapped from patterns_used[0])
+  patterns_used: string[]     // actual list from API
   sources: SourceChunk[]
   quality_score: number
   follow_up_questions: string[]
   latency_ms: number
+  citation_map: Record<string, { source: string; score: number }>
+  retrieval_channel: string
+  fallback_used: boolean
+  verified_knowledge_hit: boolean
+  suggested_followups: string[]
 }
 
 export interface IngestResponse {
