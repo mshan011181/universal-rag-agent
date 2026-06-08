@@ -149,9 +149,20 @@ def grade(answer: str, context: str, query: str) -> dict:
             (data.get("relevance", 0.5) + data.get("completeness", 0.5)) / 2
             * (1 - data.get("hallucination_risk", 0) * 0.5)
         )
-        no_info = ["no relevant information", "no information", "context does not",
-                   "not enough information", "cannot answer"]
-        if any(p in answer.lower() for p in no_info):
+        # Only penalise answers that are primarily refusals — not answers
+        # that happen to include a minor caveat note at the end.
+        # Strategy: check if a refusal phrase dominates the FIRST 40% of the
+        # answer (before substantive content appears) rather than anywhere.
+        answer_lower = answer.lower()
+        answer_intro = answer_lower[:max(200, len(answer_lower) // 3)]
+        no_info_primary = [
+            "no relevant information", "no information available",
+            "i don't have", "i do not have", "cannot answer",
+            "not enough information to answer",
+            "the context does not contain any",
+            "there is no information",
+        ]
+        if any(p in answer_intro for p in no_info_primary):
             quality = min(quality, 0.3)
         return {"quality_score": round(quality, 3), **data}
     except Exception:

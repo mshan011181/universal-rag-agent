@@ -436,7 +436,15 @@ export default function QueryPage() {
                   // Deduplicate sources by name, keep highest score
                   const seen = new Map<string, number>()
                   Object.values(result.citation_map).forEach(({ source, score }) => {
-                    const name = source.replace(/^(image|video|audio|youtube):/, '')
+                    // Strip type prefix (image:, video:, etc.)
+                    // Also strip UUID+hash upload prefix: {uuid}_{16hexchars}.ext → original.ext
+                    const name = source
+                      .replace(/^(image|video|audio|youtube):/, '')
+                      .replace(/^[0-9a-f-]{36}_[0-9a-f]{16}\./, (m) => {
+                        // Replace with just the extension label
+                        const ext = m.split('.').pop() || ''
+                        return ext ? `[${ext.toUpperCase()}] ` : ''
+                      })
                     const prev = seen.get(name) ?? 0
                     if (score > prev) seen.set(name, score)
                   })
