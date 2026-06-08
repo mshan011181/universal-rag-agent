@@ -132,12 +132,36 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
 
     # Rerank final chunks
     if state["chunks"]:
-        state["chunks"] = rerank(query, state["chunks"], top_n=5)
+        reranked = rerank(query, state["chunks"], top_n=10)
+
+        # ── Relevance threshold filter ───────────────────────────────────
+        # Drop chunks whose score is below the cutoff — they are semantically
+        # adjacent to the query topic but not genuinely relevant (e.g. a
+        # DevOps PDF pulled in for a GCS backup query because both mention
+        # cloud infrastructure).
+        MIN_SCORE = 0.45
+        above = [c for c in reranked if c.get("score", 0) >= MIN_SCORE]
+        # If threshold is too aggressive and nothing passes, keep the best 3
+        filtered = above if above else reranked[:3]
+
+        # ── Per-source chunk cap ─────────────────────────────────────────
+        # Allow at most 3 chunks from any single source so that a large
+        # document (many chunks) doesn't crowd out the primary source.
+        source_counts: dict[str, int] = {}
+        capped: list[dict] = []
+        for chunk in filtered:
+            src = chunk["metadata"].get("source", "?")
+            if source_counts.get(src, 0) < 3:
+                capped.append(chunk)
+                source_counts[src] = source_counts.get(src, 0) + 1
+            if len(capped) >= 5:
+                break
+        state["chunks"] = capped
 
     # Build context for synthesis
     context = "\n\n".join([
         f"[Source: {c['metadata'].get('source','?')}]\n{c['content']}"
-        for c in state["chunks"][:5]
+        for c in state["chunks"]
     ]) if state["chunks"] else "No relevant documents found."
 
     # Synthesize if no answer yet

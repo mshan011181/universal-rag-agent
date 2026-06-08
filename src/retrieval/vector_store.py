@@ -423,14 +423,25 @@ def retrieve_by_source(filename: str, namespace: str = "default", k: int = 20) -
         return []
 
 
-def retrieve(query: str, k: int = TOP_K, namespace: str = "default") -> list[dict]:
+def retrieve(query: str, k: int = TOP_K, namespace: str = "default",
+             min_score: float = 0.35) -> list[dict]:
+    """Retrieve top-k chunks by semantic similarity.
+
+    Args:
+        min_score: Cosine similarity floor. Chunks below this score are
+                   discarded before returning — prevents loosely-related
+                   documents from contaminating the context.
+    """
     emb = _embed([query])[0]
     results = _get_index().query(vector=emb, top_k=k, namespace=namespace, include_metadata=True)
     chunks = []
     for match in results.get("matches", []):
+        score = round(match.get("score", 0.0), 4)
+        if score < min_score:
+            continue
         meta = dict(match.get("metadata", {}))
         content = meta.pop("content", "")
-        chunks.append({"content": content, "metadata": meta, "score": round(match.get("score", 0.0), 4)})
+        chunks.append({"content": content, "metadata": meta, "score": score})
     return chunks
 
 
