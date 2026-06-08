@@ -560,6 +560,7 @@ export default function QueryPage() {
                   // Deduplicate sources by name, keep highest score
                   const seen = new Map<string, number>()
                   Object.values(result.citation_map).forEach(({ source, score }) => {
+                    if (!source) return  // guard against undefined source
                     // Strip type prefix (image:, video:, etc.)
                     // Also strip UUID+hash upload prefix: {uuid}_{16hexchars}.ext → [EXT document]
                     const name = source
