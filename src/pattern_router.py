@@ -54,14 +54,14 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     patterns = analysis["patterns"]
     language = analysis.get("language", "English")
 
-    # Include language in fingerprint so Tamil/English queries have separate cache entries
+    # Always include language in fingerprint so each language has its own cache slot.
+    # Normalise English variants to "english" so American/British/Australian share one slot.
     import hashlib as _hashlib
     _fp_base = analysis["fingerprint"]
     _lang_key = language.lower().strip()
-    fingerprint = (
-        _fp_base if _lang_key in ("english", "american english", "british english", "australian english")
-        else _hashlib.md5(f"{_fp_base}:{_lang_key}".encode()).hexdigest()[:16]
-    )
+    _ENGLISH_VARIANTS = {"english", "american english", "british english", "australian english"}
+    _lang_norm = "english" if _lang_key in _ENGLISH_VARIANTS else _lang_key
+    fingerprint = _hashlib.md5(f"{_fp_base}:{_lang_norm}".encode()).hexdigest()[:16]
 
     # Check verified knowledge cache
     cached = check_verified_knowledge(fingerprint)

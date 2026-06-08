@@ -499,8 +499,9 @@ export default function IngestPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2 shrink-0">
-                          {/* Retry button for failed image ingestions */}
-                          {isFailed && ['documents', 'images', 'video', 'audio'].includes(activeTab) && (
+                          {/* Retry button — show for failed OR stuck (0 chunks, not processing) items */}
+                          {(isFailed || (item.chunks === 0 && !isProcessing)) &&
+                            ['documents', 'images', 'video', 'audio', 'weblinks'].includes(activeTab) && (
                             <button
                               onClick={() => handleRetry(item.ingest_id, item.name)}
                               className="p-1 text-blue-500 hover:text-blue-700 transition-colors"
