@@ -214,13 +214,18 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         for c in state["chunks"]
     ]) if state["chunks"] else "No relevant documents found."
 
-    # Synthesize if no answer yet
-    if not state["answer"]:
+    language = analysis.get("language", "English")
+    _non_english = language and language.lower() not in (
+        "english", "american english", "british english", "australian english"
+    )
+
+    # Synthesize if no answer yet, OR if a non-English language is requested and
+    # a pattern produced an English answer (e.g. SelfRAG always answers in English).
+    if not state["answer"] or _non_english:
         # Inject agentic steps into context if available
         if state.get("steps"):
             steps_ctx = "\n".join([f"Step: {s['step']}\nAnswer: {s['answer']}" for s in state["steps"]])
             context = f"Multi-step reasoning:\n{steps_ctx}\n\n{context}"
-        language = analysis.get("language", "English")
         state["answer"] = synthesize(context, query, language=language)
 
     # Grade the answer
