@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, fetchUserStats } from '@/lib/api'
-import type { QueryResponse } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square } from 'lucide-react'
+import { submitQuery, fetchUserStats, getIngestHistory } from '@/lib/api'
+import type { QueryResponse, IngestedItem } from '@/types'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X } from 'lucide-react'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
@@ -93,6 +93,35 @@ export default function QueryPage() {
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
 
+  // Source filter state
+  const [showSourceFilter, setShowSourceFilter] = useState(false)
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [allFiles, setAllFiles] = useState<{ type: string; name: string; chunks: number }[]>([])
+
+  useEffect(() => {
+    getIngestHistory().then(hist => {
+      const files: { type: string; name: string; chunks: number }[] = []
+      Object.entries(hist.by_type || {}).forEach(([type, items]) => {
+        ;(items as IngestedItem[]).forEach(item => {
+          if (item.chunks > 0) {
+            files.push({ type, name: item.name, chunks: item.chunks })
+          }
+        })
+      })
+      setAllFiles(files)
+    }).catch(() => {})
+  }, [])
+
+  const toggleSource = (name: string) => {
+    setSelectedSources(prev =>
+      prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name]
+    )
+  }
+
+  const TYPE_ICON: Record<string, string> = {
+    document: '📄', images: '🖼', video: '🎬', audio: '🎵', youtube: '▶', text: '📝', weblink: '🌐',
+  }
+
   const [language, setLanguage] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('rag_answer_language') || 'American English'
@@ -120,6 +149,7 @@ export default function QueryPage() {
         query: query.trim(),
         pattern: pattern === 'auto' ? undefined : pattern,
         language,
+        source_filters: selectedSources.length > 0 ? selectedSources : undefined,
       })
       setResult(res)
       // Refresh personal stats after query
@@ -261,6 +291,74 @@ export default function QueryPage() {
                 </div>
               </div>
 
+              {/* Source Filter Panel */}
+              {allFiles.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowSourceFilter(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-brand-600" />
+                      <span>Filter by source</span>
+                      {selectedSources.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-brand-600 text-white text-xs font-semibold">
+                          {selectedSources.length} selected
+                        </span>
+                      )}
+                    </div>
+                    {showSourceFilter ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </button>
+
+                  {showSourceFilter && (
+                    <div className="px-4 py-3 bg-white">
+                      <p className="text-xs text-gray-500 mb-3">
+                        Select one or more files — RAG will query <strong>only</strong> the selected sources, reducing hallucination from unrelated documents.
+                      </p>
+                      {/* Group by type */}
+                      {Object.entries(
+                        allFiles.reduce((acc, f) => {
+                          ;(acc[f.type] = acc[f.type] || []).push(f)
+                          return acc
+                        }, {} as Record<string, typeof allFiles>)
+                      ).map(([type, files]) => (
+                        <div key={type} className="mb-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 capitalize">
+                            {TYPE_ICON[type] || '📁'} {type}
+                          </p>
+                          <div className="space-y-1">
+                            {files.map(f => (
+                              <label key={f.name} className="flex items-center gap-2.5 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSources.includes(f.name)}
+                                  onChange={() => toggleSource(f.name)}
+                                  className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                                <span className="text-sm text-gray-700 group-hover:text-brand-700 truncate max-w-xs" title={f.name}>
+                                  {f.name}
+                                </span>
+                                <span className="text-xs text-gray-400 shrink-0">{f.chunks} chunks</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {selectedSources.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSources([])}
+                          className="mt-2 flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                        >
+                          <X className="w-3 h-3" /> Clear selection (search all sources)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button type="submit" disabled={loading || !query.trim()} className="btn-primary flex items-center gap-2">
                 <Send className="w-4 h-4" />
                 {loading ? 'Thinking…' : 'Submit'}
@@ -336,6 +434,13 @@ export default function QueryPage() {
                       )}
                       {result.verified_knowledge_hit && (
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">cached</span>
+                      )}
+                      {selectedSources.length > 0 && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+                          🎯 {selectedSources.length === 1
+                            ? selectedSources[0].length > 30 ? selectedSources[0].slice(0, 30) + '…' : selectedSources[0]
+                            : `${selectedSources.length} files`}
+                        </span>
                       )}
                     </span>
                   </div>

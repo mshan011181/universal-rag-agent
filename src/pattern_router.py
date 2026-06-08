@@ -68,6 +68,57 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
             verified_knowledge_hit=True,
         )
 
+    namespace = analysis.get("namespace", "default")
+
+    # --- Source filter mode (user selected specific files via UI checkbox) ---
+    # When source_filters is set, skip all broad semantic patterns and fetch
+    # ONLY from the selected files. This eliminates cross-document hallucination.
+    source_filters: list[str] = analysis.get("source_filters", [])
+    if source_filters:
+        filtered_chunks: list[dict] = []
+        for fname in source_filters:
+            chunks = retrieve_by_source(fname, namespace=namespace)
+            filtered_chunks.extend(chunks)
+        if filtered_chunks:
+            # Rerank within the selected sources only, then synthesize directly
+            reranked = rerank(query, filtered_chunks, top_n=10)
+            MIN_SCORE = 0.30  # lower threshold — user explicitly chose this file
+            state_chunks = [c for c in reranked if c.get("score", 0) >= MIN_SCORE] or reranked[:5]
+            context = "\n\n".join([
+                f"[Source: {c['metadata'].get('source','?')}]\n{c['content']}"
+                for c in state_chunks[:6]
+            ])
+            language = analysis.get("language", "English")
+            answer = synthesize(context, state_chunks, language=language) if False else \
+                     synthesize(context, query, language=language)
+            grade_result = grade(answer, context, query)
+            quality = grade_result.get("quality_score", 0.5)
+            followups = []
+            try:
+                followups = generate_followups(query, answer)
+            except Exception:
+                pass
+            citation_map = {
+                str(i): {"source": c["metadata"].get("source", "?"), "score": c.get("score", 0)}
+                for i, c in enumerate(state_chunks[:6])
+            }
+            latency_ms = int((time.time() - start_time) * 1000)
+            write_turn(session_id, analysis["turn"], query, query, answer)
+            write_performance(["source_filter"], analysis.get("query_class", "general"), quality, latency_ms, 0)
+            return RAGAgentResponse(
+                answer_text=answer,
+                citation_map=citation_map,
+                quality_score=quality,
+                faithfulness="pass",
+                patterns_used=["source_filter"],
+                latency_ms=latency_ms,
+                retrieval_channel="vector",
+                fallback_used=False,
+                verified_knowledge_hit=False,
+                suggested_followups=followups,
+                memory_write={"session_id": session_id, "turn": analysis["turn"]},
+            )
+
     # --- Filename-aware pre-fetch ---
     # If the query mentions a specific file (e.g. "invoice2.jpg"), retrieve
     # all stored chunks for that file via metadata filter so RAG has the right
@@ -80,7 +131,6 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     _source_seeded_chunks: list[dict] = []
     for m in _FILE_EXT_RE.finditer(query):
         fname = m.group(1).strip()
-        namespace = analysis.get("namespace", "default")
         fetched = retrieve_by_source(fname, namespace=namespace)
         if fetched:
             _source_seeded_chunks.extend(fetched)

@@ -13,10 +13,18 @@ def _ensure_init():
         _initialized = True
 
 
-def ask(query: str, session_id: str = "default", namespace: str = "default", language: str = "English") -> RAGAgentResponse:
+def ask(
+    query: str,
+    session_id: str = "default",
+    namespace: str = "default",
+    language: str = "English",
+    source_filters: list[str] | None = None,
+) -> RAGAgentResponse:
     _ensure_init()
     analysis = analyze_query(query, session_id)
     analysis["namespace"] = namespace
     analysis["language"] = language
+    if source_filters:
+        analysis["source_filters"] = source_filters  # list of original filenames
     response = route_and_execute(analysis, session_id)
     return response, analysis

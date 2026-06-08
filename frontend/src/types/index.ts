@@ -16,6 +16,7 @@ export interface QueryRequest {
   pattern?: string
   top_k?: number
   language?: string
+  source_filters?: string[]   // filenames to restrict retrieval to
 }
 
 export interface SourceChunk {

@@ -16,6 +16,7 @@ class QueryRequest(BaseModel):
     session_id: Optional[str] = Field(default="default", max_length=64)
     stream: bool = False
     language: str = Field(default="English", max_length=50)
+    source_filters: list[str] = Field(default_factory=list)  # filenames to restrict search to
 
 
 class QueryResponse(BaseModel):
@@ -52,7 +53,12 @@ async def query_endpoint(
     namespace = user.get("org_id") or "default"
 
     try:
-        response, analysis = ask(query, scoped_session, namespace=namespace, language=body.language)
+        response, analysis = ask(
+            query, scoped_session,
+            namespace=namespace,
+            language=body.language,
+            source_filters=body.source_filters or [],
+        )
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
         raise HTTPException(status_code=500, detail="Query processing failed")
