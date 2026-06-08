@@ -52,7 +52,16 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     start_time = time.time()
     query = analysis["query"]
     patterns = analysis["patterns"]
-    fingerprint = analysis["fingerprint"]
+    language = analysis.get("language", "English")
+
+    # Include language in fingerprint so Tamil/English queries have separate cache entries
+    import hashlib as _hashlib
+    _fp_base = analysis["fingerprint"]
+    _lang_key = language.lower().strip()
+    fingerprint = (
+        _fp_base if _lang_key in ("english", "american english", "british english", "australian english")
+        else _hashlib.md5(f"{_fp_base}:{_lang_key}".encode()).hexdigest()[:16]
+    )
 
     # Check verified knowledge cache
     cached = check_verified_knowledge(fingerprint)
@@ -88,9 +97,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 f"[Source: {c['metadata'].get('source','?')}]\n{c['content']}"
                 for c in state_chunks[:6]
             ])
-            language = analysis.get("language", "English")
-            answer = synthesize(context, state_chunks, language=language) if False else \
-                     synthesize(context, query, language=language)
+            answer = synthesize(context, query, language=language)
             grade_result = grade(answer, context, query)
             quality = grade_result.get("quality_score", 0.5)
             followups = []
@@ -214,7 +221,6 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         for c in state["chunks"]
     ]) if state["chunks"] else "No relevant documents found."
 
-    language = analysis.get("language", "English")
     _non_english = language and language.lower() not in (
         "english", "american english", "british english", "australian english"
     )
