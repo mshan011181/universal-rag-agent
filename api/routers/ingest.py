@@ -186,6 +186,7 @@ async def ingest_youtube_endpoint(
                 )
                 c.commit()
 
+        tmp_dir = _tempfile.mkdtemp()
         try:
             logger.info("youtube_processing", url=body.url, user_id=user_id, ingest_id=ingest_id)
 
@@ -195,17 +196,50 @@ async def ingest_youtube_endpoint(
                 raise ValueError("Could not extract video ID from URL")
             video_id = vid_match.group(1)
 
-            # ── Step 2: Whisper via raw audio download (primary) ──────────────
-            whisper_text = ""
-            tmp_dir = _tempfile.mkdtemp()
+            import yt_dlp as _yt_dlp
+            import imageio_ffmpeg as _ffmpeg
+            from groq import Groq as _Groq
+
+            ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+
+            # ── Step 2: Metadata — description + comments ────────────────────
+            description_text = ""
+            comments_text = ""
             try:
-                import yt_dlp as _yt_dlp
-                import imageio_ffmpeg as _ffmpeg
-                from groq import Groq as _Groq
+                info_opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "getcomments": True,
+                    "extractor_args": {"youtube": {"max_comments": ["20", "all", "0", "0"]}},
+                }
+                with _yt_dlp.YoutubeDL(info_opts) as ydl:
+                    info = ydl.extract_info(body.url, download=False)
 
-                ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+                description_text = (info.get("description") or "").strip()
+
+                raw_comments = info.get("comments") or []
+                raw_comments.sort(key=lambda c: c.get("like_count") or 0, reverse=True)
+                top_comments = raw_comments[:20]
+                if top_comments:
+                    lines = []
+                    for c in top_comments:
+                        author = c.get("author") or "Anonymous"
+                        text = (c.get("text") or "").replace("\n", " ").strip()
+                        likes = c.get("like_count") or 0
+                        if text:
+                            lines.append(f"- {author} ({likes} likes): {text}")
+                    comments_text = "\n".join(lines)
+
+                logger.info("youtube_metadata_fetched",
+                            description_chars=len(description_text),
+                            comments=len(top_comments), video_id=video_id)
+            except Exception as meta_err:
+                logger.warning("youtube_metadata_failed", error=str(meta_err), video_id=video_id)
+
+            # ── Step 3: Whisper via raw audio download (primary) ──────────────
+            whisper_text = ""
+            try:
                 out_template = str(_pathlib.Path(tmp_dir) / "audio.%(ext)s")
-
                 ydl_opts = {
                     "format": "bestaudio[filesize<24M]/bestaudio/best",
                     "outtmpl": out_template,
@@ -218,7 +252,6 @@ async def ingest_youtube_endpoint(
                     "quiet": True,
                     "no_warnings": True,
                 }
-
                 logger.info("youtube_audio_download_start", video_id=video_id)
                 with _yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([body.url])
@@ -226,10 +259,9 @@ async def ingest_youtube_endpoint(
                 audio_files = list(_pathlib.Path(tmp_dir).glob("*.mp3"))
                 if audio_files:
                     audio_path = audio_files[0]
-                    size_mb = audio_path.stat().st_size / 1024 / 1024
-                    logger.info("youtube_audio_downloaded", size_mb=round(size_mb, 1), video_id=video_id)
-
-                    # Groq Whisper transcription
+                    logger.info("youtube_audio_downloaded",
+                                size_mb=round(audio_path.stat().st_size / 1024 / 1024, 1),
+                                video_id=video_id)
                     groq_client = _Groq()
                     with open(audio_path, "rb") as af:
                         result = groq_client.audio.transcriptions.create(
@@ -239,18 +271,10 @@ async def ingest_youtube_endpoint(
                         )
                     whisper_text = result.strip() if isinstance(result, str) else result.text.strip()
                     logger.info("youtube_whisper_done", chars=len(whisper_text), video_id=video_id)
-
             except Exception as whisper_err:
                 logger.warning("youtube_whisper_failed", error=str(whisper_err), video_id=video_id)
-            finally:
-                # Clean up temp audio file
-                import shutil as _shutil
-                try:
-                    _shutil.rmtree(tmp_dir, ignore_errors=True)
-                except Exception:
-                    pass
 
-            # ── Step 3: Captions fallback (always attempt) ───────────────────
+            # ── Step 4: Captions fallback ─────────────────────────────────────
             caption_text = ""
             try:
                 from youtube_transcript_api import YouTubeTranscriptApi
@@ -261,44 +285,127 @@ async def ingest_youtube_endpoint(
             except Exception as cap_err:
                 logger.warning("youtube_captions_failed", error=str(cap_err), video_id=video_id)
 
-            # ── Step 4: Build combined transcript ────────────────────────────
-            # Whisper is the primary (raw audio = highest accuracy).
-            # Captions are appended only if they add meaningful extra content
-            # (e.g. manual captions with timestamps, different from auto-gen).
+            # ── Step 5: Video frames + Groq Vision ───────────────────────────
+            frames_text = ""
+            try:
+                import base64 as _base64
+                import subprocess as _subprocess
+
+                frames_dir = _pathlib.Path(tmp_dir) / "frames"
+                frames_dir.mkdir(exist_ok=True)
+                video_path = _pathlib.Path(tmp_dir) / "video.mp4"
+
+                vid_opts = {
+                    "format": "worstvideo[ext=mp4]/worst[ext=mp4]/worst",
+                    "outtmpl": str(video_path),
+                    "ffmpeg_location": ffmpeg_exe,
+                    "quiet": True,
+                    "no_warnings": True,
+                }
+                logger.info("youtube_video_download_start", video_id=video_id)
+                with _yt_dlp.YoutubeDL(vid_opts) as ydl:
+                    ydl.download([body.url])
+
+                # Find downloaded video (extension may vary)
+                vid_candidates = list(_pathlib.Path(tmp_dir).glob("video.*"))
+                if not vid_candidates:
+                    vid_candidates = [f for f in _pathlib.Path(tmp_dir).iterdir()
+                                      if f.suffix in {".mp4", ".webm", ".mkv"}]
+
+                if vid_candidates:
+                    actual_video = vid_candidates[0]
+                    # Extract 1 frame every 60 s, max 8 frames, scale to 640px wide
+                    frame_pattern = str(frames_dir / "frame_%03d.jpg")
+                    cmd = [
+                        ffmpeg_exe, "-y", "-i", str(actual_video),
+                        "-vf", "fps=1/60,scale=640:-1",
+                        "-frames:v", "8",
+                        "-q:v", "5",
+                        frame_pattern,
+                    ]
+                    _subprocess.run(cmd, capture_output=True, timeout=120)
+
+                    frame_files = sorted(frames_dir.glob("frame_*.jpg"))
+                    groq_client = _Groq()
+                    frame_descriptions = []
+                    for i, fp in enumerate(frame_files[:8]):
+                        try:
+                            b64 = _base64.standard_b64encode(fp.read_bytes()).decode()
+                            data_url = f"data:image/jpeg;base64,{b64}"
+                            resp = groq_client.chat.completions.create(
+                                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                                max_tokens=512,
+                                messages=[{"role": "user", "content": [
+                                    {"type": "image_url", "image_url": {"url": data_url}},
+                                    {"type": "text", "text": (
+                                        f"Frame {i + 1} from YouTube video '{source_name}'. "
+                                        "Describe: any on-screen text, slides, diagrams, charts, "
+                                        "demonstrations, or notable visual content. Be concise."
+                                    )},
+                                ]}],
+                            )
+                            desc = resp.choices[0].message.content.strip()
+                            if desc:
+                                frame_descriptions.append(f"Frame {i + 1} (~{i * 60}s): {desc}")
+                        except Exception as fe:
+                            logger.warning("youtube_frame_vision_failed", frame=i + 1, error=str(fe))
+
+                    if frame_descriptions:
+                        frames_text = "\n\n".join(frame_descriptions)
+                        logger.info("youtube_frames_done", frames=len(frame_descriptions), video_id=video_id)
+
+            except Exception as frame_err:
+                logger.warning("youtube_frames_failed", error=str(frame_err), video_id=video_id)
+
+            # ── Step 6: Validate we have something ───────────────────────────
             if not whisper_text and not caption_text:
                 raise ValueError("Both Whisper and captions failed — no transcript available")
 
+            # ── Step 7: Build combined document ──────────────────────────────
             sections = [f"[YouTube] {source_name}"]
+
+            if description_text:
+                sections.append("## Video Description")
+                sections.append(description_text)
 
             if whisper_text:
                 sections.append("## Audio Transcript (Whisper — high accuracy)")
                 sections.append(whisper_text)
 
             if caption_text and caption_text != whisper_text:
-                # Only append captions if they differ meaningfully from Whisper
-                # (e.g. manual captions may contain additional annotations)
                 if not whisper_text or len(caption_text) > len(whisper_text) * 0.2:
                     sections.append("## YouTube Captions")
                     sections.append(caption_text)
 
+            if frames_text:
+                sections.append("## Visual Content (Frame Analysis)")
+                sections.append(frames_text)
+
+            if comments_text:
+                sections.append("## Top Viewer Comments")
+                sections.append(comments_text)
+
             full_doc = "\n\n".join(sections)
 
-            # ── Step 5: Ingest into Pinecone ─────────────────────────────────
+            # ── Step 8: Ingest into Pinecone ─────────────────────────────────
             chunks = ingest_text(full_doc, source=f"youtube:{body.url}", namespace=org_id)
             _set_status("done", chunks)
 
             logger.info(
                 "youtube_done",
-                ingest_id=ingest_id,
-                chunks=chunks,
-                video_id=video_id,
-                whisper_chars=len(whisper_text),
-                caption_chars=len(caption_text),
+                ingest_id=ingest_id, chunks=chunks, video_id=video_id,
+                whisper_chars=len(whisper_text), caption_chars=len(caption_text),
+                description_chars=len(description_text),
+                frames=len(frame_descriptions) if frames_text else 0,
+                comments=len(comments_text.splitlines()) if comments_text else 0,
             )
 
         except Exception as e:
             logger.error("youtube_processing_failed", url=body.url, error=str(e), ingest_id=ingest_id)
             _set_status("failed", 0)
+        finally:
+            import shutil as _shutil
+            _shutil.rmtree(tmp_dir, ignore_errors=True)
 
     background_tasks.add_task(do_process)
 
@@ -307,7 +414,7 @@ async def ingest_youtube_endpoint(
         "status": "processing",
         "url": body.url,
         "ingest_type": "youtube",
-        "message": "YouTube video queued — downloading audio and transcribing with Whisper. This may take 1–3 minutes.",
+        "message": "YouTube video queued — fetching description, comments, transcribing audio (Whisper), and analysing video frames. This may take 3–5 minutes.",
     }
 
 
