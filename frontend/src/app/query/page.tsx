@@ -551,7 +551,23 @@ export default function QueryPage() {
                 </div>
                 <div className="p-2 bg-gray-50 rounded">
                   <p className="text-xs text-gray-500">Pattern Used</p>
-                  <p className="text-sm font-semibold text-gray-900 capitalize">{(result.pattern_used || 'auto').replace(/_/g, ' ')}</p>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {(result.patterns_used && result.patterns_used.length > 0
+                      ? result.patterns_used
+                      : ['auto']
+                    ).map((p, i) => (
+                      <span key={p} className="text-sm font-semibold text-gray-900 capitalize">
+                        {i > 0 && <span className="text-gray-400 mx-0.5 font-normal">→</span>}
+                        {p.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                    {result.verified_knowledge_hit && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">cached</span>
+                    )}
+                    {result.retrieval_channel && result.retrieval_channel !== 'vector' && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">via {result.retrieval_channel}</span>
+                    )}
+                  </div>
                 </div>
                 {(result.sources ?? []).length > 0 && (
                   <div className="p-2 bg-gray-50 rounded">
