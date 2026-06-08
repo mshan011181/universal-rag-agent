@@ -481,6 +481,17 @@ async def ingest_weblink_endpoint(
                               "aside", "form", "noscript", "iframe"]):
                 tag.decompose()
 
+            # Convert HTML tables → pipe-separated rows BEFORE get_text()
+            # so "Batting average | 53.78 | 44.83" stays in one line
+            for table in soup.find_all("table"):
+                rows_text = []
+                for tr in table.find_all("tr"):
+                    cells = [td.get_text(" ", strip=True) for td in tr.find_all(["th", "td"])]
+                    if any(cells):
+                        rows_text.append(" | ".join(cells))
+                if rows_text:
+                    table.replace_with("\n" + "\n".join(rows_text) + "\n")
+
             # Page title
             page_title = (soup.title.string.strip() if soup.title and soup.title.string else source_name)
 
@@ -970,6 +981,14 @@ async def retry_ingest_endpoint(
                 for tag in soup(["script", "style", "nav", "footer", "header",
                                   "aside", "form", "noscript", "iframe"]):
                     tag.decompose()
+                for table in soup.find_all("table"):
+                    rows_text = []
+                    for tr in table.find_all("tr"):
+                        cells = [td.get_text(" ", strip=True) for td in tr.find_all(["th", "td"])]
+                        if any(cells):
+                            rows_text.append(" | ".join(cells))
+                    if rows_text:
+                        table.replace_with("\n" + "\n".join(rows_text) + "\n")
                 page_title = (soup.title.string.strip()
                               if soup.title and soup.title.string else filename)
                 main_block = (
