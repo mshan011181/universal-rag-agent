@@ -9,6 +9,47 @@ from pydantic import BaseModel
 import structlog
 
 
+def _html_table_to_text(table) -> list[str]:
+    """Convert a BeautifulSoup <table> element to header-enriched text rows.
+
+    For each data row, column headers are embedded so that values stay
+    semantically linked to their labels even after chunking.
+
+    Example output:
+        Competition | Test | ODI | FC | LA          ← raw header row
+        Batting average: Test=53.78 | ODI=44.83 | FC=57.84 | LA=45.54
+        Matches: Test=200 | ODI=463 | FC=310 | LA=551
+    """
+    rows_text = []
+    headers: list[str] = []
+
+    for tr in table.find_all("tr"):
+        th_cells = tr.find_all("th")
+        td_cells = tr.find_all("td")
+
+        if th_cells and not td_cells:
+            # Pure header row — capture and emit as-is
+            headers = [th.get_text(" ", strip=True) for th in th_cells]
+            rows_text.append(" | ".join(headers))
+        else:
+            # Data row (may also have leading <th> as row label)
+            all_cells = tr.find_all(["th", "td"])
+            cell_texts = [c.get_text(" ", strip=True) for c in all_cells]
+            if not any(cell_texts):
+                continue
+
+            if headers and len(headers) > 1 and len(cell_texts) == len(headers):
+                # Enrich: "Label: Col1=Val1 | Col2=Val2 ..."
+                row_label = cell_texts[0]
+                enriched = [f"{headers[i]}={cell_texts[i]}" for i in range(1, len(cell_texts))]
+                rows_text.append(f"{row_label}: {' | '.join(enriched)}")
+            else:
+                # No matching header — plain pipe join
+                rows_text.append(" | ".join(cell_texts))
+
+    return rows_text
+
+
 def _youtube_title(url: str) -> str:
     """Fetch video title via YouTube oEmbed API (no API key needed)."""
     try:
@@ -485,14 +526,10 @@ async def ingest_weblink_endpoint(
                               "aside", "form", "noscript", "iframe"]):
                 tag.decompose()
 
-            # Convert HTML tables → pipe-separated rows BEFORE get_text()
-            # so "Batting average | 53.78 | 44.83" stays in one line
+            # Convert HTML tables → header-enriched rows BEFORE get_text()
+            # so "Batting average: Test=53.78 | ODI=44.83" stays in one line
             for table in soup.find_all("table"):
-                rows_text = []
-                for tr in table.find_all("tr"):
-                    cells = [td.get_text(" ", strip=True) for td in tr.find_all(["th", "td"])]
-                    if any(cells):
-                        rows_text.append(" | ".join(cells))
+                rows_text = _html_table_to_text(table)
                 if rows_text:
                     table.replace_with("\n" + "\n".join(rows_text) + "\n")
 
@@ -986,11 +1023,7 @@ async def retry_ingest_endpoint(
                                   "aside", "form", "noscript", "iframe"]):
                     tag.decompose()
                 for table in soup.find_all("table"):
-                    rows_text = []
-                    for tr in table.find_all("tr"):
-                        cells = [td.get_text(" ", strip=True) for td in tr.find_all(["th", "td"])]
-                        if any(cells):
-                            rows_text.append(" | ".join(cells))
+                    rows_text = _html_table_to_text(table)
                     if rows_text:
                         table.replace_with("\n" + "\n".join(rows_text) + "\n")
                 page_title = (soup.title.string.strip()

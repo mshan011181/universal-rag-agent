@@ -1,6 +1,37 @@
 import json
 import time
 from pathlib import Path
+
+
+def _rows_to_text(rows: list[list[str]]) -> list[str]:
+    """Convert a 2-D table (list of rows, each a list of cell strings) to
+    header-enriched text lines so column labels stay with their values.
+
+    Example — given:
+        [["Competition","Test","ODI","FC"], ["Batting average","53.78","44.83","57.84"]]
+    Returns:
+        ["Competition | Test | ODI | FC",
+         "Batting average: Test=53.78 | ODI=44.83 | FC=57.84"]
+    """
+    if not rows:
+        return []
+    result = []
+    headers: list[str] = []
+    for row in rows:
+        cells = [str(c).strip() for c in row]
+        if not any(cells):
+            continue
+        # Detect header row: all cells non-empty and first data row not yet set
+        if not headers:
+            headers = cells
+            result.append(" | ".join(cells))
+        elif headers and len(cells) == len(headers) and len(headers) > 1:
+            row_label = cells[0]
+            enriched = [f"{headers[i]}={cells[i]}" for i in range(1, len(cells)) if cells[i]]
+            result.append(f"{row_label}: {' | '.join(enriched)}" if enriched else " | ".join(cells))
+        else:
+            result.append(" | ".join(cells))
+    return result
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 from langchain_community.document_loaders import TextLoader
@@ -147,11 +178,8 @@ def _extract_text_from_pptx(path: Path) -> str:
         # Table
         if stype == MSO_SHAPE_TYPE.TABLE:
             try:
-                for row in shape.table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
-                    row_text = " | ".join(cells)
-                    if row_text.strip():
-                        lines.append(row_text)
+                raw_rows = [[cell.text.strip() for cell in row.cells] for row in shape.table.rows]
+                lines.extend(_rows_to_text(raw_rows))
             except Exception:
                 pass
 
@@ -219,10 +247,11 @@ def _extract_text_from_pdf(path: Path) -> str:
             tables = plumb_page.extract_tables() or []
             table_bboxes = [t.bbox for t in plumb_page.find_tables()]
             for table in tables:
-                for row in table:
-                    cells = [str(cell).strip() if cell is not None else "" for cell in row]
-                    if any(cells):
-                        lines.append(" | ".join(cells))
+                raw_rows = [
+                    [str(cell).strip() if cell is not None else "" for cell in row]
+                    for row in table
+                ]
+                lines.extend(_rows_to_text(raw_rows))
 
             # ── Plain text (excluding table regions) ─────────────────────
             if table_bboxes:
@@ -286,13 +315,10 @@ def _extract_text_from_docx(path: Path) -> str:
         if para.text.strip():
             lines.append(para.text.strip())
 
-    # Tables → pipe-separated rows (preserves label | value relationship)
+    # Tables → header-enriched rows (label stays with column values)
     for table in doc.tables:
-        for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells]
-            row_text = " | ".join(cells)
-            if row_text.strip():
-                lines.append(row_text)
+        raw_rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+        lines.extend(_rows_to_text(raw_rows))
 
     # ── Images ──────────────────────────────────────────────────────────
     # Collect image parts from ALL document parts: main body, headers,
@@ -346,21 +372,22 @@ def _extract_text_from_docx(path: Path) -> str:
 
 
 def _extract_text_from_xls(path: Path) -> str:
-    """Extract all text from a legacy Excel file (.xls) as pipe-separated rows."""
+    """Extract all text from a legacy Excel file (.xls) as header-enriched rows."""
     import xlrd
     wb = xlrd.open_workbook(str(path))
     lines = []
     for sheet in wb.sheets():
         lines.append(f"\n--- Sheet: {sheet.name} ---")
-        for row_idx in range(sheet.nrows):
-            row = [str(sheet.cell_value(row_idx, col)) for col in range(sheet.ncols)]
-            if any(c.strip() for c in row):
-                lines.append(" | ".join(row))
+        raw_rows = [
+            [str(sheet.cell_value(row_idx, col)) for col in range(sheet.ncols)]
+            for row_idx in range(sheet.nrows)
+        ]
+        lines.extend(_rows_to_text(raw_rows))
     return "\n".join(lines)
 
 
 def _extract_text_from_xlsx(path: Path) -> str:
-    """Extract text (pipe-separated rows) and embedded images from a modern Excel file (.xlsx)."""
+    """Extract text (header-enriched rows) and embedded images from a modern Excel file (.xlsx)."""
     import openpyxl
     wb = openpyxl.load_workbook(str(path), data_only=True)
     lines = []
@@ -369,10 +396,11 @@ def _extract_text_from_xlsx(path: Path) -> str:
         lines.append(f"\n--- Sheet: {sheet.title} ---")
 
         # ── Cell data ───────────────────────────────────────────────────
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(cell) if cell is not None else "" for cell in row]
-            if any(c.strip() for c in cells):
-                lines.append(" | ".join(cells))
+        raw_rows = [
+            [str(cell) if cell is not None else "" for cell in row]
+            for row in sheet.iter_rows(values_only=True)
+        ]
+        lines.extend(_rows_to_text(raw_rows))
 
         # ── Embedded images (charts, logos, diagrams) ────────────────────
         for img_obj in getattr(sheet, "_images", []):
