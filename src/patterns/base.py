@@ -12,7 +12,7 @@ class BasePattern(ABC):
         """Returns dict with keys: query, chunks, answer (optional), channel"""
         pass
 
-    def _retrieve(self, query: str, k: int = 5, namespace: str = "default") -> list[dict]:
+    def _retrieve(self, query: str, k: int = 15, namespace: str = "default") -> list[dict]:
         return retrieve(query, k=k, namespace=namespace)
 
     def _llm_call(self, system: str, human: str, temperature: float = 0.1) -> str:

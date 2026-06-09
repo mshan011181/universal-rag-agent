@@ -40,7 +40,7 @@ EMBEDDING_DIM = 384  # dimension for all-MiniLM-L6-v2; must match Pinecone index
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
-TOP_K = 5
+TOP_K = 15
 QUALITY_THRESHOLD = 0.65
 HIGH_CONFIDENCE = 0.85
 
