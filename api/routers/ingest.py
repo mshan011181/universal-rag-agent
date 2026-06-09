@@ -529,8 +529,19 @@ async def ingest_weblink_endpoint(
                 tag.decompose()
 
             # Convert HTML tables → header-enriched rows BEFORE get_text()
-            # so "Batting average: Test=53.78 | ODI=44.83" stays in one line
-            for table in soup.find_all("table"):
+            # Process innermost tables first (deepest DOM depth) so nested
+            # tables (e.g. Wikipedia career-stats inside the infobox) are
+            # replaced with plain text before their parent table is processed.
+            all_tables = soup.find_all("table")
+            all_tables_sorted = sorted(
+                all_tables,
+                key=lambda t: len(list(t.parents)),
+                reverse=True,   # deepest first
+            )
+            for table in all_tables_sorted:
+                # Skip if already detached (replaced as part of a parent table)
+                if table.parent is None:
+                    continue
                 rows_text = _html_table_to_text(table)
                 if rows_text:
                     table.replace_with("\n" + "\n".join(rows_text) + "\n")
@@ -1024,7 +1035,15 @@ async def retry_ingest_endpoint(
                 for tag in soup(["script", "style", "nav", "footer", "header",
                                   "aside", "form", "noscript", "iframe"]):
                     tag.decompose()
-                for table in soup.find_all("table"):
+                all_tables = soup.find_all("table")
+                all_tables_sorted = sorted(
+                    all_tables,
+                    key=lambda t: len(list(t.parents)),
+                    reverse=True,
+                )
+                for table in all_tables_sorted:
+                    if table.parent is None:
+                        continue
                     rows_text = _html_table_to_text(table)
                     if rows_text:
                         table.replace_with("\n" + "\n".join(rows_text) + "\n")
