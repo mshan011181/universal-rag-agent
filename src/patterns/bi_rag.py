@@ -50,7 +50,9 @@ class BIRag(BasePattern):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def run(self, query: str, analysis: dict, **kwargs) -> dict:
-        if not self._is_bi_query(query):
+        # Skip keyword check when the caller (BI page or force_bi flag) already
+        # confirmed this is a BI query via analysis["is_bi_query"].
+        if not analysis.get("is_bi_query", False) and not self._is_bi_query(query):
             return {}
 
         user_id = analysis.get("user_id", "")
