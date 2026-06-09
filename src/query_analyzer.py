@@ -41,8 +41,39 @@ def _is_cross_query(query: str) -> bool:
     return any(kw in q for kw in _CROSS_KEYWORDS)
 
 
+# Stopwords stripped before fingerprinting so phrasing variants
+# ("what is the batting average" vs "what is the overall batting average")
+# collapse to the same cache key and serve the same verified answer.
+_FP_STOPWORDS = {
+    "what", "is", "the", "of", "in", "a", "an", "are", "was", "were",
+    "how", "many", "much", "which", "who", "where", "when", "why",
+    "does", "do", "did", "has", "have", "had", "can", "could", "would",
+    "should", "will", "tell", "me", "give", "show", "find", "get",
+    "for", "by", "from", "to", "at", "on", "with", "their", "its",
+    "overall", "exact", "specific", "general", "please", "kindly",
+    "briefly", "detail", "detailed", "explain", "about", "regarding",
+    "provide", "list", "describe", "summarize", "summary",
+}
+
+import re as _re
+
+
+def _normalize_for_fp(query: str) -> str:
+    """Strip punctuation, stopwords, then sort tokens.
+
+    Sorting means "batting average Sachin" and "Sachin batting average"
+    hash identically.  Stopword removal means "What is the overall batting
+    average of Sachin" and "batting average of Sachin" hash identically.
+    """
+    q = query.lower().strip()
+    q = _re.sub(r"[^\w\s]", " ", q)          # remove punctuation
+    tokens = [w for w in q.split() if w not in _FP_STOPWORDS and len(w) > 1]
+    tokens.sort()                              # order-invariant
+    return " ".join(tokens)
+
+
 def fingerprint(query: str) -> str:
-    return hashlib.md5(query.lower().strip().encode()).hexdigest()[:16]
+    return hashlib.md5(_normalize_for_fp(query).encode()).hexdigest()[:16]
 
 
 def analyze_query(query: str, session_id: str) -> dict:
