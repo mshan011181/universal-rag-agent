@@ -6,6 +6,21 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 HIGH_RISK_DOMAINS = ["legal", "medical", "financial", "compliance", "health", "law", "clinical"]
 
+_BI_KEYWORDS = [
+    "total", "sum", "average", "avg", "mean", "count", "how many",
+    "max", "min", "highest", "lowest", "maximum", "minimum",
+    "group by", "compare", "difference between", "join", "merge", "match",
+    "trend", "growth", "percentage", "ratio", "rank", "top ", "bottom ",
+    "year over year", "month over month", "across both", "from both files",
+    "two files", "both excel", "both spreadsheet",
+    "revenue", "sales", "profit", "cost", "expense", "budget",
+]
+
+
+def _is_bi_query(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in _BI_KEYWORDS)
+
 
 def fingerprint(query: str) -> str:
     return hashlib.md5(query.lower().strip().encode()).hexdigest()[:16]
@@ -56,6 +71,11 @@ domain_risk=true if the topic involves legal, medical, financial, or compliance 
 
     # Build pattern list from signals
     patterns = []
+
+    # BI queries: run bi_rag first — it short-circuits if it succeeds
+    is_bi = _is_bi_query(query)
+    if is_bi:
+        patterns.append("bi_rag")
 
     # Dimension 1: Length → HyDE or FLARE
     if length_signal == "very_short":
@@ -133,6 +153,7 @@ domain_risk=true if the topic involves legal, medical, financial, or compliance 
         "domain_risk": is_high_risk,
         "conv_active": conv_active,
         "query_class": dims.get("query_class", "factual"),
+        "is_bi_query": is_bi,
         "patterns": unique_patterns,
         "history": history,
     }

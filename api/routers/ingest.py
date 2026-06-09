@@ -118,7 +118,8 @@ async def ingest_file_endpoint(
 
     # Write to database immediately so item appears in list right away
     logger.info("ingest_queued", ingest_id=ingest_id, filename=filename, user_id=user_id)
-    write_ingest(ingest_id, user_id, "document", filename, file_size=len(content), chunks=0)
+    # Store the actual saved file path in source_url so BI RAG can locate it later
+    write_ingest(ingest_id, user_id, "document", filename, source_url=str(save_path), file_size=len(content), chunks=0)
     logger.info("ingest_written_to_db", ingest_id=ingest_id, user_id=user_id)
 
     # Process file and update status + chunks count in background

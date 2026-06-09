@@ -1,5 +1,6 @@
 import re
 import time
+from src.patterns.bi_rag import BIRag
 from src.patterns.naive_rag import NaiveRAG
 from src.patterns.hyde import HyDE
 from src.patterns.query_rewriting import QueryRewriting
@@ -22,6 +23,7 @@ from src.memory.sqlite_store import (
 )
 
 PATTERN_MAP = {
+    "bi_rag": BIRag(),
     "naive_rag": NaiveRAG(),
     "hyde": HyDE(),
     "query_rewrite": QueryRewriting(),
@@ -183,6 +185,26 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 state["steps"] = result["steps"]
             if result.get("query") and pattern_name in ("conv_rag", "hyde", "query_rewrite"):
                 state["query"] = result["query"]
+
+            # BI RAG short-circuit: if bi_rag computed an answer,
+            # skip all remaining patterns and return immediately.
+            if pattern_name == "bi_rag" and state.get("answer"):
+                latency_ms = int((time.time() - start_time) * 1000)
+                write_turn(session_id, analysis["turn"], query, query, state["answer"])
+                write_performance(["bi_rag"], analysis.get("query_class", "factual"), 0.9, latency_ms, 0)
+                return RAGAgentResponse(
+                    answer_text=state["answer"],
+                    citation_map={},
+                    quality_score=0.9,
+                    faithfulness="pass",
+                    patterns_used=["bi_rag"],
+                    latency_ms=latency_ms,
+                    retrieval_channel="bi_computation",
+                    fallback_used=False,
+                    verified_knowledge_hit=False,
+                    suggested_followups=[],
+                    memory_write={"session_id": session_id, "turn": analysis["turn"]},
+                )
         except Exception as e:
             # Pattern failure → continue with what we have
             pass

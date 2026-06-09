@@ -153,6 +153,23 @@ def get_ingest_history(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_spreadsheet_files(user_id: str) -> list[dict]:
+    """Return all successfully ingested Excel/CSV files for a user, including file path."""
+    _SPREADSHEET_EXTS = (".xlsx", ".xls", ".csv")
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT source_name, source_url, user_id
+               FROM ingest_history
+               WHERE user_id=? AND status='done' AND ingest_type='document'
+               ORDER BY created_at DESC""",
+            (user_id,)
+        ).fetchall()
+    return [
+        dict(r) for r in rows
+        if any(r["source_name"].lower().endswith(ext) for ext in _SPREADSHEET_EXTS)
+    ]
+
+
 def delete_ingest(ingest_id: str, user_id: str) -> str | None:
     """Delete an ingest record. Returns source_name on success, None if not found."""
     with get_conn() as conn:

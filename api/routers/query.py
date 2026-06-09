@@ -58,6 +58,7 @@ async def query_endpoint(
             namespace=namespace,
             language=body.language,
             source_filters=body.source_filters or [],
+            user_id=user["user_id"],
         )
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
