@@ -129,6 +129,18 @@ def _extract_text_from_pptx(path: Path) -> str:
             if hasattr(shape, "text") and shape.text.strip():
                 lines.append(shape.text.strip())
 
+            # ── Table shapes → pipe-separated rows ───────────────────────
+            if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
+                try:
+                    tbl = shape.table
+                    for row in tbl.rows:
+                        cells = [cell.text.strip() for cell in row.cells]
+                        row_text = " | ".join(cells)
+                        if row_text.strip():
+                            lines.append(row_text)
+                except Exception:
+                    pass
+
             # ── Embedded images (Picture shapes) ─────────────────────────
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 try:
@@ -148,44 +160,75 @@ def _extract_text_from_pptx(path: Path) -> str:
 
 
 def _extract_text_from_pdf(path: Path) -> str:
-    """Extract text AND embedded images from a PDF using pypdf + Groq Vision.
+    """Extract text, tables, and embedded images from a PDF.
+
+    Uses pdfplumber for table-aware text extraction (preserves row/column
+    structure as pipe-separated lines), then falls back to pypdf for images.
 
     For each page:
-      - Page text is extracted via pypdf.
-      - Every image object on the page is sent to Groq Vision for description,
-        appended as '### Image N (Page P)'.
+      - Tables detected by pdfplumber → pipe-separated rows.
+      - Non-table text extracted verbatim.
+      - Images sent to Groq Vision for description.
     """
     import pypdf
+    import pdfplumber
 
-    reader = pypdf.PdfReader(str(path), strict=False)
     lines = []
 
-    for page_num, page in enumerate(reader.pages, start=1):
-        lines.append(f"\n--- Page {page_num} ---")
+    with pdfplumber.open(str(path)) as pdf:
+        for page_num, plumb_page in enumerate(pdf.pages, start=1):
+            lines.append(f"\n--- Page {page_num} ---")
 
-        # ── Text ────────────────────────────────────────────────────────
-        page_text = page.extract_text() or ""
-        if page_text.strip():
-            lines.append(page_text.strip())
+            # ── Tables (pdfplumber detects row/col boundaries) ───────────
+            tables = plumb_page.extract_tables() or []
+            table_bboxes = [t.bbox for t in plumb_page.find_tables()]
+            for table in tables:
+                for row in table:
+                    cells = [str(cell).strip() if cell is not None else "" for cell in row]
+                    if any(cells):
+                        lines.append(" | ".join(cells))
 
-        # ── Images ──────────────────────────────────────────────────────
-        img_count = 0
-        try:
-            for img_obj in page.images:
-                try:
-                    img_bytes = img_obj.data
-                    # pypdf gives .name like 'Im0.png'; derive ext from it
-                    ext = Path(img_obj.name).suffix.lstrip(".") or "png"
-                    img_count += 1
-                    context = f"Page {page_num}, Image {img_count}"
-                    description = _describe_image_bytes(img_bytes, ext, context)
-                    if description:
-                        lines.append(f"\n### Image {img_count} (Page {page_num})")
-                        lines.append(description)
-                except Exception:
-                    pass
-        except Exception:
-            pass  # some PDFs have no extractable image objects
+            # ── Plain text (excluding table regions) ─────────────────────
+            if table_bboxes:
+                # Crop away table bounding boxes so we don't double-extract
+                crop = plumb_page
+                for bbox in table_bboxes:
+                    try:
+                        crop = crop.filter(lambda obj, bb=bbox: not (
+                            bb[0] <= obj.get("x0", 0) <= bb[2] and
+                            bb[1] <= obj.get("top", 0) <= bb[3]
+                        ))
+                    except Exception:
+                        pass
+                page_text = crop.extract_text() or ""
+            else:
+                page_text = plumb_page.extract_text() or ""
+
+            if page_text.strip():
+                lines.append(page_text.strip())
+
+    # ── Images via pypdf ─────────────────────────────────────────────────
+    try:
+        reader = pypdf.PdfReader(str(path), strict=False)
+        for page_num, page in enumerate(reader.pages, start=1):
+            img_count = 0
+            try:
+                for img_obj in page.images:
+                    try:
+                        img_bytes = img_obj.data
+                        ext = Path(img_obj.name).suffix.lstrip(".") or "png"
+                        img_count += 1
+                        context = f"Page {page_num}, Image {img_count}"
+                        description = _describe_image_bytes(img_bytes, ext, context)
+                        if description:
+                            lines.append(f"\n### Image {img_count} (Page {page_num})")
+                            lines.append(description)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     return "\n".join(lines)
 
@@ -194,23 +237,24 @@ def _extract_text_from_docx(path: Path) -> str:
     """Extract text AND embedded images from a DOCX via python-docx + Groq Vision.
 
     - Paragraph text extracted in document order.
-    - Inline images (via document part relationships) sent to Groq Vision,
-      appended as '### Embedded Image N'.
+    - Tables extracted as pipe-separated rows to preserve column context.
+    - Inline images sent to Groq Vision.
     """
     import docx
 
     doc = docx.Document(str(path))
     lines = []
 
-    # ── Text ────────────────────────────────────────────────────────────
+    # ── Text (paragraphs and tables interleaved in document order) ───────
     for para in doc.paragraphs:
         if para.text.strip():
             lines.append(para.text.strip())
 
-    # Also extract text from tables
+    # Tables → pipe-separated rows (preserves label | value relationship)
     for table in doc.tables:
         for row in table.rows:
-            row_text = "\t".join(cell.text.strip() for cell in row.cells)
+            cells = [cell.text.strip() for cell in row.cells]
+            row_text = " | ".join(cells)
             if row_text.strip():
                 lines.append(row_text)
 
@@ -244,7 +288,7 @@ def _extract_text_from_docx(path: Path) -> str:
 
 
 def _extract_text_from_xls(path: Path) -> str:
-    """Extract all text from a legacy Excel file (.xls)."""
+    """Extract all text from a legacy Excel file (.xls) as pipe-separated rows."""
     import xlrd
     wb = xlrd.open_workbook(str(path))
     lines = []
@@ -252,21 +296,22 @@ def _extract_text_from_xls(path: Path) -> str:
         lines.append(f"\n--- Sheet: {sheet.name} ---")
         for row_idx in range(sheet.nrows):
             row = [str(sheet.cell_value(row_idx, col)) for col in range(sheet.ncols)]
-            lines.append("\t".join(row))
+            if any(c.strip() for c in row):
+                lines.append(" | ".join(row))
     return "\n".join(lines)
 
 
 def _extract_text_from_xlsx(path: Path) -> str:
-    """Extract all text from a modern Excel file (.xlsx)."""
+    """Extract all text from a modern Excel file (.xlsx) as pipe-separated rows."""
     import openpyxl
     wb = openpyxl.load_workbook(str(path), data_only=True)
     lines = []
     for sheet in wb.worksheets:
         lines.append(f"\n--- Sheet: {sheet.title} ---")
         for row in sheet.iter_rows(values_only=True):
-            row_str = "\t".join(str(cell) if cell is not None else "" for cell in row)
-            if row_str.strip():
-                lines.append(row_str)
+            cells = [str(cell) if cell is not None else "" for cell in row]
+            if any(c.strip() for c in cells):
+                lines.append(" | ".join(cells))
     return "\n".join(lines)
 
 

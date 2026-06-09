@@ -49,6 +49,9 @@ trafilatura==2.0.0
 requests>=2.32.4
 beautifulsoup4>=4.12.0
 
+# PDF table extraction (preserves row/column structure)
+pdfplumber>=0.11.0
+
 # YouTube ingestion
 # youtube-transcript-api: fetches auto-generated / manual captions (caption fallback)
 youtube-transcript-api>=1.2.4
