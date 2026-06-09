@@ -66,8 +66,8 @@ def _youtube_title(url: str) -> str:
 import urllib.parse
 
 from api.auth_utils import get_current_user_or_api_key, require_role
-from src.retrieval.vector_store import ingest_file, ingest_text
-from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, get_conn
+from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source
+from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn
 from src.config import UPLOADS_DIR
 
 logger = structlog.get_logger()
@@ -1190,9 +1190,31 @@ async def delete_ingest_endpoint(
     ingest_id: str,
     user: dict = Depends(require_role("user")),
 ):
-    """Delete an ingested item."""
-    if not delete_ingest(ingest_id, user["user_id"]):
+    """Delete an ingested item, its Pinecone vectors, and all related cache entries."""
+    source_name = delete_ingest(ingest_id, user["user_id"])
+    if source_name is None:
         raise HTTPException(status_code=404, detail="Ingest item not found or already deleted")
 
-    logger.info("ingest_deleted", ingest_id=ingest_id, user_id=user["user_id"])
-    return {"status": "deleted", "ingest_id": ingest_id}
+    namespace = user.get("org_id", "default")
+
+    # Delete vectors from Pinecone (all prefix variants: plain, image:, video:, audio:, weblink:)
+    vectors_deleted = delete_by_source(source_name, namespace=namespace)
+
+    # Purge any verified-knowledge cache entries that referenced this source
+    cache_deleted = delete_cache_by_source(source_name)
+
+    logger.info(
+        "ingest_deleted",
+        ingest_id=ingest_id,
+        source=source_name,
+        vectors_deleted=vectors_deleted,
+        cache_entries_deleted=cache_deleted,
+        user_id=user["user_id"],
+    )
+    return {
+        "status": "deleted",
+        "ingest_id": ingest_id,
+        "source": source_name,
+        "vectors_deleted": vectors_deleted,
+        "cache_entries_deleted": cache_deleted,
+    }

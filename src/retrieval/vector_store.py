@@ -449,6 +449,27 @@ def _delete_source_vectors(id_prefix: str, namespace: str) -> int:
         return 0  # non-fatal — upsert will still overwrite matching IDs
 
 
+def delete_by_source(source_name: str, namespace: str = "default") -> int:
+    """Delete all Pinecone vectors for a given source across all prefix variants.
+
+    Covers plain filenames, image:/video:/audio:/weblink: prefixes and
+    URL-derived IDs so a single call cleans up any ingest type.
+    Returns total vectors deleted.
+    """
+    base = source_name.strip()
+    prefixes = [
+        base,
+        f"image:{base}",
+        f"video:{base}",
+        f"audio:{base}",
+        f"weblink:{base}",
+    ]
+    total = 0
+    for prefix in prefixes:
+        total += _delete_source_vectors(prefix, namespace)
+    return total
+
+
 def ingest_file(file_path: str, namespace: str = "default", source_name: str | None = None) -> int:
     """Ingest a document file into Pinecone.
 

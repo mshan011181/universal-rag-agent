@@ -153,12 +153,42 @@ def get_ingest_history(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def delete_ingest(ingest_id: str, user_id: str) -> bool:
-    """Delete an ingest record (soft delete by updating status)."""
+def delete_ingest(ingest_id: str, user_id: str) -> str | None:
+    """Delete an ingest record. Returns source_name on success, None if not found."""
     with get_conn() as conn:
-        result = conn.execute(
+        row = conn.execute(
+            "SELECT source_name FROM ingest_history WHERE ingest_id=? AND user_id=?",
+            (ingest_id, user_id)
+        ).fetchone()
+        if not row:
+            return None
+        source_name = row["source_name"]
+        conn.execute(
             "DELETE FROM ingest_history WHERE ingest_id=? AND user_id=?",
             (ingest_id, user_id)
         )
         conn.commit()
-    return result.rowcount > 0
+    return source_name
+
+
+def delete_cache_by_source(source_name: str) -> int:
+    """Delete all verified_knowledge cache entries whose chunk_ids include source_name."""
+    deleted = 0
+    with get_conn() as conn:
+        rows = conn.execute("SELECT id, chunk_ids FROM verified_knowledge").fetchall()
+        ids_to_delete = []
+        for row in rows:
+            try:
+                sources = json.loads(row["chunk_ids"]) if row["chunk_ids"] else []
+            except Exception:
+                sources = []
+            if source_name in sources:
+                ids_to_delete.append(row["id"])
+        if ids_to_delete:
+            conn.execute(
+                f"DELETE FROM verified_knowledge WHERE id IN ({','.join('?' * len(ids_to_delete))})",
+                ids_to_delete
+            )
+            conn.commit()
+            deleted = len(ids_to_delete)
+    return deleted
