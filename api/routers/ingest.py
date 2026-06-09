@@ -441,10 +441,14 @@ async def ingest_weblink_endpoint(
     except Exception:
         source_name = body.url[:80]
     user_id = user["user_id"]
+    org_id = user.get("org_id", "default")
 
-    # Write to database immediately
+    # Write to database immediately with status='processing'
     logger.info("weblink_queued", ingest_id=ingest_id, url=body.url, user_id=user_id)
     write_ingest(ingest_id, user_id, "weblink", source_name, source_url=body.url, chunks=0)
+    with get_conn() as _c:
+        _c.execute("UPDATE ingest_history SET status='processing' WHERE ingest_id=?", (ingest_id,))
+        _c.commit()
 
     def do_process():
         from src.memory.sqlite_store import get_conn as _get_conn
