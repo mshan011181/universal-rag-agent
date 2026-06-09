@@ -189,29 +189,31 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
 
     # Rerank final chunks
     if state["chunks"]:
-        reranked = rerank(query, state["chunks"], top_n=10)
+        reranked = rerank(query, state["chunks"], top_n=15)
 
         # ── Relevance threshold filter ───────────────────────────────────
-        # Drop chunks whose score is below the cutoff — they are semantically
-        # adjacent to the query topic but not genuinely relevant (e.g. a
-        # DevOps PDF pulled in for a GCS backup query because both mention
-        # cloud infrastructure).
         MIN_SCORE = 0.45
         above = [c for c in reranked if c.get("score", 0) >= MIN_SCORE]
-        # If threshold is too aggressive and nothing passes, keep the best 3
         filtered = above if above else reranked[:3]
 
         # ── Per-source chunk cap ─────────────────────────────────────────
-        # Allow at most 3 chunks from any single source so that a large
-        # document (many chunks) doesn't crowd out the primary source.
+        # If all retrieved chunks come from a single source (e.g. one large
+        # Wikipedia page), allow up to 6 chunks so different sections of
+        # that page (infobox + performance table) can both appear in context.
+        # When multiple sources are present, cap at 3 each to prevent a large
+        # document from crowding out the others.
+        unique_sources = {c["metadata"].get("source", "?") for c in filtered}
+        per_src_cap = 6 if len(unique_sources) == 1 else 3
+        total_cap = 8 if len(unique_sources) == 1 else 5
+
         source_counts: dict[str, int] = {}
         capped: list[dict] = []
         for chunk in filtered:
             src = chunk["metadata"].get("source", "?")
-            if source_counts.get(src, 0) < 3:
+            if source_counts.get(src, 0) < per_src_cap:
                 capped.append(chunk)
                 source_counts[src] = source_counts.get(src, 0) + 1
-            if len(capped) >= 5:
+            if len(capped) >= total_cap:
                 break
         state["chunks"] = capped
 
