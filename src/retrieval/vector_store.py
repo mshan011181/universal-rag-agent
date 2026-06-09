@@ -28,6 +28,9 @@ def _rows_to_text(rows: list[list[str]]) -> list[str]:
         elif headers and len(cells) == len(headers) and len(headers) > 1:
             row_label = cells[0]
             enriched = [f"{headers[i]}={cells[i]}" for i in range(1, len(cells)) if cells[i]]
+            # Emit plain pipe (legacy) AND enriched (header-labelled) so both
+            # raw-value and column-label queries hit the same data.
+            result.append(" | ".join(cells))
             result.append(f"{row_label}: {' | '.join(enriched)}" if enriched else " | ".join(cells))
         else:
             result.append(" | ".join(cells))

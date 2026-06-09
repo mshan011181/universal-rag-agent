@@ -39,9 +39,11 @@ def _html_table_to_text(table) -> list[str]:
                 continue
 
             if headers and len(headers) > 1 and len(cell_texts) == len(headers):
-                # Enrich: "Label: Col1=Val1 | Col2=Val2 ..."
+                # Emit plain pipe (legacy) AND enriched (header-labelled) so both
+                # raw-value and column-label queries hit the same data.
                 row_label = cell_texts[0]
                 enriched = [f"{headers[i]}={cell_texts[i]}" for i in range(1, len(cell_texts))]
+                rows_text.append(" | ".join(cell_texts))
                 rows_text.append(f"{row_label}: {' | '.join(enriched)}")
             else:
                 # No matching header — plain pipe join
