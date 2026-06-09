@@ -1,40 +1,152 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Database } from 'lucide-react'
-import { register } from '@/lib/api'
+import { Database, Mail, KeyRound, CheckCircle, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { sendOTP, register } from '@/lib/api'
+
+type Step = 'email' | 'otp' | 'password'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
+  const [step, setStep]           = useState<Step>('email')
+  const [email, setEmail]         = useState('')
+  const [otp, setOtp]             = useState(['', '', '', '', '', ''])
+  const [password, setPassword]   = useState('')
+  const [confirm, setConfirm]     = useState('')
+  const [showPw, setShowPw]       = useState(false)
+  const [loading, setLoading]     = useState(false)
+  const [resending, setResending] = useState(false)
+  const [error, setError]         = useState('')
+  const [devOtp, setDevOtp]       = useState<string | null>(null)  // local dev only
+  const [countdown, setCountdown] = useState(0)
+
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([])
+
+  // ── Step 1: send OTP ───────────────────────────────────────────────────────
+  async function handleSendOTP(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (password !== confirm) { setError('Passwords do not match'); return }
-    if (password.length < 8) { setError('Password must be at least 8 characters'); return }
-    if (password.length > 72) { setError('Password must be 72 characters or fewer (bcrypt limit)'); return }
     setLoading(true)
     try {
-      await register(email, password)
+      const res = await sendOTP(email, 'register')
+      if (res.dev_otp) setDevOtp(res.dev_otp)   // show in dev when SMTP not configured
+      setStep('otp')
+      startCountdown(60)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send OTP')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── OTP input helpers ──────────────────────────────────────────────────────
+  function handleOtpChange(idx: number, val: string) {
+    const digit = val.replace(/\D/g, '').slice(-1)
+    const next = [...otp]
+    next[idx] = digit
+    setOtp(next)
+    if (digit && idx < 5) otpRefs.current[idx + 1]?.focus()
+  }
+
+  function handleOtpKey(idx: number, e: React.KeyboardEvent) {
+    if (e.key === 'Backspace' && !otp[idx] && idx > 0) {
+      otpRefs.current[idx - 1]?.focus()
+    }
+    if (e.key === 'ArrowLeft' && idx > 0) otpRefs.current[idx - 1]?.focus()
+    if (e.key === 'ArrowRight' && idx < 5) otpRefs.current[idx + 1]?.focus()
+  }
+
+  function handleOtpPaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (text.length === 6) {
+      setOtp(text.split(''))
+      otpRefs.current[5]?.focus()
+      e.preventDefault()
+    }
+  }
+
+  // ── Step 2: verify OTP → move to password ─────────────────────────────────
+  async function handleVerifyOTP(e: FormEvent) {
+    e.preventDefault()
+    const code = otp.join('')
+    if (code.length < 6) { setError('Enter all 6 digits'); return }
+    setError('')
+    setLoading(true)
+    try {
+      // Lightweight check — OTP is consumed at final registration
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp: code, purpose: 'register' }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Invalid OTP')
+      }
+      setStep('password')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid OTP')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 3: set password + create account ─────────────────────────────────
+  async function handleRegister(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (password.length < 8)      { setError('Password must be at least 8 characters'); return }
+    if (password.length > 72)     { setError('Password must be 72 characters or fewer'); return }
+    if (password !== confirm)     { setError('Passwords do not match'); return }
+    setLoading(true)
+    try {
+      await register(email, password, otp.join(''))
       router.push('/login?registered=1')
-    } catch (err: unknown) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Resend OTP ────────────────────────────────────────────────────────────
+  async function handleResend() {
+    setResending(true); setError(''); setDevOtp(null)
+    try {
+      const res = await sendOTP(email, 'register')
+      if (res.dev_otp) setDevOtp(res.dev_otp)
+      setOtp(['', '', '', '', '', ''])
+      otpRefs.current[0]?.focus()
+      startCountdown(60)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend')
+    } finally {
+      setResending(false)
+    }
+  }
+
+  function startCountdown(secs: number) {
+    setCountdown(secs)
+    const t = setInterval(() => {
+      setCountdown(c => { if (c <= 1) { clearInterval(t); return 0 } return c - 1 })
+    }, 1000)
+  }
+
+  // ── Progress indicator ────────────────────────────────────────────────────
+  const steps = [
+    { id: 'email',    label: 'Email',    icon: Mail },
+    { id: 'otp',      label: 'Verify',   icon: KeyRound },
+    { id: 'password', label: 'Password', icon: CheckCircle },
+  ] as const
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-10">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+        {/* Logo */}
+        <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-600 mb-4">
             <Database className="w-6 h-6 text-white" />
           </div>
@@ -42,65 +154,175 @@ export default function RegisterPage() {
           <p className="text-sm text-gray-500 mt-1">Enterprise Platform</p>
         </div>
 
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">Create an account</h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="label" htmlFor="email">Work Email</label>
-              <input
-                id="email"
-                type="email"
-                className="input"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                className="input"
-                placeholder="Min 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="confirm">Confirm Password</label>
-              <input
-                id="confirm"
-                type="password"
-                className="input"
-                placeholder="Repeat password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-              />
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-                {error}
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {steps.map((s, i) => {
+            const done   = steps.findIndex(x => x.id === step) > i
+            const active = s.id === step
+            return (
+              <div key={s.id} className="flex items-center gap-2">
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  active ? 'bg-brand-600 text-white' :
+                  done   ? 'bg-green-100 text-green-700' :
+                           'bg-gray-100 text-gray-400'
+                }`}>
+                  <s.icon className="w-3 h-3" />
+                  {s.label}
+                </div>
+                {i < steps.length - 1 && <div className={`w-4 h-px ${done ? 'bg-green-400' : 'bg-gray-200'}`} />}
               </div>
-            )}
+            )
+          })}
+        </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full">
-              {loading ? 'Creating account…' : 'Create account'}
-            </button>
-          </form>
+        <div className="card p-6">
+          {/* ── Step 1: Email ── */}
+          {step === 'email' && (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-1">Create an account</h2>
+              <p className="text-sm text-gray-500 mb-6">Enter your email — we'll send a verification code.</p>
+              <form onSubmit={handleSendOTP} className="space-y-4">
+                <div>
+                  <label className="label" htmlFor="email">Work Email</label>
+                  <input
+                    id="email" type="email" className="input"
+                    placeholder="you@company.com"
+                    value={email} onChange={e => setEmail(e.target.value)}
+                    required autoFocus
+                  />
+                </div>
+                {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+                <button type="submit" disabled={loading || !email.trim()} className="btn-primary w-full">
+                  {loading ? 'Sending code…' : 'Send verification code'}
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── Step 2: OTP ── */}
+          {step === 'otp' && (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-1">Check your email</h2>
+              <p className="text-sm text-gray-500 mb-1">
+                We sent a 6-digit code to <span className="font-medium text-gray-700">{email}</span>.
+              </p>
+              <p className="text-xs text-gray-400 mb-5">Valid for 10 minutes.</p>
+
+              {devOtp && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                  Dev mode (SMTP not configured) — OTP: <span className="font-mono font-bold">{devOtp}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyOTP} className="space-y-5">
+                {/* 6-digit OTP boxes */}
+                <div onPaste={handleOtpPaste} className="flex gap-2 justify-center">
+                  {otp.map((d, i) => (
+                    <input
+                      key={i}
+                      ref={el => { otpRefs.current[i] = el }}
+                      type="text" inputMode="numeric" maxLength={1}
+                      value={d}
+                      onChange={e => handleOtpChange(i, e.target.value)}
+                      onKeyDown={e => handleOtpKey(i, e)}
+                      className="w-11 h-12 text-center text-xl font-bold border border-gray-300 rounded-lg
+                                 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
+                                 transition-colors"
+                      autoFocus={i === 0}
+                    />
+                  ))}
+                </div>
+
+                {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+
+                <button
+                  type="submit"
+                  disabled={loading || otp.join('').length < 6}
+                  className="btn-primary w-full"
+                >
+                  {loading ? 'Verifying…' : 'Verify code'}
+                </button>
+              </form>
+
+              <div className="mt-4 text-center text-sm text-gray-500">
+                Didn't receive it?{' '}
+                {countdown > 0 ? (
+                  <span className="text-gray-400">Resend in {countdown}s</span>
+                ) : (
+                  <button
+                    onClick={handleResend} disabled={resending}
+                    className="text-brand-600 hover:underline font-medium inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${resending ? 'animate-spin' : ''}`} />
+                    Resend code
+                  </button>
+                )}
+              </div>
+              <button onClick={() => { setStep('email'); setOtp(['','','','','','']); setError('') }}
+                className="mt-2 w-full text-center text-xs text-gray-400 hover:text-gray-600">
+                ← Change email
+              </button>
+            </>
+          )}
+
+          {/* ── Step 3: Password ── */}
+          {step === 'password' && (
+            <>
+              <div className="flex items-center gap-2 mb-4">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <p className="text-sm font-medium text-green-700">Email verified!</p>
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-1">Set your password</h2>
+              <p className="text-sm text-gray-500 mb-5">Choose a strong password for your account.</p>
+
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div>
+                  <label className="label" htmlFor="password">Password</label>
+                  <div className="relative">
+                    <input
+                      id="password" type={showPw ? 'text' : 'password'} className="input pr-10"
+                      placeholder="Min 8 characters"
+                      value={password} onChange={e => setPassword(e.target.value)}
+                      required autoFocus
+                    />
+                    <button type="button" onClick={() => setShowPw(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="label" htmlFor="confirm">Confirm Password</label>
+                  <input
+                    id="confirm" type="password" className="input"
+                    placeholder="Repeat password"
+                    value={confirm} onChange={e => setConfirm(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Password strength hints */}
+                <div className="flex gap-1">
+                  {[8, 12, 20].map(n => (
+                    <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${
+                      password.length >= n ? 'bg-brand-500' : 'bg-gray-200'
+                    }`} />
+                  ))}
+                </div>
+
+                {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+
+                <button type="submit" disabled={loading || !password || !confirm} className="btn-primary w-full">
+                  {loading ? 'Creating account…' : 'Create account'}
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Already have an account?{' '}
-          <Link href="/login" className="text-brand-600 hover:underline font-medium">
-            Sign in
-          </Link>
+          <Link href="/login" className="text-brand-600 hover:underline font-medium">Sign in</Link>
         </p>
       </div>
     </div>

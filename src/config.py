@@ -38,6 +38,14 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384  # dimension for all-MiniLM-L6-v2; must match Pinecone index config
 
+# Email / SMTP — used for OTP delivery (registration + password reset)
+SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER     = os.getenv("SMTP_USER", "")          # sender Gmail / SMTP address
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")      # app password (Gmail: 16-char)
+SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)   # display From address
+APP_BASE_URL  = os.getenv("APP_BASE_URL", "http://localhost:3000")
+
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 TOP_K = 15

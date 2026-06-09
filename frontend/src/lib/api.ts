@@ -88,22 +88,43 @@ export async function login(email: string, password: string): Promise<AuthTokens
   return data
 }
 
-export async function register(email: string, password: string): Promise<{ message: string }> {
-  return request('/api/auth/register', {
+export async function sendOTP(email: string, purpose: 'register' | 'reset'): Promise<{ message: string; dev_otp?: string }> {
+  return request('/api/auth/send-otp', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
-  })
+    body: JSON.stringify({ email, purpose }),
+  }, false)
 }
 
-export async function forgotPassword(email: string): Promise<{ message: string; token: string | null; expires_in?: string }> {
+export async function verifyOTP(email: string, otp: string, purpose: 'register' | 'reset'): Promise<{ valid: boolean }> {
+  return request('/api/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, purpose }),
+  }, false)
+}
+
+export async function register(email: string, password: string, otp: string): Promise<{ message: string }> {
+  return request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, otp }),
+  }, false)
+}
+
+export async function forgotPassword(email: string): Promise<{ message: string; dev_otp?: string }> {
   return request('/api/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
   }, false)
 }
 
-export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+export async function resetPassword(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
   return request('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, new_password: newPassword }),
+  }, false)
+}
+
+export async function resetPasswordByToken(token: string, newPassword: string): Promise<{ message: string }> {
+  return request('/api/auth/reset-password-by-token', {
     method: 'POST',
     body: JSON.stringify({ token, new_password: newPassword }),
   }, false)
