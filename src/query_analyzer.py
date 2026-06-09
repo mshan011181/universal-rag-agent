@@ -2,6 +2,7 @@ import hashlib
 import json
 from src.generation.llm import get_llm, safe_invoke
 from src.memory.sqlite_store import get_history, check_verified_knowledge
+from src.security.pii_masker import mask_pii
 from langchain_core.messages import SystemMessage, HumanMessage
 
 HIGH_RISK_DOMAINS = ["legal", "medical", "financial", "compliance", "health", "law", "clinical"]
@@ -77,6 +78,10 @@ def fingerprint(query: str) -> str:
 
 
 def analyze_query(query: str, session_id: str, force_bi: bool = False) -> dict:
+    # Mask PII before any processing or storage
+    pii_result = mask_pii(query)
+    query = pii_result.masked_query
+
     word_count = len(query.split())
     history = get_history(session_id, last_n=5)
     turn = len(history) + 1

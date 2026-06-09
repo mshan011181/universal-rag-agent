@@ -50,6 +50,15 @@ APP_BASE_URL    = os.getenv("APP_BASE_URL", "http://localhost:3000")
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 TOP_K = 15
+
+# Per-document-type chunk sizes
+# Smaller chunks for tabular/structured data → better cell-level precision
+# Larger chunks for narrative text → better context preservation
+CHUNK_SIZES: dict[str, tuple[int, int]] = {
+    "narrative":  (1000, 200),   # PDF, DOCX, TXT, MD, PPTX
+    "tabular":    (400,  50),    # XLSX, XLS, CSV
+    "code":       (600,  100),   # JSON, code files
+}
 QUALITY_THRESHOLD = 0.65
 HIGH_CONFIDENCE = 0.85
 

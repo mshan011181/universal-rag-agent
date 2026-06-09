@@ -1,6 +1,40 @@
 import json
+import re as _re
 import time
 from pathlib import Path
+
+
+def _clean_text(text: str) -> str:
+    """Normalise raw extracted text before chunking.
+
+    Removes:
+    - HTML / XML tags
+    - Null bytes and non-printable control characters (except newlines/tabs)
+    - Repeated whitespace / blank lines (3+ → 2)
+    - Common boilerplate footers (cookie banners, print headers, etc.)
+    """
+    # HTML tags
+    text = _re.sub(r'<[^>]+>', ' ', text)
+    # Null bytes and control chars (keep \n \t)
+    text = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    # Unicode replacement characters
+    text = text.replace('�', '')
+    # Collapse 3+ consecutive blank lines → 2
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    # Collapse sequences of spaces/tabs → single space (within lines)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    # Strip common boilerplate phrases (case-insensitive)
+    _BOILERPLATE = [
+        r'cookie policy.*?(?=\n|$)',
+        r'privacy policy.*?(?=\n|$)',
+        r'terms of (use|service).*?(?=\n|$)',
+        r'all rights reserved.*?(?=\n|$)',
+        r'subscribe to our newsletter.*?(?=\n|$)',
+        r'javascript must be enabled.*?(?=\n|$)',
+    ]
+    for pat in _BOILERPLATE:
+        text = _re.sub(pat, '', text, flags=_re.IGNORECASE)
+    return text.strip()
 
 
 def _rows_to_text(rows: list[list[str]]) -> list[str]:
@@ -40,7 +74,7 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.config import (
-    EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K,
+    EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, CHUNK_SIZES, TOP_K,
     PINECONE_API_KEY, PINECONE_INDEX_NAME,
 )
 
@@ -483,21 +517,28 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     suffix = path.suffix.lower()
 
     raw_text: str | None = None  # set when we produce text directly
+    doc_type = "narrative"       # default — overridden per file type below
 
     if suffix == ".pdf":
         raw_text = _extract_text_from_pdf(path)
-    elif suffix in (".txt", ".md", ".csv"):
+    elif suffix in (".txt", ".md"):
         loader = TextLoader(str(path), encoding="utf-8")
+    elif suffix == ".csv":
+        loader = TextLoader(str(path), encoding="utf-8")
+        doc_type = "tabular"
     elif suffix in (".docx", ".doc"):
         raw_text = _extract_text_from_docx(path)
     elif suffix in (".pptx", ".ppt"):
         raw_text = _extract_text_from_pptx(path)
     elif suffix == ".xls":
         raw_text = _extract_text_from_xls(path)
+        doc_type = "tabular"
     elif suffix in (".xlsx", ".xlsm"):
         raw_text = _extract_text_from_xlsx(path)
+        doc_type = "tabular"
     elif suffix in (".json", ".geojson", ".gjson"):
         raw_text = _extract_text_from_json(path)
+        doc_type = "code"
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
 
@@ -511,10 +552,14 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     # a different chunk count (e.g. file updated, or chunk size changed).
     _delete_source_vectors(id_prefix, namespace)
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    # Per-document-type chunk sizes: smaller for tabular data (better cell precision),
+    # larger for narrative text (better context preservation).
+    _chunk_size, _chunk_overlap = CHUNK_SIZES.get(doc_type, (CHUNK_SIZE, CHUNK_OVERLAP))
+    splitter = RecursiveCharacterTextSplitter(chunk_size=_chunk_size, chunk_overlap=_chunk_overlap)
 
     if raw_text is not None:
-        # Text-based path — split the raw string directly
+        # Clean extracted text before chunking (removes HTML, control chars, boilerplate)
+        raw_text = _clean_text(raw_text)
         text_chunks = splitter.split_text(raw_text)
         if not text_chunks:
             return 0
@@ -526,6 +571,7 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
                 "metadata": {
                     "content": chunk,
                     "source": display_source,
+                    "doc_type": doc_type,
                     "chunk_idx": i,
                 },
             }
@@ -536,6 +582,9 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
 
     # LangChain Document path (TXT / MD / CSV)
     docs = loader.load()
+    # Clean each document's page content before splitting
+    for doc in docs:
+        doc.page_content = _clean_text(doc.page_content)
     chunks = splitter.split_documents(docs)
 
     if not chunks:
@@ -550,6 +599,7 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
             "metadata": {
                 "content": chunk.page_content,
                 "source": display_source,
+                "doc_type": doc_type,
                 "chunk_idx": i,
                 "page": chunk.metadata.get("page", 0),
             },

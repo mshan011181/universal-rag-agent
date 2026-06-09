@@ -30,8 +30,9 @@ unstructured==0.17.2
 python-pptx>=1.0.0      # PowerPoint .pptx/.ppt ingestion
 xlrd>=2.0.0             # Legacy Excel .xls ingestion (.xlsx uses openpyxl above)
 
-# Reranking
+# Reranking + Hybrid Search
 cohere==5.15.0
+rank-bm25>=0.2.2
 
 # Graph (GraphRAG lightweight)
 networkx==3.4.2

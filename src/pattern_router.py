@@ -15,7 +15,7 @@ from src.patterns.speculative_rag import SpeculativeRAG
 from src.patterns.graph_rag import GraphRAG
 from src.patterns.multimodal_rag import MultiModalRAG
 from src.generation.llm import synthesize, synthesize_cross, grade, generate_followups
-from src.retrieval.reranker import rerank
+from src.retrieval.reranker import rerank, hybrid_rerank, compress_chunk
 from src.retrieval.vector_store import retrieve_by_source
 from src.models import RAGAgentResponse
 from src.memory.sqlite_store import (
@@ -219,9 +219,10 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
             # Pattern failure → continue with what we have
             pass
 
-    # Rerank final chunks
+    # Hybrid rerank: combines dense (semantic) + BM25 (keyword) scores.
+    # Falls back to dense-only when rank-bm25 is not installed.
     if state["chunks"]:
-        reranked = rerank(query, state["chunks"], top_n=15)
+        reranked = hybrid_rerank(query, state["chunks"], top_n=15, alpha=0.7)
 
         # ── Relevance threshold filter ───────────────────────────────────
         MIN_SCORE = 0.45
@@ -249,9 +250,17 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 break
         state["chunks"] = capped
 
-    # Build context for synthesis
+    # Build context for synthesis — compress each chunk to its most relevant
+    # sentences before sending to the LLM (reduces noise and token cost).
+    # Tabular chunks (spreadsheet rows) are not compressed to preserve data integrity.
+    def _ctx_content(c: dict) -> str:
+        doc_type = c.get("metadata", {}).get("doc_type", "narrative")
+        if doc_type == "tabular":
+            return c["content"]
+        return compress_chunk(query, c["content"], max_sentences=4)
+
     context = "\n\n".join([
-        f"[Source: {c['metadata'].get('source','?')}]\n{c['content']}"
+        f"[Source: {c['metadata'].get('source','?')}]\n{_ctx_content(c)}"
         for c in state["chunks"]
     ]) if state["chunks"] else "No relevant documents found."
 
