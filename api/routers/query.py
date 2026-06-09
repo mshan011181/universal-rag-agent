@@ -17,6 +17,7 @@ class QueryRequest(BaseModel):
     stream: bool = False
     language: str = Field(default="English", max_length=50)
     source_filters: list[str] = Field(default_factory=list)  # filenames to restrict search to
+    force_bi: bool = False  # set True from BI page to bypass keyword detection
 
 
 class QueryResponse(BaseModel):
@@ -59,6 +60,7 @@ async def query_endpoint(
             language=body.language,
             source_filters=body.source_filters or [],
             user_id=user["user_id"],
+            force_bi=body.force_bi,
         )
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])

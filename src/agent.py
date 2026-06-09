@@ -20,9 +20,10 @@ def ask(
     language: str = "English",
     source_filters: list[str] | None = None,
     user_id: str = "",
+    force_bi: bool = False,
 ) -> RAGAgentResponse:
     _ensure_init()
-    analysis = analyze_query(query, session_id)
+    analysis = analyze_query(query, session_id, force_bi=force_bi)
     analysis["namespace"] = namespace
     analysis["language"] = language
     analysis["user_id"] = user_id

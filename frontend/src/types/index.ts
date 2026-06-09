@@ -17,6 +17,7 @@ export interface QueryRequest {
   top_k?: number
   language?: string
   source_filters?: string[]   // filenames to restrict retrieval to
+  force_bi?: boolean          // bypass BI keyword detection (BI/Analytics page)
 }
 
 export interface SourceChunk {

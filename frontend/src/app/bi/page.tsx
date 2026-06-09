@@ -153,7 +153,7 @@ export default function BIPage() {
     setResult(null)
     setShowSuggestions(false)
     try {
-      const resp: QueryResponse = await submitQuery({ query: q, namespace: 'default', pattern: 'auto' })
+      const resp: QueryResponse = await submitQuery({ query: q, namespace: 'default', pattern: 'auto', force_bi: true })
       setResult({
         query: q,
         answer: resp.answer,

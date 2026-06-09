@@ -76,7 +76,7 @@ def fingerprint(query: str) -> str:
     return hashlib.md5(_normalize_for_fp(query).encode()).hexdigest()[:16]
 
 
-def analyze_query(query: str, session_id: str) -> dict:
+def analyze_query(query: str, session_id: str, force_bi: bool = False) -> dict:
     word_count = len(query.split())
     history = get_history(session_id, last_n=5)
     turn = len(history) + 1
@@ -128,7 +128,8 @@ domain_risk=true if the topic involves legal, medical, financial, or compliance 
         patterns.append("cross_rag")
 
     # BI queries: run bi_rag first — it short-circuits if it succeeds
-    is_bi = _is_bi_query(query)
+    # force_bi=True bypasses keyword detection (used by the BI/Analytics page)
+    is_bi = force_bi or _is_bi_query(query)
     if is_bi:
         patterns.append("bi_rag")
 
