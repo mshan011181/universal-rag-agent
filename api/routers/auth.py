@@ -175,9 +175,9 @@ async def send_otp(body: SendOTPRequest):
         sent = send_reset_otp(email, otp, reset_link)
 
     if not sent:
-        # SMTP not configured — return OTP in response for local dev
+        # Resend not configured — return OTP in response for local dev
         return {
-            "message": "SMTP not configured. Use the OTP below for testing.",
+            "message": "RESEND_API_KEY not configured. Use the OTP below for testing.",
             "dev_otp": otp,          # remove in production
             "expires_in": f"{ttl_minutes} minutes",
         }

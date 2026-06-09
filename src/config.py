@@ -38,13 +38,14 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384  # dimension for all-MiniLM-L6-v2; must match Pinecone index config
 
-# Email / SMTP — used for OTP delivery (registration + password reset)
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER     = os.getenv("SMTP_USER", "")          # sender Gmail / SMTP address
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")      # app password (Gmail: 16-char)
-SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)   # display From address
-APP_BASE_URL  = os.getenv("APP_BASE_URL", "http://localhost:3000")
+# Email — Resend API for OTP delivery (registration + password reset)
+# Sign up free at https://resend.com → API Keys → create key
+# Free tier: 3000 emails/month, 100/day — no domain required for testing
+RESEND_API_KEY  = os.getenv("RESEND_API_KEY", "")
+# Sender address: use onboarding@resend.dev for free testing,
+# or your verified domain once you add one in Resend dashboard
+EMAIL_FROM      = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
+APP_BASE_URL    = os.getenv("APP_BASE_URL", "http://localhost:3000")
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200

@@ -73,3 +73,4 @@ pydantic>=2.11.4
 tenacity>=9.1.2
 numpy>=2.2.5
 pandas>=2.2.3
+resend>=2.0.0

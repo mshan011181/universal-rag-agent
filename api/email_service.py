@@ -1,46 +1,43 @@
 """
-email_service.py — SMTP email delivery for OTP / magic-link flows.
+email_service.py — Resend API email delivery for OTP / magic-link flows.
 
 Reads config from environment via src.config:
-  SMTP_HOST      e.g. smtp.gmail.com
-  SMTP_PORT      e.g. 587  (STARTTLS)
-  SMTP_USER      sender email address
-  SMTP_PASSWORD  app password (Gmail 16-char, or provider secret)
-  SMTP_FROM      display From address (defaults to SMTP_USER)
-  APP_BASE_URL   e.g. http://localhost:3000  (used in links)
+  RESEND_API_KEY   API key from resend.com (starts with re_)
+  EMAIL_FROM       Sender address (default: onboarding@resend.dev for testing)
+  APP_BASE_URL     e.g. http://localhost:3000  (used in links)
+
+Free tier: 3000 emails/month, 100/day. No custom domain required for testing.
+Sign up at https://resend.com → API Keys → Create API Key
 """
 
-import smtplib
 import logging
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import resend
 
-from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, APP_BASE_URL
+from src.config import RESEND_API_KEY, EMAIL_FROM, APP_BASE_URL
 
 logger = logging.getLogger(__name__)
 
+# Set Resend API key once at import time
+resend.api_key = RESEND_API_KEY
+
 
 def _send(to: str, subject: str, html: str) -> bool:
-    """Send one email. Returns True on success, False on failure."""
-    if not SMTP_USER or not SMTP_PASSWORD:
-        logger.warning("SMTP not configured — email not sent to %s", to)
+    """Send one email via Resend API. Returns True on success, False on failure."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not configured — email not sent to %s", to)
         return False
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = SMTP_FROM or SMTP_USER
-        msg["To"]      = to
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_USER, to, msg.as_string())
-        logger.info("Email sent to %s | subject=%s", to, subject)
+        params: resend.Emails.SendParams = {
+            "from": EMAIL_FROM,
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        }
+        response = resend.Emails.send(params)
+        logger.info("Email sent via Resend to %s | id=%s | subject=%s", to, response.get("id"), subject)
         return True
     except Exception as exc:
-        logger.error("Failed to send email to %s: %s", to, exc)
+        logger.error("Failed to send email via Resend to %s: %s", to, exc)
         return False
 
 
