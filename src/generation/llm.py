@@ -210,6 +210,11 @@ def grade(answer: str, context: str, query: str) -> dict:
             "not enough information to answer",
             "the context does not contain any",
             "there is no information",
+            "does not provide a single overall",
+            "context does not provide",
+            "does not provide the",
+            "does not contain sufficient information to",
+            "the context does not provide",
         ]
         if any(p in answer_intro for p in no_info_primary):
             quality = min(quality, 0.3)

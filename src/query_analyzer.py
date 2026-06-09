@@ -17,13 +17,17 @@ _CROSS_KEYWORDS = [
 ]
 
 _BI_KEYWORDS = [
-    "total", "sum", "average", "avg", "mean", "count", "how many",
-    "max", "min", "highest", "lowest", "maximum", "minimum",
-    "group by", "compare", "difference between", "join", "merge", "match",
-    "trend", "growth", "percentage", "ratio", "rank", "top ", "bottom ",
-    "year over year", "month over month", "across both", "from both files",
-    "two files", "both excel", "both spreadsheet",
-    "revenue", "sales", "profit", "cost", "expense", "budget",
+    # Explicit spreadsheet/data-file references
+    "both excel", "both spreadsheet", "from both files", "two excel files",
+    "across both files", "from the excel", "from the spreadsheet",
+    "in the excel", "in the spreadsheet", "excel file", "spreadsheet file",
+    # SQL-like operations that only make sense over tabular data
+    "group by", "join the", "merge the", "pivot table",
+    "year over year", "month over month", "quarter over quarter",
+    # Business metrics only meaningful in a data file context
+    "total revenue", "total sales", "total profit", "total cost",
+    "sum of revenue", "sum of sales", "revenue by", "sales by",
+    "profit margin", "cost per", "expense breakdown",
 ]
 
 
