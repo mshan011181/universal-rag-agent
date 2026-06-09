@@ -1,6 +1,7 @@
 import re
 import time
 from src.patterns.bi_rag import BIRag
+from src.patterns.cross_rag import CrossRag
 from src.patterns.naive_rag import NaiveRAG
 from src.patterns.hyde import HyDE
 from src.patterns.query_rewriting import QueryRewriting
@@ -13,7 +14,7 @@ from src.patterns.flare import FLARE
 from src.patterns.speculative_rag import SpeculativeRAG
 from src.patterns.graph_rag import GraphRAG
 from src.patterns.multimodal_rag import MultiModalRAG
-from src.generation.llm import synthesize, grade, generate_followups
+from src.generation.llm import synthesize, synthesize_cross, grade, generate_followups
 from src.retrieval.reranker import rerank
 from src.retrieval.vector_store import retrieve_by_source
 from src.models import RAGAgentResponse
@@ -24,6 +25,7 @@ from src.memory.sqlite_store import (
 
 PATTERN_MAP = {
     "bi_rag": BIRag(),
+    "cross_rag": CrossRag(),
     "naive_rag": NaiveRAG(),
     "hyde": HyDE(),
     "query_rewrite": QueryRewriting(),
@@ -153,6 +155,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         "fallback_used": False,
         "channel": "vector",
         "steps": [],
+        "cross_sources": [],  # populated by cross_rag when 2+ sources retrieved
     }
 
     # Execute patterns in order, passing state forward
@@ -183,6 +186,8 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 state["channel"] = result["channel"]
             if result.get("steps"):
                 state["steps"] = result["steps"]
+            if result.get("cross_sources"):
+                state["cross_sources"] = result["cross_sources"]
             if result.get("query") and pattern_name in ("conv_rag", "hyde", "query_rewrite"):
                 state["query"] = result["query"]
 
@@ -256,7 +261,16 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         if state.get("steps"):
             steps_ctx = "\n".join([f"Step: {s['step']}\nAnswer: {s['answer']}" for s in state["steps"]])
             context = f"Multi-step reasoning:\n{steps_ctx}\n\n{context}"
-        state["answer"] = synthesize(context, query, language=language)
+
+        # Use cross-document synthesis prompt when 2+ sources are in context
+        if state.get("cross_sources") and len(state["cross_sources"]) >= 2:
+            state["answer"] = synthesize_cross(
+                context, query,
+                sources=state["cross_sources"],
+                language=language,
+            )
+        else:
+            state["answer"] = synthesize(context, query, language=language)
 
     # Grade the answer
     grade_result = grade(state["answer"], context, query)

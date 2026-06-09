@@ -135,6 +135,48 @@ def synthesize(context: str, query: str, language: str = "English") -> str:
     return safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])
 
 
+def synthesize_cross(
+    context: str,
+    query: str,
+    sources: list[str],
+    language: str = "English",
+) -> str:
+    """Cross-document synthesis — explicitly labels claims by source and synthesizes."""
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    llm = get_llm(temperature=0.1)
+
+    lang_instruction = (
+        f" You MUST respond entirely in {language}. "
+        f"Every word of your answer must be in {language}."
+        if language and language.lower() not in (
+            "english", "american english", "british english", "australian english"
+        )
+        else ""
+    )
+
+    src_labels = "\n".join(f"  - [{i+1}] {s}" for i, s in enumerate(sources))
+
+    system = (
+        "You are a precise cross-document analyst. "
+        "The context contains content drawn from multiple documents, each labeled [Source: …].\n\n"
+        f"Documents in context:\n{src_labels}\n\n"
+        "Instructions:\n"
+        "1. Answer the question by synthesizing information from ALL documents present.\n"
+        "2. Clearly attribute each claim to its source using the document name.\n"
+        "3. Use a **Comparison** or **Synthesis** section when both documents address the same topic.\n"
+        "4. Use a **Unique to [Doc]** section for information found in only one document.\n"
+        "5. If the documents contradict each other, call it out explicitly under **Conflicts**.\n"
+        "6. Format using Markdown: bold headings, tables for side-by-side comparisons, "
+        "bullet lists for attributes.\n"
+        "7. Answer ONLY from the provided context — do not use prior knowledge.\n"
+        f"8. If a document has no relevant content for the query, say so.{lang_instruction}"
+    )
+
+    human = f"Context:\n{context}\n\nQuestion: {query}"
+    return safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])
+
+
 def grade(answer: str, context: str, query: str) -> dict:
     from langchain_core.messages import SystemMessage, HumanMessage
     llm = get_llm(temperature=0.0)

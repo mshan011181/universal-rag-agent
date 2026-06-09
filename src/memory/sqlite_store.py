@@ -153,6 +153,30 @@ def get_ingest_history(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_recent_docs(user_id: str, n: int = 2) -> list[dict]:
+    """Return the N most recently ingested non-spreadsheet documents for a user.
+
+    Used by CrossRag when no specific filenames are mentioned in the query.
+    Excludes Excel/CSV files (those belong to BIRag).
+    """
+    _SPREADSHEET_EXTS = (".xlsx", ".xls", ".csv")
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT source_name, ingest_type
+               FROM ingest_history
+               WHERE user_id=? AND status='done'
+               AND ingest_type IN ('document', 'weblinks', 'weblink')
+               ORDER BY created_at DESC
+               LIMIT 20""",
+            (user_id,)
+        ).fetchall()
+    results = [
+        dict(r) for r in rows
+        if not any(r["source_name"].lower().endswith(ext) for ext in _SPREADSHEET_EXTS)
+    ]
+    return results[:n]
+
+
 def get_spreadsheet_files(user_id: str) -> list[dict]:
     """Return all successfully ingested Excel/CSV files for a user, including file path."""
     _SPREADSHEET_EXTS = (".xlsx", ".xls", ".csv")

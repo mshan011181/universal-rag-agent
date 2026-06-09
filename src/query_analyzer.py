@@ -6,6 +6,16 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 HIGH_RISK_DOMAINS = ["legal", "medical", "financial", "compliance", "health", "law", "clinical"]
 
+_CROSS_KEYWORDS = [
+    "both documents", "both files", "both reports", "both pdfs",
+    "two documents", "two files", "compare", "comparison", "contrast",
+    "versus", " vs ", "difference between", "differences between",
+    "similarity between", "similarities between",
+    "across both", "from both", "in both",
+    "which document", "synthesize", "combine both",
+    "conflict", "contradict", "agree", "disagree",
+]
+
 _BI_KEYWORDS = [
     "total", "sum", "average", "avg", "mean", "count", "how many",
     "max", "min", "highest", "lowest", "maximum", "minimum",
@@ -20,6 +30,11 @@ _BI_KEYWORDS = [
 def _is_bi_query(query: str) -> bool:
     q = query.lower()
     return any(kw in q for kw in _BI_KEYWORDS)
+
+
+def _is_cross_query(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in _CROSS_KEYWORDS)
 
 
 def fingerprint(query: str) -> str:
@@ -71,6 +86,11 @@ domain_risk=true if the topic involves legal, medical, financial, or compliance 
 
     # Build pattern list from signals
     patterns = []
+
+    # Cross-doc queries: run cross_rag first to ensure both sources retrieved
+    is_cross = _is_cross_query(query)
+    if is_cross:
+        patterns.append("cross_rag")
 
     # BI queries: run bi_rag first — it short-circuits if it succeeds
     is_bi = _is_bi_query(query)
@@ -154,6 +174,7 @@ domain_risk=true if the topic involves legal, medical, financial, or compliance 
         "conv_active": conv_active,
         "query_class": dims.get("query_class", "factual"),
         "is_bi_query": is_bi,
+        "is_cross_query": is_cross,
         "patterns": unique_patterns,
         "history": history,
     }
