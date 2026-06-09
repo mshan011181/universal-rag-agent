@@ -79,11 +79,12 @@ def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime};base64,{b64}"
 
+    loc = f" ({context})" if context else ""
     prompt = (
-        f"You are analyzing an image embedded in a PowerPoint slide{' (' + context + ')' if context else ''}.\n"
+        f"You are analyzing an embedded image from a document{loc}.\n"
         "Extract ALL information visible:\n"
         "1. DIAGRAMS/FLOWCHARTS: describe each node, arrow, label, and flow\n"
-        "2. CHARTS/GRAPHS: type, axes, values, trends, legend items\n"
+        "2. CHARTS/GRAPHS: type, axes, all data values, trends, legend items\n"
         "3. TABLES: reproduce all rows and columns as pipe-separated text\n"
         "4. SCREENSHOTS/UI: describe the interface, visible text, key actions\n"
         "5. ARCHITECTURE DIAGRAMS: components, connections, data flow\n"
@@ -107,54 +108,89 @@ def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "
 
 
 def _extract_text_from_pptx(path: Path) -> str:
-    """Extract text AND embedded images from a PowerPoint file (.pptx).
+    """Extract text, tables, images, and charts from a PowerPoint file (.pptx).
 
     For each slide:
-      - All text shapes are extracted verbatim.
-      - All Picture shapes have their image sent to Groq Vision for
-        description, which is appended under '### Embedded Image N'.
+      - Text shapes → verbatim text
+      - TABLE shapes → pipe-separated rows
+      - PICTURE shapes → Groq Vision description
+      - CHART shapes → chart title + series data as text; chart image via Vision if available
+      - GROUP shapes → recursed to find nested pictures
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
 
     prs = Presentation(str(path))
     lines = []
+    img_counter = [0]  # mutable counter shared across helper
+
+    def _process_picture(shape, slide_num: int):
+        try:
+            img = shape.image
+            img_bytes = img.blob
+            img_counter[0] += 1
+            context = f"Slide {slide_num}, Image {img_counter[0]}"
+            desc = _describe_image_bytes(img_bytes, img.ext, context)
+            if desc:
+                lines.append(f"\n### Embedded Image {img_counter[0]} (Slide {slide_num})")
+                lines.append(desc)
+        except Exception:
+            pass
+
+    def _process_shape(shape, slide_num: int):
+        # Text
+        if hasattr(shape, "text") and shape.text.strip():
+            lines.append(shape.text.strip())
+
+        stype = shape.shape_type
+
+        # Table
+        if stype == MSO_SHAPE_TYPE.TABLE:
+            try:
+                for row in shape.table.rows:
+                    cells = [cell.text.strip() for cell in row.cells]
+                    row_text = " | ".join(cells)
+                    if row_text.strip():
+                        lines.append(row_text)
+            except Exception:
+                pass
+
+        # Picture
+        elif stype == MSO_SHAPE_TYPE.PICTURE:
+            _process_picture(shape, slide_num)
+
+        # Chart — extract title + series labels/values as structured text
+        elif stype == MSO_SHAPE_TYPE.CHART:
+            try:
+                chart = shape.chart
+                chart_title = ""
+                try:
+                    chart_title = chart.chart_title.text_frame.text.strip()
+                except Exception:
+                    pass
+                lines.append(f"\n### Chart{': ' + chart_title if chart_title else ''} (Slide {slide_num})")
+                for series in chart.series:
+                    try:
+                        s_name = series.name or "Series"
+                        values = [str(v) for v in (series.values or [])]
+                        lines.append(f"{s_name}: {', '.join(values)}")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Group — recurse into child shapes to find nested pictures/charts
+        elif stype == MSO_SHAPE_TYPE.GROUP:
+            try:
+                for child in shape.shapes:
+                    _process_shape(child, slide_num)
+            except Exception:
+                pass
 
     for slide_num, slide in enumerate(prs.slides, start=1):
         lines.append(f"\n--- Slide {slide_num} ---")
-
-        img_count = 0
         for shape in slide.shapes:
-            # ── Text ─────────────────────────────────────────────────────
-            if hasattr(shape, "text") and shape.text.strip():
-                lines.append(shape.text.strip())
-
-            # ── Table shapes → pipe-separated rows ───────────────────────
-            if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
-                try:
-                    tbl = shape.table
-                    for row in tbl.rows:
-                        cells = [cell.text.strip() for cell in row.cells]
-                        row_text = " | ".join(cells)
-                        if row_text.strip():
-                            lines.append(row_text)
-                except Exception:
-                    pass
-
-            # ── Embedded images (Picture shapes) ─────────────────────────
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                try:
-                    img = shape.image
-                    ext = img.ext  # e.g. 'png', 'jpeg'
-                    img_bytes = img.blob
-                    img_count += 1
-                    context = f"Slide {slide_num}, Image {img_count}"
-                    description = _describe_image_bytes(img_bytes, ext, context)
-                    if description:
-                        lines.append(f"\n### Embedded Image {img_count} (Slide {slide_num})")
-                        lines.append(description)
-                except Exception:
-                    pass  # skip unreadable images silently
+            _process_shape(shape, slide_num)
 
     return "\n".join(lines)
 
@@ -259,30 +295,52 @@ def _extract_text_from_docx(path: Path) -> str:
                 lines.append(row_text)
 
     # ── Images ──────────────────────────────────────────────────────────
-    # DOCX stores images as related parts; iterate all image relationships
+    # Collect image parts from ALL document parts: main body, headers,
+    # footers, footnotes, endnotes, and any other related parts.
     img_count = 0
     IMAGE_CONTENT_TYPES = {
         "image/png", "image/jpeg", "image/gif",
         "image/webp", "image/bmp", "image/tiff",
     }
-    try:
-        for rel in doc.part.rels.values():
+    seen_blobs: set[int] = set()   # avoid duplicating the same image blob
+
+    def _extract_images_from_part(part):
+        nonlocal img_count
+        try:
+            for rel in part.rels.values():
+                try:
+                    target = rel.target_part
+                    ct = target.content_type
+                    if ct not in IMAGE_CONTENT_TYPES:
+                        continue
+                    blob = target.blob
+                    blob_id = hash(blob)
+                    if blob_id in seen_blobs:
+                        continue
+                    seen_blobs.add(blob_id)
+                    ext = ct.split("/")[-1]
+                    img_count += 1
+                    context = f"Image {img_count}"
+                    desc = _describe_image_bytes(blob, ext, context)
+                    if desc:
+                        lines.append(f"\n### Embedded Image {img_count}")
+                        lines.append(desc)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Main document body
+    _extract_images_from_part(doc.part)
+    # Headers and footers
+    for section in doc.sections:
+        for hf_part in [section.header.part, section.footer.part,
+                         section.even_page_header.part, section.even_page_footer.part,
+                         section.first_page_header.part, section.first_page_footer.part]:
             try:
-                ct = rel.target_part.content_type
-                if ct not in IMAGE_CONTENT_TYPES:
-                    continue
-                img_bytes = rel.target_part.blob
-                ext = ct.split("/")[-1]  # e.g. 'png', 'jpeg'
-                img_count += 1
-                context = f"Image {img_count}"
-                description = _describe_image_bytes(img_bytes, ext, context)
-                if description:
-                    lines.append(f"\n### Embedded Image {img_count}")
-                    lines.append(description)
+                _extract_images_from_part(hf_part)
             except Exception:
                 pass
-    except Exception:
-        pass
 
     return "\n".join(lines)
 
@@ -302,16 +360,35 @@ def _extract_text_from_xls(path: Path) -> str:
 
 
 def _extract_text_from_xlsx(path: Path) -> str:
-    """Extract all text from a modern Excel file (.xlsx) as pipe-separated rows."""
+    """Extract text (pipe-separated rows) and embedded images from a modern Excel file (.xlsx)."""
     import openpyxl
     wb = openpyxl.load_workbook(str(path), data_only=True)
     lines = []
+    img_count = 0
     for sheet in wb.worksheets:
         lines.append(f"\n--- Sheet: {sheet.title} ---")
+
+        # ── Cell data ───────────────────────────────────────────────────
         for row in sheet.iter_rows(values_only=True):
             cells = [str(cell) if cell is not None else "" for cell in row]
             if any(c.strip() for c in cells):
                 lines.append(" | ".join(cells))
+
+        # ── Embedded images (charts, logos, diagrams) ────────────────────
+        for img_obj in getattr(sheet, "_images", []):
+            try:
+                img_data = img_obj._data()   # raw bytes
+                img_count += 1
+                # Derive extension from the image object's format attribute
+                fmt = getattr(img_obj, "format", None) or "png"
+                context = f"Sheet '{sheet.title}', Image {img_count}"
+                desc = _describe_image_bytes(img_data, fmt, context)
+                if desc:
+                    lines.append(f"\n### Embedded Image {img_count} (Sheet: {sheet.title})")
+                    lines.append(desc)
+            except Exception:
+                pass
+
     return "\n".join(lines)
 
 
