@@ -107,6 +107,7 @@ def get_best_combo(query_class: str) -> str | None:
 
 
 def check_verified_knowledge(fingerprint: str) -> str | None:
+    """Return a cached answer only if quality >= 0.85. Returns None on miss."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT answer FROM verified_knowledge WHERE query_fingerprint=? AND quality_score >= 0.85",
@@ -116,20 +117,55 @@ def check_verified_knowledge(fingerprint: str) -> str | None:
 
 
 def write_verified_knowledge(fingerprint: str, answer: str, quality: float, chunk_ids: list):
+    """Write or upgrade a verified_knowledge entry.
+
+    Rules:
+    - If no entry exists → insert.
+    - If an entry exists with LOWER quality → overwrite answer + quality.
+    - If an entry exists with EQUAL OR HIGHER quality → only bump confirmed_count.
+    This prevents a repeat bad retrieval from downgrading a previously good answer.
+    """
     with get_conn() as conn:
         existing = conn.execute(
-            "SELECT id, confirmed_count FROM verified_knowledge WHERE query_fingerprint=?", (fingerprint,)
+            "SELECT id, confirmed_count, quality_score FROM verified_knowledge WHERE query_fingerprint=?",
+            (fingerprint,)
         ).fetchone()
         if existing:
-            conn.execute(
-                "UPDATE verified_knowledge SET confirmed_count=?, quality_score=? WHERE id=?",
-                (existing["confirmed_count"] + 1, quality, existing["id"])
-            )
+            if quality > existing["quality_score"]:
+                # Better answer found — replace content and quality
+                conn.execute(
+                    "UPDATE verified_knowledge SET answer=?, quality_score=?, chunk_ids=?, confirmed_count=? WHERE id=?",
+                    (answer, quality, json.dumps(chunk_ids), existing["confirmed_count"] + 1, existing["id"])
+                )
+            else:
+                # Same or worse — just note it was seen again
+                conn.execute(
+                    "UPDATE verified_knowledge SET confirmed_count=? WHERE id=?",
+                    (existing["confirmed_count"] + 1, existing["id"])
+                )
         else:
             conn.execute(
                 "INSERT INTO verified_knowledge (query_fingerprint, answer, quality_score, chunk_ids) VALUES (?,?,?,?)",
                 (fingerprint, answer, quality, json.dumps(chunk_ids))
             )
+
+
+def purge_stale_cache(min_quality: float = 0.85) -> int:
+    """Delete all verified_knowledge entries whose quality is below min_quality.
+
+    Called automatically on every query so stale/wrong answers cannot
+    accumulate and be served later.  The DELETE is a single indexed scan
+    (quality_score column) and completes in microseconds.
+
+    Returns the number of entries removed.
+    """
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM verified_knowledge WHERE quality_score < ?",
+            (min_quality,)
+        )
+        conn.commit()
+        return cur.rowcount
 
 
 def write_ingest(ingest_id: str, user_id: str, ingest_type: str, source_name: str, source_url: str | None = None, file_size: int | None = None, chunks: int = 0):

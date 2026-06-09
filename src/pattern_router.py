@@ -20,7 +20,7 @@ from src.retrieval.vector_store import retrieve_by_source
 from src.models import RAGAgentResponse
 from src.memory.sqlite_store import (
     write_turn, write_performance, write_verified_knowledge,
-    check_verified_knowledge
+    check_verified_knowledge, purge_stale_cache
 )
 
 PATTERN_MAP = {
@@ -53,6 +53,11 @@ PARALLEL_SAFE = {"rag_fusion", "speculative_rag", "multimodal_rag"}
 
 
 def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
+    # Auto-purge stale / low-quality cache entries on every query.
+    # This is a fast single-statement DELETE (microseconds) so it adds
+    # no measurable latency but prevents wrong answers from accumulating.
+    purge_stale_cache(min_quality=0.85)
+
     start_time = time.time()
     query = analysis["query"]
     patterns = analysis["patterns"]
