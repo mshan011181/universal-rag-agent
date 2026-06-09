@@ -122,6 +122,11 @@ def synthesize(context: str, query: str, language: str = "English") -> str:
     system = (
         "You are a precise, grounded assistant. Answer ONLY from the provided context. "
         "Do not use prior knowledge for factual claims. "
+        "IMPORTANT — use implicit reasoning from the context:\n"
+        "- If context says 'scored his Nth [achievement]', that implies a total of N.\n"
+        "- If context gives a table with a '100s' or 'centuries' column, read that value directly.\n"
+        "- If context gives Home/Away or split rows, sum or note both; do NOT say the overall "
+        "figure is unavailable if it can be read or computed from the data present.\n"
         "Format your response using Markdown:\n"
         "- Use **bold** for key terms and headings\n"
         "- Use markdown tables (| Col | Col |) for ANY metrics, comparisons, "
@@ -129,7 +134,7 @@ def synthesize(context: str, query: str, language: str = "English") -> str:
         "- Use numbered lists for sequential steps\n"
         "- Use bullet lists for non-sequential items\n"
         "- Use `code blocks` for commands, scripts, or code\n"
-        f"If the context does not contain sufficient information, say so explicitly.{lang_instruction}"
+        f"Only say the context is insufficient when no relevant data exists at all.{lang_instruction}"
     )
     human = f"Context:\n{context}\n\nQuestion: {query}"
     return safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])
