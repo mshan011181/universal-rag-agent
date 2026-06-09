@@ -3,14 +3,15 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { MessageSquare, Upload, BarChart2, LogOut, Database, User } from 'lucide-react'
+import { MessageSquare, Upload, BarChart2, LogOut, Database, User, TableProperties } from 'lucide-react'
 import clsx from 'clsx'
 import { logout } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
 
 const NAV = [
-  { href: '/query',  label: 'Query',   icon: MessageSquare },
-  { href: '/ingest', label: 'Ingest',  icon: Upload },
+  { href: '/query',  label: 'Query',          icon: MessageSquare },
+  { href: '/bi',     label: 'BI / Analytics', icon: TableProperties },
+  { href: '/ingest', label: 'Ingest',          icon: Upload },
 ]
 
 const ADMIN_NAV = [
