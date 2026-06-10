@@ -86,27 +86,109 @@ _index = None
 _embedder: SentenceTransformer | None = None
 
 
-def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
-    """Split text while keeping table blocks (consecutive pipe-row lines) intact.
+def _is_table_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and (stripped.startswith("|") or stripped.count("|") >= 2)
 
-    A table block is a run of lines where every non-empty line starts with '|'
-    or contains '|'. The entire block is kept as a single chunk regardless of
-    size so table rows are never split across chunks.  Non-table text is split
-    normally by RecursiveCharacterTextSplitter.
+
+def _split_long_table(block: str, chunk_size: int) -> list[str]:
+    """Split an oversized table at row boundaries, prepending the header to each chunk.
+
+    Strategy:
+    - Row 0 (and row 1 if it's a separator like |---|---) = header, prepended to every chunk.
+    - Remaining rows are accumulated into chunks ≤ chunk_size.
+    - Each chunk is self-contained: header + N data rows.
+    """
+    rows = [r for r in block.split("\n") if r.strip()]
+    if not rows:
+        return []
+
+    # Identify header rows (first row + optional separator row like |---|---|)
+    header_rows: list[str] = [rows[0]]
+    data_start = 1
+    if len(rows) > 1 and all(c in "|-: " for c in rows[1].replace("|", "")):
+        header_rows.append(rows[1])
+        data_start = 2
+
+    header = "\n".join(header_rows)
+    data_rows = rows[data_start:]
+
+    chunks: list[str] = []
+    current_rows: list[str] = []
+    current_len = len(header) + 1
+
+    for row in data_rows:
+        row_len = len(row) + 1
+        if current_len + row_len > chunk_size and current_rows:
+            chunks.append(header + "\n" + "\n".join(current_rows))
+            current_rows = []
+            current_len = len(header) + 1
+        current_rows.append(row)
+        current_len += row_len
+
+    if current_rows:
+        chunks.append(header + "\n" + "\n".join(current_rows))
+
+    return chunks
+
+
+def _split_long_paragraph(para: str, chunk_size: int) -> list[str]:
+    """Split a paragraph that exceeds chunk_size at sentence boundaries.
+
+    Tries to cut on '. ', '? ', '! ' so chunks never end mid-sentence.
+    Falls back to RecursiveCharacterTextSplitter if no sentence boundary works.
     """
     import re
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap
-    )
+    if len(para) <= chunk_size:
+        return [para]
 
+    sentence_end = re.compile(r'(?<=[.?!])\s+')
+    sentences = sentence_end.split(para)
+
+    chunks: list[str] = []
+    current = ""
+    for sent in sentences:
+        if current and len(current) + len(sent) + 1 > chunk_size:
+            chunks.append(current.strip())
+            current = sent
+        else:
+            current = (current + " " + sent).strip() if current else sent
+
+    if current:
+        chunks.append(current.strip())
+
+    # Last-resort: if any chunk still exceeds limit, use RecursiveCharacterTextSplitter
+    result: list[str] = []
+    fallback = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+    for c in chunks:
+        if len(c) > chunk_size * 1.5:
+            result.extend(fallback.split_text(c))
+        else:
+            result.append(c)
+    return result
+
+
+def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
+    """Semantic-boundary chunking: keeps tables intact, respects paragraph and sentence breaks.
+
+    Paragraph text:
+    - Split first on paragraph boundaries (blank lines).
+    - Keep each paragraph as its own chunk if it fits within chunk_size.
+    - Paragraphs exceeding chunk_size are split at sentence boundaries (never mid-sentence).
+    - Overlap = full previous paragraph (not a fixed char count), up to chunk_overlap chars,
+      prepended to the next chunk so boundary paragraphs are always retrievable.
+
+    Table blocks (consecutive pipe-row lines):
+    - Short tables (≤ chunk_size): kept as one atomic chunk — all rows together.
+    - Long tables (> chunk_size): split at row boundaries with the header row
+      prepended to every sub-chunk so each piece is self-contained.
+    """
     lines = text.split("\n")
-    segments: list[tuple[str, bool]] = []  # (text_block, is_table)
+
+    # Segment the text into alternating table / narrative blocks
+    segments: list[tuple[str, bool]] = []  # (block_text, is_table)
     current_lines: list[str] = []
     in_table = False
-
-    def _is_table_line(line: str) -> bool:
-        stripped = line.strip()
-        return bool(stripped) and (stripped.startswith("|") or stripped.count("|") >= 2)
 
     for line in lines:
         is_tl = _is_table_line(line)
@@ -120,20 +202,42 @@ def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[s
     if current_lines:
         segments.append(("\n".join(current_lines), in_table))
 
-    chunks: list[str] = []
-    for block, is_table in segments:
-        if not block.strip():
-            continue
-        if is_table:
-            # Keep entire table as one chunk; split only if it's absurdly large
-            if len(block) > chunk_size * 4:
-                chunks.extend(splitter.split_text(block))
-            else:
-                chunks.append(block.strip())
-        else:
-            chunks.extend(splitter.split_text(block))
+    raw_chunks: list[str] = []
 
-    return [c for c in chunks if c.strip()]
+    for block, is_table in segments:
+        block = block.strip()
+        if not block:
+            continue
+
+        if is_table:
+            if len(block) <= chunk_size:
+                raw_chunks.append(block)
+            else:
+                raw_chunks.extend(_split_long_table(block, chunk_size))
+        else:
+            # Split on paragraph boundaries first
+            paragraphs = [p.strip() for p in block.split("\n\n") if p.strip()]
+            for para in paragraphs:
+                raw_chunks.extend(_split_long_paragraph(para, chunk_size))
+
+    if not raw_chunks:
+        return []
+
+    # Apply paragraph-level overlap: prepend the tail of the previous chunk
+    # (up to chunk_overlap chars) to each subsequent chunk so boundary content
+    # is duplicated into the next chunk's embedding.
+    final_chunks: list[str] = [raw_chunks[0]]
+    for i in range(1, len(raw_chunks)):
+        prev = raw_chunks[i - 1]
+        overlap_text = prev[-chunk_overlap:].strip() if len(prev) > chunk_overlap else prev
+        # Only prepend if the overlap isn't already in the current chunk
+        current = raw_chunks[i]
+        if overlap_text and not current.startswith(overlap_text):
+            final_chunks.append(overlap_text + "\n\n" + current)
+        else:
+            final_chunks.append(current)
+
+    return [c for c in final_chunks if c.strip()]
 
 
 def _get_embedder() -> SentenceTransformer:
