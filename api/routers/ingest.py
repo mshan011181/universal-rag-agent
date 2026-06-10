@@ -67,7 +67,7 @@ import urllib.parse
 
 from api.auth_utils import get_current_user_or_api_key, require_role
 from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source
-from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn
+from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn, write_audit
 from src.config import UPLOADS_DIR
 
 logger = structlog.get_logger()
@@ -137,9 +137,14 @@ async def ingest_file_endpoint(
             n = ingest_file(str(save_path), namespace=org_id, source_name=filename)
             _set_status("done", n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)
+            write_audit("ingest", user_id=user_id, org_id=org_id,
+                        detail={"source_name": filename, "ingest_type": "document",
+                                "chunks": n, "ingest_id": ingest_id})
         except Exception as e:
             logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
             _set_status("failed", 0)
+            write_audit("ingest", user_id=user_id, org_id=org_id, status="failure",
+                        detail={"source_name": filename, "error": str(e)[:200]})
 
     background_tasks.add_task(do_ingest)
 

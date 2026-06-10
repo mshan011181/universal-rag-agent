@@ -66,6 +66,18 @@ def init_db():
             status TEXT DEFAULT 'done'
         );
 
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type  TEXT NOT NULL,
+            user_id     TEXT,
+            email       TEXT,
+            org_id      TEXT,
+            detail      TEXT,
+            ip_address  TEXT,
+            status      TEXT DEFAULT 'success',
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS organisations (
             org_id   TEXT PRIMARY KEY,
             org_name TEXT NOT NULL,
@@ -265,6 +277,60 @@ def delete_ingest(ingest_id: str, user_id: str) -> str | None:
         )
         conn.commit()
     return source_name
+
+
+def write_audit(
+    event_type: str,
+    user_id: str | None = None,
+    email: str | None = None,
+    org_id: str | None = None,
+    detail: dict | None = None,
+    ip_address: str | None = None,
+    status: str = "success",
+) -> None:
+    """Write one audit log entry. Non-blocking — failures are silently ignored."""
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """INSERT INTO audit_log
+                   (event_type, user_id, email, org_id, detail, ip_address, status)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    event_type,
+                    user_id,
+                    email,
+                    org_id,
+                    json.dumps(detail) if detail else None,
+                    ip_address,
+                    status,
+                ),
+            )
+            conn.commit()
+    except Exception:
+        pass  # audit must never break the main request
+
+
+def get_audit_logs(
+    org_id: str,
+    event_type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    since: str | None = None,   # ISO datetime string
+) -> list[dict]:
+    """Return audit log entries for an org, newest first."""
+    query = "SELECT * FROM audit_log WHERE org_id=?"
+    params: list = [org_id]
+    if event_type:
+        query += " AND event_type=?"
+        params.append(event_type)
+    if since:
+        query += " AND created_at >= ?"
+        params.append(since)
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 def delete_cache_by_source(source_name: str) -> int:

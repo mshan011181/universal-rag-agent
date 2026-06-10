@@ -315,3 +315,35 @@ export async function updateUserQuota(userId: string, quotaBytes: number | null,
 export async function fetchHealth(): Promise<{ status: string; version: string }> {
   return request('/api/health')
 }
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: number
+  event_type: string
+  user_id: string | null
+  email: string | null
+  org_id: string | null
+  detail: string | null   // JSON string
+  ip_address: string | null
+  status: string
+  created_at: string
+}
+
+export async function getAuditLogs(params?: {
+  event_type?: string
+  since?: string
+  limit?: number
+  offset?: number
+}): Promise<{ logs: AuditEntry[]; count: number }> {
+  const qs = new URLSearchParams()
+  if (params?.event_type) qs.set('event_type', params.event_type)
+  if (params?.since)      qs.set('since', params.since)
+  if (params?.limit)      qs.set('limit', String(params.limit))
+  if (params?.offset)     qs.set('offset', String(params.offset))
+  return request(`/api/audit/logs?${qs}`)
+}
+
+export async function getAuditSummary(): Promise<{ event_type: string; total: number; failures: number; last_seen: string }[]> {
+  return request('/api/audit/summary')
+}

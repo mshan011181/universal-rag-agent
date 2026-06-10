@@ -1,11 +1,12 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 import structlog
 
 from api.auth_utils import get_current_user_or_api_key
 from src.agent import ask
+from src.memory.sqlite_store import write_audit
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -38,6 +39,7 @@ class QueryResponse(BaseModel):
 
 @router.post("/", response_model=QueryResponse)
 async def query_endpoint(
+    request: Request,
     body: QueryRequest,
     background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user_or_api_key),
@@ -65,6 +67,23 @@ async def query_endpoint(
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
         raise HTTPException(status_code=500, detail="Query processing failed")
+
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    write_audit(
+        event_type="query",
+        user_id=user["user_id"],
+        email=user.get("email"),
+        org_id=user.get("org_id"),
+        detail={
+            "query": query[:500],
+            "patterns": response.patterns_used,
+            "quality_score": response.quality_score,
+            "latency_ms": response.latency_ms,
+            "channel": response.retrieval_channel,
+            "cache_hit": response.verified_knowledge_hit,
+        },
+        ip_address=ip,
+    )
 
     logger.info(
         "query_complete",

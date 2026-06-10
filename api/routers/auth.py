@@ -10,7 +10,7 @@ from api.auth_utils import (
     create_refresh_token, decode_token,
 )
 from api.email_service import send_registration_otp, send_reset_otp
-from src.memory.sqlite_store import get_conn
+from src.memory.sqlite_store import get_conn, write_audit
 from src.config import APP_BASE_URL
 
 router = APIRouter()
@@ -293,6 +293,8 @@ async def register(body: RegisterRequest):
             raise HTTPException(status_code=409, detail="Email already registered")
         raise HTTPException(status_code=500, detail="Registration failed")
 
+    write_audit("register", user_id=user_id, email=email, org_id=org_id,
+                detail={"role": role, "org_action": body.org_action})
     return {"user_id": user_id, "email": email, "org_id": org_id, "role": role}
 
 
@@ -311,12 +313,18 @@ async def login(form: OAuth2PasswordRequestForm = Depends()):
     except Exception:
         row = None
 
+    email_input = form.username.lower().strip()
     if not row:
+        write_audit("login_failed", email=email_input, status="failure",
+                    detail={"reason": "email_not_found"})
         raise HTTPException(status_code=401, detail="email_not_found")
     if not verify_password(form.password, row[1]):
+        write_audit("login_failed", user_id=row[0], email=email_input,
+                    org_id=row[2], status="failure", detail={"reason": "wrong_password"})
         raise HTTPException(status_code=401, detail="wrong_password")
 
     user_id, org_id, role = row[0], row[2], row[3]
+    write_audit("login", user_id=user_id, email=email_input, org_id=org_id)
     payload = {"sub": user_id, "org_id": org_id, "role": role}
     return TokenResponse(
         access_token=create_access_token(payload),
@@ -390,6 +398,8 @@ async def reset_password(body: ResetPasswordRequest):
         )
         conn.commit()
 
+    write_audit("password_reset", user_id=user[0], email=body.email.lower().strip(),
+                detail={"method": "otp"})
     return {"message": "Password updated successfully. You can now sign in."}
 
 
@@ -436,4 +446,6 @@ async def reset_password_by_token(body: ResetByTokenRequest):
         )
         conn.commit()
 
+    write_audit("password_reset", user_id=user[0], email=email,
+                detail={"method": "token"})
     return {"message": "Password updated successfully. You can now sign in."}

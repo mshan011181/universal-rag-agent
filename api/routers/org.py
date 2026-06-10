@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr
 
 from api.auth_utils import get_current_user
 from api.email_service import send_org_invite
-from src.memory.sqlite_store import get_conn
+from src.memory.sqlite_store import get_conn, write_audit
 from src.config import APP_BASE_URL
 
 router = APIRouter()
@@ -151,9 +151,11 @@ async def invite_member(body: InviteRequest, user: dict = Depends(get_current_us
     # Send email (falls back silently if Resend not configured)
     sent = send_org_invite(email, user["email"], org_name, invite_link)
 
+    write_audit("invite_sent", user_id=user["user_id"], email=user["email"],
+                org_id=user["org_id"], detail={"invited_email": email, "email_sent": sent})
     return {
         "message": f"Invite sent to {email}",
-        "invite_link": invite_link,   # always returned so admin can copy-paste if email fails
+        "invite_link": invite_link,
         "email_sent": sent,
     }
 
@@ -209,4 +211,6 @@ async def remove_member(target_user_id: str, user: dict = Depends(get_current_us
         )
         conn.commit()
 
+    write_audit("member_removed", user_id=user["user_id"], email=user["email"],
+                org_id=user["org_id"], detail={"removed_email": target["email"], "removed_user_id": target_user_id})
     return {"message": f"Removed {target['email']} from your organisation."}
