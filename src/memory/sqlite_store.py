@@ -96,6 +96,13 @@ def init_db():
             used        INTEGER DEFAULT 0,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS retention_policy (
+            org_id              TEXT PRIMARY KEY,
+            audit_log_days      INTEGER DEFAULT 90,
+            conversation_days   INTEGER DEFAULT 90,
+            updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         """)
 
 
@@ -331,6 +338,101 @@ def get_audit_logs(
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Data Retention ───────────────────────────────────────────────────────────
+
+def get_retention_policy(org_id: str) -> dict:
+    """Return retention settings for an org. Defaults: 90 days for all."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT audit_log_days, conversation_days, updated_at FROM retention_policy WHERE org_id=?",
+            (org_id,)
+        ).fetchone()
+    if row:
+        return dict(row)
+    return {"audit_log_days": 90, "conversation_days": 90, "updated_at": None}
+
+
+def set_retention_policy(org_id: str, audit_log_days: int, conversation_days: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO retention_policy (org_id, audit_log_days, conversation_days, updated_at)
+               VALUES (?,?,?, CURRENT_TIMESTAMP)
+               ON CONFLICT(org_id) DO UPDATE SET
+                 audit_log_days=excluded.audit_log_days,
+                 conversation_days=excluded.conversation_days,
+                 updated_at=CURRENT_TIMESTAMP""",
+            (org_id, audit_log_days, conversation_days)
+        )
+        conn.commit()
+
+
+def purge_audit_logs(org_id: str, older_than_days: int) -> int:
+    """Delete audit_log rows for an org older than N days. Returns count deleted."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM audit_log WHERE org_id=? AND created_at < datetime('now', ? || ' days')",
+            (org_id, f"-{older_than_days}")
+        )
+        conn.commit()
+    return cur.rowcount
+
+
+def export_audit_logs_csv(
+    org_id: str,
+    event_type: str | None = None,
+    since: str | None = None,
+) -> str:
+    """Return all audit log rows for the org as a CSV string (for download/backup)."""
+    import csv, io
+    query = "SELECT id, event_type, user_id, email, org_id, detail, ip_address, status, created_at FROM audit_log WHERE org_id=?"
+    params: list = [org_id]
+    if event_type:
+        query += " AND event_type=?"
+        params.append(event_type)
+    if since:
+        query += " AND created_at >= ?"
+        params.append(since)
+    query += " ORDER BY created_at DESC"
+
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "event_type", "user_id", "email", "org_id", "detail", "ip_address", "status", "created_at"])
+    for r in rows:
+        writer.writerow([r["id"], r["event_type"], r["user_id"], r["email"], r["org_id"],
+                         r["detail"], r["ip_address"], r["status"], r["created_at"]])
+    return buf.getvalue()
+
+
+def erase_user_data(target_user_id: str, org_id: str) -> dict:
+    """
+    GDPR Right to Erasure — permanently delete all data for a user.
+    Removes: audit_log entries, conversation_history, ingest_history, user row.
+    Returns counts of rows deleted per table.
+    """
+    deleted: dict[str, int] = {}
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM audit_log WHERE user_id=? AND org_id=?", (target_user_id, org_id))
+        deleted["audit_log"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM conversation_history WHERE session_id LIKE ?", (f"{target_user_id}%",))
+        deleted["conversation_history"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM ingest_history WHERE user_id=?", (target_user_id,))
+        deleted["ingest_history"] = cur.rowcount
+
+        cur = conn.execute("DELETE FROM pattern_performance WHERE 1=0")  # not user-scoped, skip
+        deleted["pattern_performance"] = 0
+
+        cur = conn.execute("DELETE FROM users WHERE user_id=? AND org_id=?", (target_user_id, org_id))
+        deleted["users"] = cur.rowcount
+
+        conn.commit()
+    return deleted
 
 
 def delete_cache_by_source(source_name: str) -> int:

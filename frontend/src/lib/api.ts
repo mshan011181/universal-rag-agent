@@ -347,3 +347,36 @@ export async function getAuditLogs(params?: {
 export async function getAuditSummary(): Promise<{ event_type: string; total: number; failures: number; last_seen: string }[]> {
   return request('/api/audit/summary')
 }
+
+export async function exportAuditLogs(params?: { event_type?: string; since?: string }): Promise<void> {
+  const qs = new URLSearchParams()
+  if (params?.event_type) qs.set('event_type', params.event_type)
+  if (params?.since)      qs.set('since', params.since)
+  const headers: Record<string, string> = {}
+  if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`
+  const res = await fetch(`${BASE}/api/audit/export?${qs}`, { headers })
+  if (!res.ok) throw new Error('Export failed')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `audit_log_${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function getRetentionPolicy(): Promise<{ audit_log_days: number; conversation_days: number; updated_at: string | null }> {
+  return request('/api/audit/retention')
+}
+
+export async function setRetentionPolicy(audit_log_days: number, conversation_days: number): Promise<{ message: string }> {
+  return request('/api/audit/retention', { method: 'PUT', body: JSON.stringify({ audit_log_days, conversation_days }) })
+}
+
+export async function purgeAuditLogs(): Promise<{ message: string; deleted_rows: number; retention_days: number }> {
+  return request('/api/audit/purge', { method: 'POST' })
+}
+
+export async function eraseUserData(targetUserId: string): Promise<{ message: string; erased_email: string; rows_deleted: Record<string, number> }> {
+  return request(`/api/audit/users/${targetUserId}/erase`, { method: 'DELETE' })
+}
