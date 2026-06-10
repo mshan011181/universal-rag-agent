@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from 'react'
 import { Building2, Users, Mail, Trash2, Copy, CheckCircle, AlertCircle, Crown, User } from 'lucide-react'
 import { getOrgInfo, listOrgMembers, inviteMember, removeMember, updateOrgName } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
+import AppShell from '@/components/layout/AppShell'
 
 interface Member {
   user_id: string
@@ -107,13 +108,16 @@ export default function TeamPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
-      </div>
+      <AppShell>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
+        </div>
+      </AppShell>
     )
   }
 
   return (
+    <AppShell>
     <div className="flex-1 overflow-auto p-6 max-w-3xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -243,5 +247,6 @@ export default function TeamPage() {
         </div>
       )}
     </div>
+    </AppShell>
   )
 }

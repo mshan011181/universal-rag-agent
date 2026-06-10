@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, Search, RefreshCw, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react'
 import { getAuditLogs, getAuditSummary, type AuditEntry } from '@/lib/api'
+import AppShell from '@/components/layout/AppShell'
 
 const EVENT_LABELS: Record<string, { label: string; color: string }> = {
   query:           { label: 'Query',          color: 'bg-blue-100 text-blue-700' },
@@ -91,6 +92,7 @@ export default function AuditLogPage() {
     : logs
 
   return (
+    <AppShell>
     <div className="flex-1 overflow-auto p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -201,5 +203,6 @@ export default function AuditLogPage() {
         )}
       </div>
     </div>
+    </AppShell>
   )
 }
