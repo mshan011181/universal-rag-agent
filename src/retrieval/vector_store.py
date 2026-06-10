@@ -86,6 +86,56 @@ _index = None
 _embedder: SentenceTransformer | None = None
 
 
+def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
+    """Split text while keeping table blocks (consecutive pipe-row lines) intact.
+
+    A table block is a run of lines where every non-empty line starts with '|'
+    or contains '|'. The entire block is kept as a single chunk regardless of
+    size so table rows are never split across chunks.  Non-table text is split
+    normally by RecursiveCharacterTextSplitter.
+    """
+    import re
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+
+    lines = text.split("\n")
+    segments: list[tuple[str, bool]] = []  # (text_block, is_table)
+    current_lines: list[str] = []
+    in_table = False
+
+    def _is_table_line(line: str) -> bool:
+        stripped = line.strip()
+        return bool(stripped) and (stripped.startswith("|") or stripped.count("|") >= 2)
+
+    for line in lines:
+        is_tl = _is_table_line(line)
+        if is_tl != in_table:
+            if current_lines:
+                segments.append(("\n".join(current_lines), in_table))
+            current_lines = [line]
+            in_table = is_tl
+        else:
+            current_lines.append(line)
+    if current_lines:
+        segments.append(("\n".join(current_lines), in_table))
+
+    chunks: list[str] = []
+    for block, is_table in segments:
+        if not block.strip():
+            continue
+        if is_table:
+            # Keep entire table as one chunk; split only if it's absurdly large
+            if len(block) > chunk_size * 4:
+                chunks.extend(splitter.split_text(block))
+            else:
+                chunks.append(block.strip())
+        else:
+            chunks.extend(splitter.split_text(block))
+
+    return [c for c in chunks if c.strip()]
+
+
 def _get_embedder() -> SentenceTransformer:
     global _embedder
     if _embedder is None:
@@ -838,7 +888,7 @@ def ingest_file(
     if raw_text is not None:
         _prog(78, "Chunking text")
         raw_text = _clean_text(raw_text)
-        text_chunks = splitter.split_text(raw_text)
+        text_chunks = _table_aware_split(raw_text, _chunk_size, _chunk_overlap)
         if not text_chunks:
             return 0
         _prog(85, f"Generating embeddings for {len(text_chunks)} chunks")

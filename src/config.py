@@ -89,7 +89,7 @@ TOP_K = 15
 # Smaller chunks for tabular/structured data → better cell-level precision
 # Larger chunks for narrative text → better context preservation
 CHUNK_SIZES: dict[str, tuple[int, int]] = {
-    "narrative":  (1000, 200),   # PDF, DOCX, TXT, MD, PPTX
+    "narrative":  (1200, 300),   # PDF, DOCX, TXT, MD, PPTX — larger overlap keeps boundary content retrievable
     "tabular":    (400,  50),    # XLSX, XLS, CSV
     "code":       (600,  100),   # JSON, code files
 }
