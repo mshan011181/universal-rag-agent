@@ -52,17 +52,21 @@ export default function IngestPage() {
     }
   }
 
+  const historyRef = useRef(history)
+  useEffect(() => { historyRef.current = history }, [history])
+
   useEffect(() => {
     loadHistory()
-    // Poll faster (2s) when any item is processing, slower (6s) otherwise
     const interval = setInterval(() => {
-      const allItems = Object.values(history.by_type).flat() as any[]
+      const allItems = Object.values(historyRef.current.by_type).flat() as any[]
       const hasProcessing = allItems.some((i: any) => i.status === 'processing')
-      loadHistory(true)
-      if (!hasProcessing) return  // will naturally re-check next tick
+      // Poll every 2s when something is processing, every 6s when idle
+      if (hasProcessing || Math.random() < 0.34) {
+        loadHistory(true)
+      }
     }, 2000)
     return () => clearInterval(interval)
-  }, [history])
+  }, [])
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
