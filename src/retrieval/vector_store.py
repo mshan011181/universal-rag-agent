@@ -87,8 +87,25 @@ _embedder: SentenceTransformer | None = None
 
 
 def _is_table_line(line: str) -> bool:
+    """Return True if this line is part of a serialised table block.
+
+    Matches both formats produced by _rows_to_text:
+      - Plain pipe rows:    "Col A | Col B | Col C"        (>= 1 pipe)
+      - Enriched rows:      "Label: Col=val | Col=val"     (1+ pipe, contains '=')
+    Also matches markdown-style rows that start with '|'.
+    """
     stripped = line.strip()
-    return bool(stripped) and (stripped.startswith("|") or stripped.count("|") >= 2)
+    if not stripped:
+        return False
+    if stripped.startswith("|"):
+        return True
+    pipes = stripped.count("|")
+    if pipes >= 2:
+        return True
+    # Enriched row: "Label: ColA=value | ColB=value" has exactly 1 pipe
+    if pipes == 1 and "=" in stripped and ":" in stripped:
+        return True
+    return False
 
 
 def _split_long_table(block: str, chunk_size: int) -> list[str]:
