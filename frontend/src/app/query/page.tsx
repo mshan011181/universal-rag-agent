@@ -370,7 +370,7 @@ export default function QueryPage() {
                 }`}
               >
                 <ImagePlus className="w-4 h-4" />
-                Image / Question Paper
+                Image
               </button>
             </div>
 
@@ -378,7 +378,7 @@ export default function QueryPage() {
             {inputMode === 'image' && (
               <form onSubmit={handleImageSubmit} className="space-y-4">
                 <div>
-                  <label className="label">Upload image (question paper, exam sheet, screenshot)</label>
+                  <label className="label">Upload image</label>
                   <label className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                     imageFile ? 'border-brand-400 bg-brand-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
                   }`}>
