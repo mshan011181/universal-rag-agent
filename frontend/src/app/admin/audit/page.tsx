@@ -225,17 +225,19 @@ export default function AuditLogPage() {
 
         {/* Purge section */}
         <div className="mt-5 pt-5 border-t border-gray-100">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Purge old audit logs</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Permanently deletes logs older than {retDays.audit_log_days} days.
-                <strong className="text-amber-600"> Download CSV backup first.</strong>
-              </p>
-              {purgeResult && <p className="text-xs text-green-600 mt-1">{purgeResult}</p>}
-            </div>
+          <p className="text-sm font-medium text-gray-700 mb-1">Purge old audit logs</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Permanently deletes logs older than {retDays.audit_log_days} days. Back up first.
+          </p>
+          {purgeResult && <p className="text-xs text-green-600 mb-3">{purgeResult}</p>}
+          <div className="flex items-center gap-3">
+            <button onClick={handleExport} disabled={exporting}
+              className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border border-brand-300 text-brand-700 bg-brand-50 hover:bg-brand-100">
+              <Download className={`w-4 h-4 ${exporting ? 'animate-bounce' : ''}`} />
+              {exporting ? 'Downloading…' : 'Download CSV backup'}
+            </button>
             <button onClick={handlePurge} disabled={purging}
-              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 shrink-0">
+              className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
               <Trash2 className="w-4 h-4" />
               {purging ? 'Purging…' : 'Purge now'}
             </button>
