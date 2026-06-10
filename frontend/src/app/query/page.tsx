@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { submitQuery, fetchUserStats, getIngestHistory } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
+import { useVoiceInput } from '@/hooks/useVoiceInput'
 
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2]
 
@@ -94,6 +95,11 @@ export default function QueryPage() {
   const [showModelsInfo, setShowModelsInfo] = useState(false)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
+
+  // Voice input (speech-to-text)
+  const voice = useVoiceInput({
+    onResult: (transcript) => setQuery(prev => (prev ? prev + ' ' : '') + transcript),
+  })
 
   // Source filter state
   const [showSourceFilter, setShowSourceFilter] = useState(false)
@@ -247,15 +253,46 @@ export default function QueryPage() {
           <div className="card p-5 mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="label">Question</label>
-                <textarea
-                  className="input resize-none"
-                  rows={3}
-                  placeholder="What would you like to know?"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  required
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">Question</label>
+                  {voice.supported && (
+                    <button
+                      type="button"
+                      onClick={voice.listening ? voice.stopListening : voice.startListening}
+                      title={voice.listening ? 'Stop recording' : 'Ask by voice'}
+                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                        voice.listening
+                          ? 'bg-red-50 border-red-300 text-red-600 animate-pulse'
+                          : 'bg-white border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-600'
+                      }`}
+                    >
+                      {voice.listening
+                        ? <><MicOff className="w-3.5 h-3.5" /> Stop recording</>
+                        : <><Mic className="w-3.5 h-3.5" /> Ask by voice</>}
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <textarea
+                    className={`input resize-none ${voice.listening ? 'border-red-300 ring-1 ring-red-200' : ''}`}
+                    rows={3}
+                    placeholder={voice.listening ? '🎤 Listening… speak your question…' : 'What would you like to know?'}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    required
+                  />
+                  {voice.listening && (
+                    <span className="absolute right-3 bottom-3 flex items-center gap-1 text-xs text-red-500">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />
+                      Recording
+                    </span>
+                  )}
+                </div>
+                {voice.error && (
+                  <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />{voice.error}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
