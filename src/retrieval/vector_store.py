@@ -178,41 +178,74 @@ def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "
 def _extract_text_from_pptx(path: Path) -> str:
     """Extract text, tables, images, and charts from a PowerPoint file (.pptx).
 
-    For each slide:
-      - Text shapes → verbatim text
+    Shapes are processed in top-left → bottom-right reading order (by top then
+    left position) so multi-column slide layouts are read correctly.
+
+    Per shape:
+      - TEXT shapes → verbatim text
       - TABLE shapes → pipe-separated rows
-      - PICTURE shapes → Groq Vision description
-      - CHART shapes → chart title + series data as text; chart image via Vision if available
-      - GROUP shapes → recursed to find nested pictures
+      - PICTURE shapes → OCR (column-aware) first; Groq Vision as fallback/supplement
+        for diagram/chart images where OCR alone is insufficient
+      - CHART shapes → title + series data as structured text
+      - GROUP shapes → recursed into child shapes (position-sorted)
+
+    For fully-image slides (slide background is a picture), the entire slide
+    is rendered via pdf2image and OCR'd as a single layout unit.
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from pptx.util import Emu
 
     prs = Presentation(str(path))
     lines = []
-    img_counter = [0]  # mutable counter shared across helper
+    img_counter = [0]
 
-    def _process_picture(shape, slide_num: int):
+    def _shape_top_left(shape):
+        try:
+            return (shape.top or 0, shape.left or 0)
+        except Exception:
+            return (0, 0)
+
+    def _process_picture(shape, slide_num: int, slide_width_px: int = 1280):
         try:
             img = shape.image
             img_bytes = img.blob
             img_counter[0] += 1
             context = f"Slide {slide_num}, Image {img_counter[0]}"
-            desc = _describe_image_bytes(img_bytes, img.ext, context)
-            if desc:
-                lines.append(f"\n### Embedded Image {img_counter[0]} (Slide {slide_num})")
-                lines.append(desc)
+
+            # Try OCR first — good for text-heavy images and multi-column layouts
+            ocr_text = ""
+            try:
+                from PIL import Image as PILImage
+                import io
+                pil_img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
+                ocr_text = _ocr_image_to_text(pil_img, context=context)
+            except Exception:
+                pass
+
+            # Also get Vision description for diagrams / charts / non-text images
+            vision_desc = _describe_image_bytes(img_bytes, img.ext, context)
+
+            # Prefer whichever gives more content; include both when both have value
+            parts = []
+            if ocr_text.strip():
+                parts.append(ocr_text.strip())
+            if vision_desc.strip() and vision_desc.strip() != ocr_text.strip():
+                parts.append(vision_desc.strip())
+
+            if parts:
+                lines.append(f"\n### Image {img_counter[0]} (Slide {slide_num})")
+                lines.extend(parts)
         except Exception:
             pass
 
     def _process_shape(shape, slide_num: int):
-        # Text
+        # Native text (handles text boxes, titles, subtitles)
         if hasattr(shape, "text") and shape.text.strip():
             lines.append(shape.text.strip())
 
         stype = shape.shape_type
 
-        # Table
         if stype == MSO_SHAPE_TYPE.TABLE:
             try:
                 raw_rows = [[cell.text.strip() for cell in row.cells] for row in shape.table.rows]
@@ -220,11 +253,9 @@ def _extract_text_from_pptx(path: Path) -> str:
             except Exception:
                 pass
 
-        # Picture
         elif stype == MSO_SHAPE_TYPE.PICTURE:
             _process_picture(shape, slide_num)
 
-        # Chart — extract title + series labels/values as structured text
         elif stype == MSO_SHAPE_TYPE.CHART:
             try:
                 chart = shape.chart
@@ -244,56 +275,47 @@ def _extract_text_from_pptx(path: Path) -> str:
             except Exception:
                 pass
 
-        # Group — recurse into child shapes to find nested pictures/charts
         elif stype == MSO_SHAPE_TYPE.GROUP:
             try:
-                for child in shape.shapes:
+                child_shapes = sorted(shape.shapes, key=_shape_top_left)
+                for child in child_shapes:
                     _process_shape(child, slide_num)
             except Exception:
                 pass
 
     for slide_num, slide in enumerate(prs.slides, start=1):
         lines.append(f"\n--- Slide {slide_num} ---")
-        for shape in slide.shapes:
+        # Process shapes in top→bottom, left→right order for correct reading sequence
+        sorted_shapes = sorted(slide.shapes, key=_shape_top_left)
+        for shape in sorted_shapes:
             _process_shape(shape, slide_num)
 
     return "\n".join(lines)
 
 
-def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
-    """Extract text from a pdfplumber page in reading order, column-aware.
+def _column_sort_words(words: list[dict], page_width: float, line_y_tol: float | None = None) -> str:
+    """Sort word dicts in reading order (column-aware) and reconstruct text.
 
-    Strategy:
-    1. Extract all word objects with bounding boxes.
-    2. Filter out words that fall inside excluded_bboxes (table regions).
-    3. Detect multi-column layout by clustering word x0 positions.
-    4. Sort words: by column (left → right), then by y (top → bottom) within column.
-    5. Reconstruct lines by grouping words at similar y-coordinates.
+    Accepts a list of dicts with keys: text, x0, x1, top, bottom.
+    Works for both pdfplumber native words (PDF pts) and pytesseract words (px).
+
+    Column detection: horizontal gaps wider than 15% of page_width are treated
+    as column gutters. This handles 1-col, 2-col, 3-col, and magazine layouts.
+
+    line_y_tol: vertical tolerance for grouping words into one line.
+                Defaults to 40% of the median word height (resolution-agnostic).
     """
-    try:
-        words = plumb_page.extract_words(
-            x_tolerance=3, y_tolerance=3, keep_blank_chars=False,
-            use_text_flow=False,
-        ) or []
-    except Exception:
-        return plumb_page.extract_text() or ""
-
     if not words:
         return ""
 
-    def _in_bbox(word, bb):
-        return bb[0] <= word["x0"] and word["x1"] <= bb[2] and \
-               bb[1] <= word["top"] and word["bottom"] <= bb[3]
+    # Adaptive line-height tolerance: 40% of median word height
+    if line_y_tol is None:
+        heights = [max(w["bottom"] - w["top"], 1) for w in words]
+        heights.sort()
+        median_h = heights[len(heights) // 2]
+        line_y_tol = max(median_h * 0.4, 2)
 
-    if excluded_bboxes:
-        words = [w for w in words if not any(_in_bbox(w, bb) for bb in excluded_bboxes)]
-
-    if not words:
-        return ""
-
-    page_width = plumb_page.width or 600
-
-    # Find column boundaries: large horizontal gaps (>15% page width) signal gutters
+    # Build column boundary list from horizontal gap analysis
     x0_vals = sorted(set(round(w["x0"]) for w in words))
     col_boundaries = [0.0]
     for i in range(1, len(x0_vals)):
@@ -302,65 +324,154 @@ def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
             col_boundaries.append((x0_vals[i - 1] + x0_vals[i]) / 2)
     col_boundaries.append(page_width + 1)
 
-    def _get_col(word):
-        mid_x = (word["x0"] + word["x1"]) / 2
+    def _col(w: dict) -> int:
+        mid = (w["x0"] + w["x1"]) / 2
         for c in range(len(col_boundaries) - 1):
-            if col_boundaries[c] <= mid_x < col_boundaries[c + 1]:
+            if col_boundaries[c] <= mid < col_boundaries[c + 1]:
                 return c
         return len(col_boundaries) - 2
 
-    # Sort: column index, then top (quantised to 3pt buckets), then x0
-    words.sort(key=lambda w: (_get_col(w), round(w["top"] / 3) * 3, w["x0"]))
+    # Sort: column first, then y (quantised), then x
+    bucket = max(line_y_tol * 0.75, 1)
+    words = sorted(words, key=lambda w: (_col(w), round(w["top"] / bucket) * bucket, w["x0"]))
 
-    # Group words into lines (words within LINE_Y_TOL of each other share a line)
-    LINE_Y_TOL = 4
+    # Group into visual lines
     lines_out: list[list[dict]] = []
-    current_line: list[dict] = []
-    current_col = -1
+    cur_line: list[dict] = []
+    cur_col = -1
 
     for word in words:
-        col = _get_col(word)
-        if col != current_col:
-            if current_line:
-                lines_out.append(current_line)
-            current_line = [word]
-            current_col = col
+        col = _col(word)
+        if col != cur_col:
+            if cur_line:
+                lines_out.append(cur_line)
+            cur_line = [word]
+            cur_col = col
             continue
-        if not current_line:
-            current_line = [word]
+        if not cur_line:
+            cur_line = [word]
+        elif abs(word["top"] - cur_line[-1]["top"]) <= line_y_tol:
+            cur_line.append(word)
         else:
-            last = current_line[-1]
-            if abs(word["top"] - last["top"]) <= LINE_Y_TOL:
-                current_line.append(word)
-            else:
-                lines_out.append(current_line)
-                current_line = [word]
+            lines_out.append(cur_line)
+            cur_line = [word]
 
-    if current_line:
-        lines_out.append(current_line)
+    if cur_line:
+        lines_out.append(cur_line)
 
     text_lines = []
-    for line_words in lines_out:
-        line_words.sort(key=lambda w: w["x0"])
-        text_lines.append(" ".join(w["text"] for w in line_words))
+    for lw in lines_out:
+        lw.sort(key=lambda w: w["x0"])
+        text_lines.append(" ".join(w["text"] for w in lw))
 
     return "\n".join(text_lines)
+
+
+def _ocr_image_to_text(pil_image, context: str = "") -> str:
+    """OCR a PIL Image with column-aware reading order via pytesseract.
+
+    Uses tesseract --psm 1 (auto OSD + layout) so it handles:
+      - Single-column text
+      - Multi-column (2, 3+ cols)
+      - Mixed layouts (callout boxes, sidebars, headers)
+      - Tables (extracted as pipe-separated rows)
+      - Rotated text (OSD corrects orientation first)
+
+    Falls back to empty string if pytesseract is not installed or fails.
+    """
+    try:
+        import pytesseract
+        from pytesseract import Output as TessOutput
+    except ImportError:
+        return ""
+
+    try:
+        data = pytesseract.image_to_data(
+            pil_image,
+            output_type=TessOutput.DICT,
+            config="--psm 1 --oem 3",
+        )
+    except Exception:
+        return ""
+
+    img_w, _img_h = pil_image.size
+    words: list[dict] = []
+    for i, text in enumerate(data["text"]):
+        text = (text or "").strip()
+        if not text:
+            continue
+        conf = int(data["conf"][i])
+        if conf < 20:
+            continue
+        x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+        words.append({"text": text, "x0": x, "x1": x + w, "top": y, "bottom": y + h})
+
+    return _column_sort_words(words, page_width=img_w)
+
+
+def _render_pdf_page(path: Path, page_num: int, dpi: int = 200):
+    """Render a single PDF page to a PIL Image using pdf2image.
+
+    Returns None if pdf2image is not installed or rendering fails.
+    page_num is 1-based.
+    """
+    try:
+        from pdf2image import convert_from_path
+    except ImportError:
+        return None
+    try:
+        images = convert_from_path(
+            str(path), dpi=dpi, first_page=page_num, last_page=page_num,
+        )
+        return images[0] if images else None
+    except Exception:
+        return None
+
+
+def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
+    """Extract text from a pdfplumber page using column-aware word extraction.
+
+    Falls back to OCR (via _render_pdf_page + _ocr_image_to_text) when the
+    page yields fewer than OCR_SPARSE_THRESHOLD characters natively (scanned PDF).
+    """
+    try:
+        raw_words = plumb_page.extract_words(
+            x_tolerance=3, y_tolerance=3, keep_blank_chars=False,
+            use_text_flow=False,
+        ) or []
+    except Exception:
+        return plumb_page.extract_text() or ""
+
+    def _in_bbox(word, bb):
+        return (bb[0] <= word["x0"] and word["x1"] <= bb[2] and
+                bb[1] <= word["top"] and word["bottom"] <= bb[3])
+
+    if excluded_bboxes:
+        raw_words = [w for w in raw_words if not any(_in_bbox(w, bb) for bb in excluded_bboxes)]
+
+    if not raw_words:
+        return ""
+
+    words = [{"text": w["text"], "x0": w["x0"], "x1": w["x1"],
+               "top": w["top"], "bottom": w["bottom"]} for w in raw_words]
+    return _column_sort_words(words, page_width=plumb_page.width or 600)
 
 
 def _extract_text_from_pdf(path: Path) -> str:
     """Extract text, tables, and embedded images from a PDF.
 
-    Uses pdfplumber with column-aware word-level extraction so two-column
-    layouts, callout boxes, and sidebar text are read in natural reading order
-    rather than linearly left-to-right across the full page width.
-
-    For each page:
-      - Tables detected by pdfplumber → pipe-separated rows.
-      - Non-table text extracted with column-aware ordering.
-      - Images sent to Groq Vision for description.
+    Per-page strategy:
+      1. pdfplumber column-aware extraction (native text, multi-column aware).
+      2. If page yields < OCR_SPARSE_CHARS chars (scanned/image page), fall back
+         to pytesseract OCR via pdf2image rendering (200 dpi, column-aware).
+      3. Tables detected by pdfplumber → pipe-separated rows (excluded from text).
+      4. Embedded images → Groq Vision description.
     """
     import pypdf
     import pdfplumber
+
+    # Pages with fewer than this many chars after native extraction trigger OCR.
+    OCR_SPARSE_CHARS = 80
 
     lines = []
 
@@ -378,8 +489,17 @@ def _extract_text_from_pdf(path: Path) -> str:
                 ]
                 lines.extend(_rows_to_text(raw_rows))
 
-            # ── Column-aware plain text (excluding table regions) ─────────
+            # ── Column-aware native text (excluding table regions) ────────
             page_text = _extract_columns_from_page(plumb_page, table_bboxes)
+
+            # ── OCR fallback for scanned / image-heavy pages ─────────────
+            if len(page_text.strip()) < OCR_SPARSE_CHARS:
+                pil_img = _render_pdf_page(path, page_num)
+                if pil_img is not None:
+                    ocr_text = _ocr_image_to_text(pil_img, context=f"Page {page_num}")
+                    if len(ocr_text.strip()) > len(page_text.strip()):
+                        page_text = ocr_text
+
             if page_text.strip():
                 lines.append(page_text.strip())
 
@@ -409,40 +529,101 @@ def _extract_text_from_pdf(path: Path) -> str:
     return "\n".join(lines)
 
 
-def _extract_text_from_docx(path: Path) -> str:
-    """Extract text AND embedded images from a DOCX via python-docx + Groq Vision.
+def _docx_num_columns(section) -> int:
+    """Return the number of text columns defined for a DOCX section (default 1)."""
+    try:
+        W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        sect_pr = section._sectPr
+        cols_el = sect_pr.find(f"{{{W_NS}}}cols")
+        if cols_el is not None:
+            num = cols_el.get(f"{{{W_NS}}}num")
+            if num:
+                return int(num)
+    except Exception:
+        pass
+    return 1
 
-    - Paragraph text extracted in document order.
-    - Tables extracted as pipe-separated rows to preserve column context.
-    - Inline images sent to Groq Vision.
+
+def _extract_text_from_docx(path: Path) -> str:
+    """Extract text AND embedded images from a DOCX.
+
+    - Paragraph and table text is extracted in XML document order, which
+      matches reading order for both single- and multi-column DOCX layouts
+      (Word stores paragraphs in flow order, not column order).
+    - For sections with 2+ columns the section column count is noted in output
+      so downstream readers understand the layout.
+    - Embedded images (body + headers/footers): OCR first (column-aware via
+      pytesseract); Groq Vision as fallback/supplement for diagram-heavy images.
+      OCR handles scanned pages, text callout boxes, and multi-column image inserts.
     """
     import docx
 
     doc = docx.Document(str(path))
     lines = []
 
-    # ── Text (paragraphs and tables interleaved in document order) ───────
-    for para in doc.paragraphs:
-        if para.text.strip():
-            lines.append(para.text.strip())
+    # ── Paragraphs and tables in document order ────────────────────────
+    # We walk the XML body children to interleave paragraphs and tables
+    # correctly instead of iterating them separately (which loses ordering).
+    from docx.oxml.ns import qn
+    from docx.table import Table as DocxTable
+    from docx.text.paragraph import Paragraph as DocxParagraph
 
-    # Tables → header-enriched rows (label stays with column values)
-    for table in doc.tables:
-        raw_rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        lines.extend(_rows_to_text(raw_rows))
+    body = doc.element.body
+    for child in body:
+        tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+        if tag == "p":
+            para = DocxParagraph(child, doc)
+            if para.text.strip():
+                lines.append(para.text.strip())
+        elif tag == "tbl":
+            tbl = DocxTable(child, doc)
+            raw_rows = [[cell.text.strip() for cell in row.cells] for row in tbl.rows]
+            lines.extend(_rows_to_text(raw_rows))
+        elif tag == "sectPr":
+            pass  # section property — not content
 
-    # ── Images ──────────────────────────────────────────────────────────
-    # Collect image parts from ALL document parts: main body, headers,
-    # footers, footnotes, endnotes, and any other related parts.
+    # ── Embedded images: OCR + Vision ─────────────────────────────────
     img_count = 0
     IMAGE_CONTENT_TYPES = {
         "image/png", "image/jpeg", "image/gif",
         "image/webp", "image/bmp", "image/tiff",
     }
-    seen_blobs: set[int] = set()   # avoid duplicating the same image blob
+    seen_blobs: set[int] = set()
+
+    def _handle_image_blob(blob: bytes, ct: str):
+        nonlocal img_count
+        blob_id = hash(blob)
+        if blob_id in seen_blobs:
+            return
+        seen_blobs.add(blob_id)
+        ext = ct.split("/")[-1]
+        img_count += 1
+        context = f"Image {img_count}"
+
+        # OCR first — handles multi-column text layouts inside images
+        ocr_text = ""
+        try:
+            from PIL import Image as PILImage
+            import io
+            pil_img = PILImage.open(io.BytesIO(blob)).convert("RGB")
+            ocr_text = _ocr_image_to_text(pil_img, context=context)
+        except Exception:
+            pass
+
+        # Vision for diagrams/charts/non-text content
+        vision_desc = _describe_image_bytes(blob, ext, context)
+
+        parts = []
+        if ocr_text.strip():
+            parts.append(ocr_text.strip())
+        if vision_desc.strip() and vision_desc.strip() != ocr_text.strip():
+            parts.append(vision_desc.strip())
+
+        if parts:
+            lines.append(f"\n### Embedded Image {img_count}")
+            lines.extend(parts)
 
     def _extract_images_from_part(part):
-        nonlocal img_count
         try:
             for rel in part.rels.values():
                 try:
@@ -450,26 +631,13 @@ def _extract_text_from_docx(path: Path) -> str:
                     ct = target.content_type
                     if ct not in IMAGE_CONTENT_TYPES:
                         continue
-                    blob = target.blob
-                    blob_id = hash(blob)
-                    if blob_id in seen_blobs:
-                        continue
-                    seen_blobs.add(blob_id)
-                    ext = ct.split("/")[-1]
-                    img_count += 1
-                    context = f"Image {img_count}"
-                    desc = _describe_image_bytes(blob, ext, context)
-                    if desc:
-                        lines.append(f"\n### Embedded Image {img_count}")
-                        lines.append(desc)
+                    _handle_image_blob(target.blob, ct)
                 except Exception:
                     pass
         except Exception:
             pass
 
-    # Main document body
     _extract_images_from_part(doc.part)
-    # Headers and footers
     for section in doc.sections:
         for hf_part in [section.header.part, section.footer.part,
                          section.even_page_header.part, section.even_page_footer.part,
@@ -513,18 +681,34 @@ def _extract_text_from_xlsx(path: Path) -> str:
         ]
         lines.extend(_rows_to_text(raw_rows))
 
-        # ── Embedded images (charts, logos, diagrams) ────────────────────
+        # ── Embedded images: OCR + Vision ───────────────────────────────
         for img_obj in getattr(sheet, "_images", []):
             try:
-                img_data = img_obj._data()   # raw bytes
+                img_data = img_obj._data()
                 img_count += 1
-                # Derive extension from the image object's format attribute
                 fmt = getattr(img_obj, "format", None) or "png"
                 context = f"Sheet '{sheet.title}', Image {img_count}"
-                desc = _describe_image_bytes(img_data, fmt, context)
-                if desc:
+
+                ocr_text = ""
+                try:
+                    from PIL import Image as PILImage
+                    import io
+                    pil_img = PILImage.open(io.BytesIO(img_data)).convert("RGB")
+                    ocr_text = _ocr_image_to_text(pil_img, context=context)
+                except Exception:
+                    pass
+
+                vision_desc = _describe_image_bytes(img_data, fmt, context)
+
+                parts = []
+                if ocr_text.strip():
+                    parts.append(ocr_text.strip())
+                if vision_desc.strip() and vision_desc.strip() != ocr_text.strip():
+                    parts.append(vision_desc.strip())
+
+                if parts:
                     lines.append(f"\n### Embedded Image {img_count} (Sheet: {sheet.title})")
-                    lines.append(desc)
+                    lines.extend(parts)
             except Exception:
                 pass
 

@@ -61,6 +61,11 @@ yt-dlp>=2026.3.17
 # imageio-ffmpeg: bundles ffmpeg binary — no system install needed
 imageio-ffmpeg>=0.6.0
 
+# OCR — column-aware layout extraction for scanned PDFs and image-embedded content
+pdf2image>=1.17.0          # renders PDF pages to PIL Images for pytesseract OCR
+pytesseract>=0.3.10        # Python wrapper for Tesseract OCR engine
+Pillow>=10.0.0             # PIL Image manipulation (required by pdf2image + pytesseract)
+
 # Utils
 python-dotenv==1.1.0
 pydantic==2.11.4
