@@ -253,35 +253,34 @@ export default function QueryPage() {
           <div className="card p-5 mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="label mb-0">Question</label>
-                  <button
-                    type="button"
-                    onClick={voice.supported ? (voice.listening ? voice.stopListening : voice.startListening) : undefined}
-                    disabled={!voice.supported}
-                    title={!voice.supported ? 'No microphone detected' : voice.listening ? 'Stop recording' : 'Ask by voice'}
-                    className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${
-                      !voice.supported
-                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed opacity-50'
-                        : voice.listening
-                          ? 'bg-red-50 border-red-300 text-red-600 animate-pulse'
-                          : 'bg-white border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-600'
-                    }`}
-                  >
-                    {voice.listening
-                      ? <><MicOff className="w-3.5 h-3.5" /> Stop recording</>
-                      : <><Mic className="w-3.5 h-3.5" /> Ask by voice</>}
-                  </button>
-                </div>
+                <label className="label">Question</label>
                 <div className="relative">
                   <textarea
-                    className={`input resize-none ${voice.listening ? 'border-red-300 ring-1 ring-red-200' : ''}`}
+                    className={`input resize-none pr-36 ${voice.listening ? 'border-red-300 ring-1 ring-red-200' : ''}`}
                     rows={3}
                     placeholder={voice.listening ? '🎤 Listening… speak your question…' : 'What would you like to know?'}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     required
                   />
+                  {/* Mic button — pinned inside textarea top-right */}
+                  <button
+                    type="button"
+                    onClick={voice.supported ? (voice.listening ? voice.stopListening : voice.startListening) : undefined}
+                    disabled={!voice.supported}
+                    title={!voice.supported ? 'No microphone detected' : voice.listening ? 'Stop recording' : 'Ask by voice'}
+                    className={`absolute top-2 right-2 flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                      !voice.supported
+                        ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                        : voice.listening
+                          ? 'bg-red-50 border-red-300 text-red-600 animate-pulse'
+                          : 'bg-white border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-600'
+                    }`}
+                  >
+                    {voice.listening
+                      ? <><MicOff className="w-3.5 h-3.5" /> Stop</>
+                      : <><Mic className="w-3.5 h-3.5" /> Ask by voice</>}
+                  </button>
                   {voice.listening && (
                     <span className="absolute right-3 bottom-3 flex items-center gap-1 text-xs text-red-500">
                       <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />
