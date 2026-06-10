@@ -74,7 +74,13 @@ export function useVoiceInput({ onResult, lang }: UseVoiceInputOptions): UseVoic
   const interimRef     = useRef('')
 
   useEffect(() => {
-    setSupported(getSpeechRecognition() !== null)
+    // Check both: Speech API available AND at least one microphone connected
+    if (!getSpeechRecognition()) { setSupported(false); return }
+    if (!navigator.mediaDevices?.enumerateDevices) { setSupported(true); return }
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const hasMic = devices.some(d => d.kind === 'audioinput')
+      setSupported(hasMic)
+    }).catch(() => setSupported(true)) // fallback: show button, let browser handle it
   }, [])
 
   const startListening = useCallback(() => {
