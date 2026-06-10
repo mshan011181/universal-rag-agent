@@ -67,7 +67,7 @@ import urllib.parse
 
 from api.auth_utils import get_current_user_or_api_key, require_role
 from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source
-from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn, write_audit
+from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn, write_audit, set_ingest_progress
 from src.config import UPLOADS_DIR
 
 logger = structlog.get_logger()
@@ -134,7 +134,10 @@ async def ingest_file_endpoint(
 
         try:
             logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
-            n = ingest_file(str(save_path), namespace=org_id, source_name=filename)
+            def _on_progress(pct: int, label: str):
+                set_ingest_progress(ingest_id, pct, label)
+            n = ingest_file(str(save_path), namespace=org_id, source_name=filename, on_progress=_on_progress)
+            set_ingest_progress(ingest_id, 100, "Done")
             _set_status("done", n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)
             write_audit("ingest", user_id=user_id, org_id=org_id,
@@ -971,6 +974,8 @@ async def list_ingestion_history(
                 "chunks": item["chunks_created"],
                 "created_at": item["created_at"],
                 "status": item.get("status", "done"),
+                "progress": item.get("progress", 0),
+                "progress_label": item.get("progress_label", ""),
             })
         return {"by_type": by_type, "total": len(items)}
     except Exception as e:
@@ -1115,8 +1120,10 @@ async def retry_ingest_endpoint(
     def do_retry():
         try:
             if ingest_type == "document":
-                # Re-run the standard file ingest pipeline with original filename as source
-                n = ingest_file(str(file_path), namespace=org_id, source_name=filename)
+                def _on_progress_retry(pct: int, label: str):
+                    set_ingest_progress(ingest_id, pct, label)
+                n = ingest_file(str(file_path), namespace=org_id, source_name=filename, on_progress=_on_progress_retry)
+                set_ingest_progress(ingest_id, 100, "Done")
                 _set_status("done", n)
                 logger.info("document_retry_done", ingest_id=ingest_id, chunks=n, filename=filename)
 

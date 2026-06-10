@@ -63,7 +63,9 @@ def init_db():
             file_size_bytes INTEGER,
             chunks_created INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'done'
+            status TEXT DEFAULT 'done',
+            progress INTEGER DEFAULT 0,
+            progress_label TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -104,6 +106,17 @@ def init_db():
             updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
+    # Schema migrations — safe to run on existing databases
+    with get_conn() as conn:
+        for col, definition in [
+            ("progress",       "INTEGER DEFAULT 0"),
+            ("progress_label", "TEXT DEFAULT ''"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE ingest_history ADD COLUMN {col} {definition}")
+                conn.commit()
+            except Exception:
+                pass  # column already exists
 
 
 def get_history(session_id: str, last_n: int = 5) -> list[dict]:
@@ -217,11 +230,23 @@ def write_ingest(ingest_id: str, user_id: str, ingest_type: str, source_name: st
         conn.commit()
 
 
+def set_ingest_progress(ingest_id: str, progress: int, label: str = "") -> None:
+    """Update progress (0–100) and label for an in-flight ingest job."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ingest_history SET progress=?, progress_label=? WHERE ingest_id=?",
+            (max(0, min(100, progress)), label, ingest_id),
+        )
+        conn.commit()
+
+
 def get_ingest_history(user_id: str) -> list[dict]:
     """Get all ingestion history for a user."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT ingest_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created, created_at, status FROM ingest_history WHERE user_id=? ORDER BY created_at DESC",
+            """SELECT ingest_id, ingest_type, source_name, source_url, file_size_bytes,
+                      chunks_created, created_at, status, progress, progress_label
+               FROM ingest_history WHERE user_id=? ORDER BY created_at DESC""",
             (user_id,)
         ).fetchall()
     return [dict(r) for r in rows]

@@ -461,29 +461,27 @@ def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
     return _column_sort_words(words, page_width=plumb_page.width or 600)
 
 
-def _extract_text_from_pdf(path: Path) -> str:
+def _extract_text_from_pdf(path: Path, on_progress=None) -> str:
     """Extract text, tables, and embedded images from a PDF.
 
-    Per-page strategy:
-      1. pdfplumber column-aware extraction (native text, multi-column aware).
-      2. If page yields < OCR_SPARSE_CHARS chars (scanned/image page), fall back
-         to pytesseract OCR via pdf2image rendering (200 dpi, column-aware).
-      3. Tables detected by pdfplumber → pipe-separated rows (excluded from text).
-      4. Embedded images → Groq Vision description.
+    on_progress(pct: int, label: str) is called per-page so callers can
+    report incremental progress (10%–80% range reserved for page extraction).
     """
     import pypdf
     import pdfplumber
 
-    # Pages with fewer than this many chars after native extraction trigger OCR.
     OCR_SPARSE_CHARS = 80
-
     lines = []
 
     with pdfplumber.open(str(path)) as pdf:
+        total_pages = len(pdf.pages)
         for page_num, plumb_page in enumerate(pdf.pages, start=1):
             lines.append(f"\n--- Page {page_num} ---")
 
-            # ── Tables (pdfplumber detects row/col boundaries) ───────────
+            if on_progress and total_pages > 0:
+                pct = 10 + int((page_num / total_pages) * 65)
+                on_progress(pct, f"Extracting page {page_num} of {total_pages}")
+
             tables = plumb_page.extract_tables() or []
             table_bboxes = [t.bbox for t in plumb_page.find_tables()]
             for table in tables:
@@ -493,11 +491,14 @@ def _extract_text_from_pdf(path: Path) -> str:
                 ]
                 lines.extend(_rows_to_text(raw_rows))
 
-            # ── Column-aware native text (excluding table regions) ────────
             page_text = _extract_columns_from_page(plumb_page, table_bboxes)
 
-            # ── OCR fallback for scanned / image-heavy pages ─────────────
             if len(page_text.strip()) < OCR_SPARSE_CHARS:
+                if on_progress:
+                    on_progress(
+                        10 + int((page_num / total_pages) * 65),
+                        f"OCR page {page_num} of {total_pages}",
+                    )
                 pil_img = _render_pdf_page(path, page_num)
                 if pil_img is not None:
                     ocr_text = _ocr_image_to_text(pil_img, context=f"Page {page_num}")
@@ -766,23 +767,38 @@ def delete_by_source(source_name: str, namespace: str = "default") -> int:
     return total
 
 
-def ingest_file(file_path: str, namespace: str = "default", source_name: str | None = None) -> int:
+def ingest_file(
+    file_path: str,
+    namespace: str = "default",
+    source_name: str | None = None,
+    on_progress=None,
+) -> int:
     """Ingest a document file into Pinecone.
 
     Args:
-        file_path:   Path to the saved (possibly hashed) file on disk.
-        namespace:   Pinecone namespace (org_id).
-        source_name: Human-readable original filename to store as metadata
-                     source.  Defaults to path.name if not supplied.
+        file_path:    Path to the saved (possibly hashed) file on disk.
+        namespace:    Pinecone namespace (org_id).
+        source_name:  Human-readable original filename stored as metadata.
+        on_progress:  Optional callable(pct: int, label: str).
+                      Called at key stages so callers can surface progress.
     """
+    def _prog(pct: int, label: str):
+        if on_progress:
+            try:
+                on_progress(pct, label)
+            except Exception:
+                pass
+
     path = Path(file_path)
     suffix = path.suffix.lower()
 
-    raw_text: str | None = None  # set when we produce text directly
-    doc_type = "narrative"       # default — overridden per file type below
+    _prog(5, "Reading file")
+
+    raw_text: str | None = None
+    doc_type = "narrative"
 
     if suffix == ".pdf":
-        raw_text = _extract_text_from_pdf(path)
+        raw_text = _extract_text_from_pdf(path, on_progress=_prog)
     elif suffix in (".txt", ".md"):
         loader = TextLoader(str(path), encoding="utf-8")
     elif suffix == ".csv":
@@ -820,12 +836,14 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     splitter = RecursiveCharacterTextSplitter(chunk_size=_chunk_size, chunk_overlap=_chunk_overlap)
 
     if raw_text is not None:
-        # Clean extracted text before chunking (removes HTML, control chars, boilerplate)
+        _prog(78, "Chunking text")
         raw_text = _clean_text(raw_text)
         text_chunks = splitter.split_text(raw_text)
         if not text_chunks:
             return 0
+        _prog(85, f"Generating embeddings for {len(text_chunks)} chunks")
         embeddings = _embed(text_chunks)
+        _prog(94, "Uploading to index")
         vectors = [
             {
                 "id": f"{id_prefix}_{i}",
@@ -843,8 +861,8 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
         return len(vectors)
 
     # LangChain Document path (TXT / MD / CSV)
+    _prog(78, "Chunking text")
     docs = loader.load()
-    # Clean each document's page content before splitting
     for doc in docs:
         doc.page_content = _clean_text(doc.page_content)
     chunks = splitter.split_documents(docs)
@@ -852,8 +870,10 @@ def ingest_file(file_path: str, namespace: str = "default", source_name: str | N
     if not chunks:
         return 0
 
+    _prog(85, f"Generating embeddings for {len(chunks)} chunks")
     texts = [c.page_content for c in chunks]
     embeddings = _embed(texts)
+    _prog(94, "Uploading to index")
     vectors = [
         {
             "id": f"{id_prefix}_{i}",

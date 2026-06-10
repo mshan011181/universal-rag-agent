@@ -53,11 +53,16 @@ export default function IngestPage() {
   }
 
   useEffect(() => {
-    loadHistory()  // first load shows spinner
-    // Background poll — silent, no spinner, no flicker
-    const interval = setInterval(() => loadHistory(true), 5000)
+    loadHistory()
+    // Poll faster (2s) when any item is processing, slower (6s) otherwise
+    const interval = setInterval(() => {
+      const allItems = Object.values(history.by_type).flat() as any[]
+      const hasProcessing = allItems.some((i: any) => i.status === 'processing')
+      loadHistory(true)
+      if (!hasProcessing) return  // will naturally re-check next tick
+    }, 2000)
     return () => clearInterval(interval)
-  }, [])
+  }, [history])
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
@@ -470,50 +475,67 @@ export default function IngestPage() {
                     const status = item.status || 'done'
                     const isFailed = status === 'failed'
                     const isProcessing = status === 'processing'
+                    const progress = item.progress ?? 0
+                    const progressLabel = item.progress_label || 'Processing…'
                     return (
-                      <div key={item.ingest_id} className={`flex items-start justify-between p-3 rounded-lg transition-colors ${isFailed ? 'bg-red-50 border border-red-200' : 'bg-gray-50 hover:bg-gray-100'}`}>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500">{formatDate(item.created_at)}</span>
-                            {item.size_bytes && <span className="text-xs text-gray-500">{formatBytes(item.size_bytes)}</span>}
-                            {item.chunks > 0 && (
-                              <span className="text-xs text-brand-600 font-medium">{item.chunks} chunks</span>
+                      <div key={item.ingest_id} className={`p-3 rounded-lg transition-colors ${isFailed ? 'bg-red-50 border border-red-200' : 'bg-gray-50 hover:bg-gray-100'}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-500">{formatDate(item.created_at)}</span>
+                              {item.size_bytes && <span className="text-xs text-gray-500">{formatBytes(item.size_bytes)}</span>}
+                              {item.chunks > 0 && (
+                                <span className="text-xs text-brand-600 font-medium">{item.chunks} chunks</span>
+                              )}
+                              {isFailed && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                  <AlertCircle className="w-3 h-3" /> Failed
+                                </span>
+                              )}
+                              {status === 'done' && item.chunks > 0 && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                                  <CheckCircle className="w-3 h-3" /> Ready
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 ml-2 shrink-0">
+                            {(isFailed || (item.chunks === 0 && !isProcessing)) &&
+                              ['documents', 'images', 'video', 'audio', 'weblinks'].includes(activeTab) && (
+                              <button
+                                onClick={() => handleRetry(item.ingest_id, item.name)}
+                                className="p-1 text-blue-500 hover:text-blue-700 transition-colors"
+                                title="Retry extraction"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
                             )}
-                            {/* Status badge */}
-                            {isFailed && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                                <AlertCircle className="w-3 h-3" /> Failed
-                              </span>
-                            )}
-                            {isProcessing && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
-                                <Loader className="w-3 h-3 animate-spin" /> Processing
-                              </span>
-                            )}
-                            {status === 'done' && item.chunks > 0 && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
-                                <CheckCircle className="w-3 h-3" /> Ready
-                              </span>
-                            )}
+                            <button onClick={() => handleDelete(item.ingest_id, item.name)} className="p-1 text-gray-400 hover:text-red-600 transition-colors" title="Delete">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 ml-2 shrink-0">
-                          {/* Retry button — show for failed OR stuck (0 chunks, not processing) items */}
-                          {(isFailed || (item.chunks === 0 && !isProcessing)) &&
-                            ['documents', 'images', 'video', 'audio', 'weblinks'].includes(activeTab) && (
-                            <button
-                              onClick={() => handleRetry(item.ingest_id, item.name)}
-                              className="p-1 text-blue-500 hover:text-blue-700 transition-colors"
-                              title="Retry extraction"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button onClick={() => handleDelete(item.ingest_id, item.name)} className="p-1 text-gray-400 hover:text-red-600 transition-colors" title="Delete">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+
+                        {/* Progress bar — visible only while processing */}
+                        {isProcessing && (
+                          <div className="mt-2 px-0.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-gray-500 truncate pr-2">{progressLabel}</span>
+                              <span className="text-xs font-semibold text-brand-600 shrink-0">{progress}%</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500 ease-out"
+                                style={{
+                                  width: `${progress > 0 ? progress : 8}%`,
+                                  background: 'linear-gradient(90deg, #4f46e5, #7c3aed)',
+                                  animation: progress === 0 ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
