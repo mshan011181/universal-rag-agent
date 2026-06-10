@@ -410,19 +410,23 @@ def _ocr_image_to_text(pil_image, context: str = "") -> str:
 
 
 def _render_pdf_page(path: Path, page_num: int, dpi: int = 200):
-    """Render a single PDF page to a PIL Image using pdf2image.
+    """Render a single PDF page to a PIL Image using pdf2image + Poppler.
 
     Returns None if pdf2image is not installed or rendering fails.
     page_num is 1-based.
+    POPPLER_PATH env var (or src.config.POPPLER_PATH) points to the poppler bin
+    directory on Windows; leave empty on Linux where poppler is on PATH.
     """
     try:
         from pdf2image import convert_from_path
     except ImportError:
         return None
     try:
-        images = convert_from_path(
-            str(path), dpi=dpi, first_page=page_num, last_page=page_num,
-        )
+        from src.config import POPPLER_PATH
+        kwargs: dict = {"dpi": dpi, "first_page": page_num, "last_page": page_num}
+        if POPPLER_PATH:
+            kwargs["poppler_path"] = POPPLER_PATH
+        images = convert_from_path(str(path), **kwargs)
         return images[0] if images else None
     except Exception:
         return None

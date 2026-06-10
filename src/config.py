@@ -65,6 +65,22 @@ SSO_GOOGLE_CLIENT_SECRET = os.getenv("SSO_GOOGLE_CLIENT_SECRET", "")
 # In dev: http://localhost:8000 | In prod: https://api.yourdomain.com
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
+# ── OCR configuration ──────────────────────────────────────────────────────────
+# Windows: install Tesseract from https://github.com/UB-Mannheim/tesseract/wiki
+#          install Poppler   from https://github.com/oschwartz10612/poppler-windows/releases
+# Linux:   apt install tesseract-ocr poppler-utils
+# Leave blank to auto-detect from PATH.
+TESSERACT_CMD  = os.getenv("TESSERACT_CMD", "")   # e.g. C:\Program Files\Tesseract-OCR\tesseract.exe
+POPPLER_PATH   = os.getenv("POPPLER_PATH",  "")   # e.g. C:\Program Files\poppler\Library\bin
+
+# Apply tesseract path at import time if provided
+if TESSERACT_CMD:
+    try:
+        import pytesseract as _pt
+        _pt.pytesseract.tesseract_cmd = TESSERACT_CMD
+    except Exception:
+        pass
+
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 TOP_K = 15
