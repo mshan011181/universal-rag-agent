@@ -10,10 +10,9 @@ POST /api/audit/purge           — manually purge logs older than retention per
 DELETE /api/audit/users/{uid}/erase — GDPR right to erasure for a specific user
 """
 
-import io
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -98,8 +97,8 @@ async def export_audit_csv(
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"audit_log_{user['org_id'][:8]}_{timestamp}.csv"
 
-    return StreamingResponse(
-        io.StringIO(csv_data),
+    return Response(
+        content=csv_data.encode("utf-8"),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
