@@ -75,6 +75,10 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     # Check verified knowledge cache
     cached = check_verified_knowledge(fingerprint)
     if cached:
+        try:
+            cache_followups = generate_followups(query, cached)
+        except Exception:
+            cache_followups = []
         return RAGAgentResponse(
             answer_text=cached,
             quality_score=0.9,
@@ -84,6 +88,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
             latency_ms=0,
             retrieval_channel="cache",
             verified_knowledge_hit=True,
+            suggested_followups=cache_followups,
         )
 
     namespace = analysis.get("namespace", "default")
