@@ -47,6 +47,24 @@ RESEND_API_KEY  = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM      = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
 APP_BASE_URL    = os.getenv("APP_BASE_URL", "http://localhost:3000")
 
+# ── SSO / OIDC ─────────────────────────────────────────────────────────────────
+# Azure AD (Entra ID) — covers Active Directory / Microsoft 365
+# Register app at: https://portal.azure.com → App registrations
+# Redirect URI to add there: {API_BASE_URL}/api/auth/sso/azure/callback
+SSO_AZURE_CLIENT_ID     = os.getenv("SSO_AZURE_CLIENT_ID", "")
+SSO_AZURE_CLIENT_SECRET = os.getenv("SSO_AZURE_CLIENT_SECRET", "")
+SSO_AZURE_TENANT_ID     = os.getenv("SSO_AZURE_TENANT_ID", "common")  # 'common' = any tenant
+
+# Google Workspace / Gmail SSO
+# Register at: https://console.cloud.google.com → APIs & Services → Credentials
+# Redirect URI to add there: {API_BASE_URL}/api/auth/sso/google/callback
+SSO_GOOGLE_CLIENT_ID     = os.getenv("SSO_GOOGLE_CLIENT_ID", "")
+SSO_GOOGLE_CLIENT_SECRET = os.getenv("SSO_GOOGLE_CLIENT_SECRET", "")
+
+# API_BASE_URL — backend base URL used as the SSO redirect_uri host
+# In dev: http://localhost:8000 | In prod: https://api.yourdomain.com
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 TOP_K = 15
