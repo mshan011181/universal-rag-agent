@@ -179,7 +179,7 @@ async def ingest_text_endpoint(
 
     try:
         n = ingest_text(body.text, source=f"{user['user_id']}:{body.source}", namespace=user.get("org_id", "default"))
-        write_ingest(ingest_id, user["user_id"], "text", body.source, chunks=n)
+        write_ingest(ingest_id, user["user_id"], "text", body.source, chunks=n, status='done')
         return {
             "ingest_id": ingest_id,
             "status": "done",

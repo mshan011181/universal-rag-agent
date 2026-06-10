@@ -219,13 +219,13 @@ def purge_stale_cache(min_quality: float = 0.85) -> int:
         return cur.rowcount
 
 
-def write_ingest(ingest_id: str, user_id: str, ingest_type: str, source_name: str, source_url: str | None = None, file_size: int | None = None, chunks: int = 0):
+def write_ingest(ingest_id: str, user_id: str, ingest_type: str, source_name: str, source_url: str | None = None, file_size: int | None = None, chunks: int = 0, status: str = 'processing'):
     """Log an ingest operation to history."""
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO ingest_history (ingest_id, user_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (ingest_id, user_id, ingest_type, source_name, source_url, file_size, chunks)
+            """INSERT INTO ingest_history (ingest_id, user_id, ingest_type, source_name, source_url, file_size_bytes, chunks_created, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ingest_id, user_id, ingest_type, source_name, source_url, file_size, chunks, status)
         )
         conn.commit()
 
