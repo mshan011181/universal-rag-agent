@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { MessageSquare, Upload, BarChart2, LogOut, Database, User, TableProperties } from 'lucide-react'
+import { MessageSquare, Upload, BarChart2, LogOut, Database, User, TableProperties, Users } from 'lucide-react'
 import clsx from 'clsx'
 import { logout } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
@@ -16,6 +16,7 @@ const NAV = [
 
 const ADMIN_NAV = [
   { href: '/admin',  label: 'Dashboard', icon: BarChart2 },
+  { href: '/team',   label: 'Team',      icon: Users },
 ]
 
 export default function Sidebar() {

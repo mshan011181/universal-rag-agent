@@ -96,7 +96,10 @@ class VerifyOTPRequest(BaseModel):
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
-    otp: str                    # must be verified before account is created
+    otp: str                       # must be verified before account is created
+    org_action: str = "create"     # "create" | "join"
+    org_name: str | None = None    # required when org_action="create"
+    invite_token: str | None = None  # required when org_action="join"
 
     def validate_password(self) -> None:
         if len(self.password) < 8:
@@ -240,13 +243,49 @@ async def register(body: RegisterRequest):
         conn.commit()
 
     user_id = str(uuid.uuid4())
-    org_id  = str(uuid.uuid4())
+
+    # ── Determine org_id and role based on org_action ──────────────────────
+    if body.org_action == "join":
+        # Validate invite token
+        if not body.invite_token:
+            raise HTTPException(status_code=400, detail="Invite token required to join an organisation.")
+        with get_conn() as conn:
+            inv = conn.execute(
+                """SELECT org_id, invited_email, expires_at FROM org_invites
+                   WHERE token=? AND used=0""",
+                (body.invite_token.strip(),)
+            ).fetchone()
+        if not inv:
+            raise HTTPException(status_code=400, detail="Invalid or already used invite link.")
+        if datetime.utcnow() > datetime.fromisoformat(inv["expires_at"]):
+            raise HTTPException(status_code=400, detail="Invite link has expired. Ask your admin for a new one.")
+        if inv["invited_email"] and inv["invited_email"].lower() != email:
+            raise HTTPException(status_code=403, detail="This invite was sent to a different email address.")
+        org_id = inv["org_id"]
+        role   = "member"
+        # Mark invite as used
+        with get_conn() as conn:
+            conn.execute("UPDATE org_invites SET used=1 WHERE token=?", (body.invite_token.strip(),))
+            conn.commit()
+    else:
+        # Create new organisation
+        org_name = (body.org_name or "").strip()
+        if not org_name:
+            raise HTTPException(status_code=400, detail="Organisation name is required.")
+        org_id = str(uuid.uuid4())
+        role   = "admin"
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO organisations (org_id, org_name, owner_id) VALUES (?,?,?)",
+                (org_id, org_name, user_id)
+            )
+            conn.commit()
 
     try:
         with get_conn() as conn:
             conn.execute(
                 "INSERT INTO users (user_id, email, hashed_password, org_id, role) VALUES (?,?,?,?,?)",
-                (user_id, email, hash_password(body.password), org_id, "admin")
+                (user_id, email, hash_password(body.password), org_id, role)
             )
             conn.commit()
     except Exception as e:
@@ -254,7 +293,7 @@ async def register(body: RegisterRequest):
             raise HTTPException(status_code=409, detail="Email already registered")
         raise HTTPException(status_code=500, detail="Registration failed")
 
-    return {"user_id": user_id, "email": email, "org_id": org_id}
+    return {"user_id": user_id, "email": email, "org_id": org_id, "role": role}
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────

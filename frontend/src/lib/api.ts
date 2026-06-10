@@ -102,11 +102,49 @@ export async function verifyOTP(email: string, otp: string, purpose: 'register' 
   }, false)
 }
 
-export async function register(email: string, password: string, otp: string): Promise<{ message: string }> {
+export async function register(
+  email: string,
+  password: string,
+  otp: string,
+  orgAction: 'create' | 'join',
+  orgName?: string,
+  inviteToken?: string,
+): Promise<{ user_id: string; org_id: string; role: string }> {
   return request('/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, otp }),
+    body: JSON.stringify({
+      email, password, otp,
+      org_action: orgAction,
+      org_name: orgName,
+      invite_token: inviteToken,
+    }),
   }, false)
+}
+
+// ── Organisation ──────────────────────────────────────────────────────────────
+
+export async function getOrgInfo(): Promise<{ org_id: string; org_name: string; plan: string; member_count: number }> {
+  return request('/api/org/info')
+}
+
+export async function updateOrgName(orgName: string): Promise<{ org_name: string }> {
+  return request('/api/org/info', { method: 'PUT', body: JSON.stringify({ org_name: orgName }) })
+}
+
+export async function listOrgMembers(): Promise<{ user_id: string; email: string; role: string; created_at: string }[]> {
+  return request('/api/org/members')
+}
+
+export async function inviteMember(email: string): Promise<{ message: string; invite_link: string; email_sent: boolean }> {
+  return request('/api/org/invite', { method: 'POST', body: JSON.stringify({ email }) })
+}
+
+export async function validateInvite(token: string): Promise<{ valid: boolean; org_id: string; org_name: string; invited_email: string }> {
+  return request(`/api/org/invite/${token}`, {}, false)
+}
+
+export async function removeMember(userId: string): Promise<{ message: string }> {
+  return request(`/api/org/members/${userId}`, { method: 'DELETE' })
 }
 
 export async function forgotPassword(email: string): Promise<{ message: string; dev_otp?: string }> {

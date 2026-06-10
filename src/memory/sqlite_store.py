@@ -65,6 +65,25 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             status TEXT DEFAULT 'done'
         );
+
+        CREATE TABLE IF NOT EXISTS organisations (
+            org_id   TEXT PRIMARY KEY,
+            org_name TEXT NOT NULL,
+            owner_id TEXT NOT NULL,
+            plan     TEXT DEFAULT 'free',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS org_invites (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            token       TEXT NOT NULL UNIQUE,
+            org_id      TEXT NOT NULL,
+            invited_email TEXT NOT NULL,
+            invited_by  TEXT NOT NULL,
+            expires_at  TEXT NOT NULL,
+            used        INTEGER DEFAULT 0,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         """)
 
 

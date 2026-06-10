@@ -125,3 +125,26 @@ def send_reset_otp(to: str, otp: str, reset_link: str) -> bool:
         "Reset your Universal RAG password",
         _base_html("Password Reset", body),
     )
+
+
+def send_org_invite(to: str, invited_by: str, org_name: str, invite_link: str) -> bool:
+    body = f"""
+    <p style="color:#1e293b;font-size:15px;">
+      <strong>{invited_by}</strong> has invited you to join the
+      <strong>{org_name}</strong> workspace on Universal RAG Enterprise.
+    </p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="{invite_link}" class="btn">Accept Invitation</a>
+    </div>
+    <p style="color:#64748b;font-size:12px;">
+      Or copy this link:<br>
+      <span style="word-break:break-all;color:#2563eb;">{invite_link}</span>
+    </p>
+    <p style="color:#64748b;font-size:12px;">This invite expires in 7 days.
+    If you did not expect this invitation, you can safely ignore this email.</p>
+    """
+    return _send(
+        to,
+        f"You've been invited to {org_name} on Universal RAG",
+        _base_html("Team Invitation", body),
+    )
