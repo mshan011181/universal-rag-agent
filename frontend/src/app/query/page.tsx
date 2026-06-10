@@ -255,22 +255,23 @@ export default function QueryPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="label mb-0">Question</label>
-                  {voice.supported && (
-                    <button
-                      type="button"
-                      onClick={voice.listening ? voice.stopListening : voice.startListening}
-                      title={voice.listening ? 'Stop recording' : 'Ask by voice'}
-                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${
-                        voice.listening
+                  <button
+                    type="button"
+                    onClick={voice.supported ? (voice.listening ? voice.stopListening : voice.startListening) : undefined}
+                    disabled={!voice.supported}
+                    title={!voice.supported ? 'No microphone detected' : voice.listening ? 'Stop recording' : 'Ask by voice'}
+                    className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                      !voice.supported
+                        ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed opacity-50'
+                        : voice.listening
                           ? 'bg-red-50 border-red-300 text-red-600 animate-pulse'
                           : 'bg-white border-gray-300 text-gray-500 hover:border-brand-400 hover:text-brand-600'
-                      }`}
-                    >
-                      {voice.listening
-                        ? <><MicOff className="w-3.5 h-3.5" /> Stop recording</>
-                        : <><Mic className="w-3.5 h-3.5" /> Ask by voice</>}
-                    </button>
-                  )}
+                    }`}
+                  >
+                    {voice.listening
+                      ? <><MicOff className="w-3.5 h-3.5" /> Stop recording</>
+                      : <><Mic className="w-3.5 h-3.5" /> Ask by voice</>}
+                  </button>
                 </div>
                 <div className="relative">
                   <textarea
@@ -288,7 +289,7 @@ export default function QueryPage() {
                     </span>
                   )}
                 </div>
-                {voice.error && (
+                {voice.error && voice.supported && (
                   <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />{voice.error}
                   </p>
