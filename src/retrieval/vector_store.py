@@ -75,7 +75,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.config import (
     EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, CHUNK_SIZES, TOP_K,
-    PINECONE_API_KEY, PINECONE_INDEX_NAME,
+    TABLE_MAX_CHUNK, PINECONE_API_KEY, PINECONE_INDEX_NAME,
 )
 
 _PINECONE_CLOUD = "aws"
@@ -227,10 +227,14 @@ def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[s
             continue
 
         if is_table:
-            if len(block) <= chunk_size:
+            # Use TABLE_MAX_CHUNK (not chunk_size) so typical comparison tables
+            # (< 4000 chars) are stored as a single atomic chunk — all rows together.
+            # Only genuinely huge tables (e.g. 100+ row spreadsheets pasted into a PDF)
+            # are split, and even then at row boundaries with header prepended.
+            if len(block) <= TABLE_MAX_CHUNK:
                 raw_chunks.append(block)
             else:
-                raw_chunks.extend(_split_long_table(block, chunk_size))
+                raw_chunks.extend(_split_long_table(block, TABLE_MAX_CHUNK))
         else:
             # Split on paragraph boundaries first
             paragraphs = [p.strip() for p in block.split("\n\n") if p.strip()]

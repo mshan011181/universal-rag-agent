@@ -83,13 +83,20 @@ if TESSERACT_CMD:
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
-TOP_K = 15
+TOP_K = 20  # raised from 15 — more chunks retrieved so tail chunks of long tables are included
+
+# Maximum chars for a table block before it is split at row boundaries.
+# all-MiniLM-L6-v2 truncates at 512 tokens (~2000 chars), so tables up to
+# 4000 chars are stored as one chunk — the embedder sees the first 512 tokens
+# (the header + top rows) but the full text is stored in metadata so the LLM
+# receives every row. Tables larger than this are split with header prepended.
+TABLE_MAX_CHUNK = 4000
 
 # Per-document-type chunk sizes
 # Smaller chunks for tabular/structured data → better cell-level precision
 # Larger chunks for narrative text → better context preservation
 CHUNK_SIZES: dict[str, tuple[int, int]] = {
-    "narrative":  (1200, 300),   # PDF, DOCX, TXT, MD, PPTX — larger overlap keeps boundary content retrievable
+    "narrative":  (1500, 400),   # PDF, DOCX, TXT, MD, PPTX — larger size/overlap keeps boundary content retrievable
     "tabular":    (400,  50),    # XLSX, XLS, CSV
     "code":       (600,  100),   # JSON, code files
 }
