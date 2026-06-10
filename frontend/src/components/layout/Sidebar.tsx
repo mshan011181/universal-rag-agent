@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { MessageSquare, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck } from 'lucide-react'
+import { Home, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck } from 'lucide-react'
 import clsx from 'clsx'
 import { logout } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
 
 const NAV = [
-  { href: '/query',  label: 'Query',          icon: MessageSquare },
+  { href: '/query',  label: 'Home',           icon: Home },
   { href: '/bi',     label: 'BI / Analytics', icon: TableProperties },
   { href: '/ingest', label: 'Ingest',          icon: Upload },
 ]
