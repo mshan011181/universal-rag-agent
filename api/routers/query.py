@@ -1,5 +1,6 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+import base64
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from typing import Optional
 import structlog
@@ -106,4 +107,138 @@ async def query_endpoint(
         suggested_followups=response.suggested_followups,
         citation_map=response.citation_map,
         session_id=body.session_id,
+    )
+
+
+# ── Image-based batch query ────────────────────────────────────────────────────
+
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/bmp"}
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+class ImageQueryItem(BaseModel):
+    question: str
+    answer: str
+    quality_score: float
+    confidence: str
+    patterns_used: list[str]
+    latency_ms: int
+    citation_map: dict
+    suggested_followups: list[str]
+
+
+class ImageQueryResponse(BaseModel):
+    questions_found: int
+    results: list[ImageQueryItem]
+    extraction_note: str = ""
+
+
+def _extract_questions_from_image(image_bytes: bytes, content_type: str) -> list[str]:
+    """Use Groq Vision to extract a numbered list of questions from an image."""
+    ext = content_type.split("/")[-1].replace("jpeg", "jpg")
+    mime_map = {
+        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "webp": "image/webp", "gif": "image/gif", "bmp": "image/bmp",
+    }
+    mime = mime_map.get(ext, "image/png")
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:{mime};base64,{b64}"
+
+    prompt = (
+        "This image contains one or more questions (e.g. a question paper, exam sheet, or form).\n"
+        "Extract every question exactly as written, one per line.\n"
+        "Output ONLY the questions, numbered 1. 2. 3. etc.\n"
+        "Do NOT include answers, instructions, or any other text.\n"
+        "If no questions are found, output: NO_QUESTIONS_FOUND"
+    )
+
+    try:
+        from groq import Groq
+        client = Groq()
+        response = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vision extraction failed: {e}")
+
+    if "NO_QUESTIONS_FOUND" in raw:
+        return []
+
+    questions = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Strip leading numbering like "1." "1)" "Q1."
+        import re
+        cleaned = re.sub(r'^(?:Q?\d+[\.\)]\s*)', '', line).strip()
+        if cleaned:
+            questions.append(cleaned)
+    return questions
+
+
+@router.post("/from-image", response_model=ImageQueryResponse)
+async def query_from_image(
+    request: Request,
+    file: UploadFile = File(...),
+    language: str = Form(default="American English"),
+    session_id: str = Form(default="default"),
+    user: dict = Depends(get_current_user_or_api_key),
+):
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Use PNG, JPG, WebP, GIF, or BMP.")
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Image too large — maximum 10 MB.")
+
+    questions = _extract_questions_from_image(image_bytes, file.content_type)
+    if not questions:
+        return ImageQueryResponse(questions_found=0, results=[], extraction_note="No questions detected in the image.")
+
+    namespace = user.get("org_id") or "default"
+    scoped_session = f"{user['user_id']}:{session_id}"
+
+    results: list[ImageQueryItem] = []
+    for q in questions:
+        try:
+            response, _ = ask(
+                q, scoped_session,
+                namespace=namespace,
+                language=language,
+                source_filters=[],
+                user_id=user["user_id"],
+            )
+            results.append(ImageQueryItem(
+                question=q,
+                answer=response.answer_text,
+                quality_score=response.quality_score,
+                confidence=response.confidence,
+                patterns_used=response.patterns_used,
+                latency_ms=response.latency_ms,
+                citation_map=response.citation_map,
+                suggested_followups=response.suggested_followups,
+            ))
+        except Exception as e:
+            results.append(ImageQueryItem(
+                question=q,
+                answer=f"Error processing this question: {e}",
+                quality_score=0.0,
+                confidence="LOW",
+                patterns_used=[],
+                latency_ms=0,
+                citation_map={},
+                suggested_followups=[],
+            ))
+
+    return ImageQueryResponse(
+        questions_found=len(questions),
+        results=results,
+        extraction_note=f"Extracted {len(questions)} question(s) from image.",
     )

@@ -197,6 +197,35 @@ export async function submitQuery(payload: QueryRequest): Promise<QueryResponse>
   return request('/api/query/', { method: 'POST', body: JSON.stringify(payload) })
 }
 
+export interface ImageQueryItem {
+  question: string
+  answer: string
+  quality_score: number
+  confidence: string
+  patterns_used: string[]
+  latency_ms: number
+  citation_map: Record<string, { source: string; score: number }>
+  suggested_followups: string[]
+}
+
+export interface ImageQueryResponse {
+  questions_found: number
+  results: ImageQueryItem[]
+  extraction_note: string
+}
+
+export async function submitQueryFromImage(
+  file: File,
+  language = 'American English',
+  sessionId = 'default',
+): Promise<ImageQueryResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('language', language)
+  form.append('session_id', sessionId)
+  return request('/api/query/from-image', { method: 'POST', body: form })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default'): Promise<IngestResponse> {

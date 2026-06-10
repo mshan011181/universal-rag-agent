@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, fetchUserStats, getIngestHistory } from '@/lib/api'
+import { submitQuery, fetchUserStats, getIngestHistory, submitQueryFromImage } from '@/lib/api'
+import type { ImageQueryItem, ImageQueryResponse } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, ImagePlus, Keyboard, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
@@ -93,6 +94,15 @@ export default function QueryPage() {
   const [history, setHistory] = useState<QueryHistory[]>([])
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
   const [copied, setCopied] = useState(false)
+
+  // Image query mode
+  const [inputMode, setInputMode] = useState<'text' | 'image'>('text')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageResult, setImageResult] = useState<ImageQueryResponse | null>(null)
+  const [imageLoading, setImageLoading] = useState(false)
+  const [imageError, setImageError] = useState('')
+  const [expandedAnswers, setExpandedAnswers] = useState<Set<number>>(new Set())
   const [showModelsInfo, setShowModelsInfo] = useState(false)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
@@ -203,6 +213,69 @@ export default function QueryPage() {
     }))
     .sort((a, b) => b.avgQuality - a.avgQuality)
 
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setImageFile(f)
+    setImageResult(null)
+    setImageError('')
+    setExpandedAnswers(new Set())
+    const reader = new FileReader()
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string)
+    reader.readAsDataURL(f)
+  }
+
+  async function handleImageSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!imageFile) return
+    setImageError('')
+    setImageResult(null)
+    setImageLoading(true)
+    try {
+      const res = await submitQueryFromImage(imageFile, language)
+      setImageResult(res)
+      // Expand all answers by default
+      setExpandedAnswers(new Set(res.results.map((_, i) => i)))
+    } catch (err: unknown) {
+      setImageError(err instanceof Error ? err.message : 'Image query failed')
+    } finally {
+      setImageLoading(false)
+    }
+  }
+
+  function toggleAnswer(i: number) {
+    setExpandedAnswers(prev => {
+      const next = new Set(prev)
+      next.has(i) ? next.delete(i) : next.add(i)
+      return next
+    })
+  }
+
+  function copyImageQA() {
+    if (!imageResult) return
+    const text = imageResult.results
+      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${r.answer}`)
+      .join('\n\n---\n\n')
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function downloadImageQA() {
+    if (!imageResult) return
+    const text = imageResult.results
+      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${r.answer}`)
+      .join('\n\n---\n\n')
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `answers-${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function copyQA() {
     if (!result) return
     const text = `Q: ${query}\n\nA: ${result.answer}`
@@ -273,6 +346,85 @@ export default function QueryPage() {
 
           {/* Query form */}
           <div className="card p-5 mb-6">
+            {/* Input mode tabs */}
+            <div className="flex gap-1 mb-4 border-b border-gray-200">
+              <button
+                type="button"
+                onClick={() => setInputMode('text')}
+                className={`flex items-center gap-1.5 text-sm font-medium pb-2.5 px-3 border-b-2 transition-colors ${
+                  inputMode === 'text'
+                    ? 'border-brand-600 text-brand-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Keyboard className="w-4 h-4" />
+                Type / Voice
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode('image')}
+                className={`flex items-center gap-1.5 text-sm font-medium pb-2.5 px-3 border-b-2 transition-colors ${
+                  inputMode === 'image'
+                    ? 'border-brand-600 text-brand-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <ImagePlus className="w-4 h-4" />
+                Image / Question Paper
+              </button>
+            </div>
+
+            {/* Image query form */}
+            {inputMode === 'image' && (
+              <form onSubmit={handleImageSubmit} className="space-y-4">
+                <div>
+                  <label className="label">Upload image (question paper, exam sheet, screenshot)</label>
+                  <label className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                    imageFile ? 'border-brand-400 bg-brand-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+                  }`}>
+                    {imagePreview ? (
+                      <img src={imagePreview} alt="preview" className="h-full w-full object-contain rounded-lg p-1" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-gray-400">
+                        <ImagePlus className="w-8 h-8" />
+                        <span className="text-sm">Click to upload or drag & drop</span>
+                        <span className="text-xs">PNG, JPG, WebP — up to 10 MB</span>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp"
+                      className="hidden"
+                      onChange={handleImageSelect}
+                    />
+                  </label>
+                  {imageFile && (
+                    <p className="text-xs text-gray-500 mt-1">{imageFile.name} · {(imageFile.size / 1024).toFixed(1)} KB</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Answer Language</label>
+                    <select className="input" value={language} onChange={(e) => handleLanguageChange(e.target.value)}>
+                      {LANGUAGE_OPTIONS.map(({ group, options }) => (
+                        <optgroup key={group} label={group}>
+                          {options.map((lang) => <option key={lang} value={lang}>{lang}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" disabled={imageLoading || !imageFile} className="btn-primary flex items-center gap-2">
+                  {imageLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {imageLoading ? 'Extracting & answering…' : 'Extract questions & answer all'}
+                </button>
+              </form>
+            )}
+
+            {/* Text / voice form */}
+            {inputMode === 'text' && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="label">Question</label>
@@ -431,12 +583,117 @@ export default function QueryPage() {
                 {loading ? 'Thinking…' : 'Submit'}
               </button>
             </form>
+            )}
           </div>
 
           {error && (
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               {error}
+            </div>
+          )}
+
+          {/* Image extraction error */}
+          {imageError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              {imageError}
+            </div>
+          )}
+
+          {/* Image batch results */}
+          {imageResult && imageResult.results.length > 0 && (
+            <div className="space-y-4 mb-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ImagePlus className="w-4 h-4 text-brand-600" />
+                  <h2 className="text-base font-semibold text-gray-900">
+                    {imageResult.questions_found} question{imageResult.questions_found !== 1 ? 's' : ''} answered
+                  </h2>
+                  <span className="text-xs text-gray-400">{imageResult.extraction_note}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyImageQA}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors text-xs"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copied' : 'Copy all'}
+                  </button>
+                  <button
+                    onClick={downloadImageQA}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors text-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download
+                  </button>
+                </div>
+              </div>
+
+              {/* Per-question answer cards */}
+              {imageResult.results.map((item, i) => (
+                <div key={i} className="card overflow-hidden">
+                  {/* Question header — always visible */}
+                  <button
+                    onClick={() => toggleAnswer(i)}
+                    className="w-full flex items-start justify-between px-5 py-4 hover:bg-gray-50 text-left transition-colors"
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <span className="shrink-0 w-6 h-6 rounded-full bg-brand-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm font-medium text-gray-900 leading-snug">{item.question}</p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-3 shrink-0">
+                      <QualityBadge score={item.quality_score} />
+                      {expandedAnswers.has(i)
+                        ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                        : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                    </div>
+                  </button>
+
+                  {/* Answer — expanded */}
+                  {expandedAnswers.has(i) && (
+                    <div className="border-t border-gray-100 px-5 py-4">
+                      <div className="prose prose-sm max-w-none
+                        prose-p:text-gray-800 prose-p:leading-relaxed
+                        prose-strong:text-gray-900
+                        prose-headings:text-gray-900 prose-headings:font-semibold
+                        prose-ul:text-gray-800 prose-ol:text-gray-800
+                        prose-code:bg-gray-100 prose-code:text-brand-700 prose-code:px-1 prose-code:rounded prose-code:text-xs
+                      ">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
+                      </div>
+                      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
+                        <span>{item.latency_ms}ms</span>
+                        <span className="capitalize">{item.patterns_used.join(' → ') || 'auto'}</span>
+                      </div>
+                      {item.suggested_followups.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.suggested_followups.map((q, j) => (
+                            <button
+                              key={j}
+                              onClick={() => { setInputMode('text'); setQuery(q); setImageResult(null) }}
+                              className="px-2.5 py-1 rounded-full border border-brand-200 bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100 transition-colors"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* No questions found notice */}
+          {imageResult && imageResult.results.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 mb-4 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {imageResult.extraction_note || 'No questions were detected in the uploaded image.'}
             </div>
           )}
 
