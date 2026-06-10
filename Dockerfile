@@ -4,6 +4,15 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl git \
+    # OCR — pytesseract wrapper calls this binary
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    # Poppler — pdf2image calls pdftoppm from this package
+    poppler-utils \
+    # Image processing support for Pillow
+    libgl1 libglib2.0-0 \
+    # ffmpeg — audio/video ingestion
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-api.txt .
