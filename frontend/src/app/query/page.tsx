@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { submitQuery, fetchUserStats, getIngestHistory } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import clsx from 'clsx'
@@ -92,6 +92,7 @@ export default function QueryPage() {
   const [showSources, setShowSources] = useState(false)
   const [history, setHistory] = useState<QueryHistory[]>([])
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
+  const [copied, setCopied] = useState(false)
   const [showModelsInfo, setShowModelsInfo] = useState(false)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
@@ -201,6 +202,27 @@ export default function QueryPage() {
       usageCount: count,
     }))
     .sort((a, b) => b.avgQuality - a.avgQuality)
+
+  function copyQA() {
+    if (!result) return
+    const text = `Q: ${query}\n\nA: ${result.answer}`
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function downloadQA() {
+    if (!result) return
+    const text = `Q: ${query}\n\nA: ${result.answer}`
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `answer-${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <AppShell>
@@ -495,6 +517,22 @@ export default function QueryPage() {
                       <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">{language}</span>
                     )}
                     <span className="text-xs text-gray-400">{result.latency_ms ?? 0}ms</span>
+                    <button
+                      onClick={copyQA}
+                      title="Copy question & answer"
+                      className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors text-xs"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={downloadQA}
+                      title="Download question & answer"
+                      className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors text-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Save
+                    </button>
                   </div>
                 </div>
 
@@ -647,6 +685,27 @@ export default function QueryPage() {
                   )
                 })()}
               </div>
+
+              {/* RAG suggested follow-up prompts */}
+              {(result.suggested_followups ?? []).length > 0 && (
+                <div className="card p-4">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-500" />
+                    <p className="text-xs font-medium text-gray-600 uppercase tracking-wider">Suggested prompts</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {result.suggested_followups.map((q, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setQuery(q); setResult(null) }}
+                        className="px-3 py-1.5 rounded-full border border-brand-200 bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100 hover:border-brand-400 transition-colors text-left"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Follow-ups */}
               {(result.follow_up_questions ?? []).length > 0 && (
