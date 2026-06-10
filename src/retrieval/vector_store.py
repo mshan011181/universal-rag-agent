@@ -260,15 +260,103 @@ def _extract_text_from_pptx(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
+    """Extract text from a pdfplumber page in reading order, column-aware.
+
+    Strategy:
+    1. Extract all word objects with bounding boxes.
+    2. Filter out words that fall inside excluded_bboxes (table regions).
+    3. Detect multi-column layout by clustering word x0 positions.
+    4. Sort words: by column (left → right), then by y (top → bottom) within column.
+    5. Reconstruct lines by grouping words at similar y-coordinates.
+    """
+    try:
+        words = plumb_page.extract_words(
+            x_tolerance=3, y_tolerance=3, keep_blank_chars=False,
+            use_text_flow=False,
+        ) or []
+    except Exception:
+        return plumb_page.extract_text() or ""
+
+    if not words:
+        return ""
+
+    def _in_bbox(word, bb):
+        return bb[0] <= word["x0"] and word["x1"] <= bb[2] and \
+               bb[1] <= word["top"] and word["bottom"] <= bb[3]
+
+    if excluded_bboxes:
+        words = [w for w in words if not any(_in_bbox(w, bb) for bb in excluded_bboxes)]
+
+    if not words:
+        return ""
+
+    page_width = plumb_page.width or 600
+
+    # Find column boundaries: large horizontal gaps (>15% page width) signal gutters
+    x0_vals = sorted(set(round(w["x0"]) for w in words))
+    col_boundaries = [0.0]
+    for i in range(1, len(x0_vals)):
+        gap = x0_vals[i] - x0_vals[i - 1]
+        if gap > page_width * 0.15:
+            col_boundaries.append((x0_vals[i - 1] + x0_vals[i]) / 2)
+    col_boundaries.append(page_width + 1)
+
+    def _get_col(word):
+        mid_x = (word["x0"] + word["x1"]) / 2
+        for c in range(len(col_boundaries) - 1):
+            if col_boundaries[c] <= mid_x < col_boundaries[c + 1]:
+                return c
+        return len(col_boundaries) - 2
+
+    # Sort: column index, then top (quantised to 3pt buckets), then x0
+    words.sort(key=lambda w: (_get_col(w), round(w["top"] / 3) * 3, w["x0"]))
+
+    # Group words into lines (words within LINE_Y_TOL of each other share a line)
+    LINE_Y_TOL = 4
+    lines_out: list[list[dict]] = []
+    current_line: list[dict] = []
+    current_col = -1
+
+    for word in words:
+        col = _get_col(word)
+        if col != current_col:
+            if current_line:
+                lines_out.append(current_line)
+            current_line = [word]
+            current_col = col
+            continue
+        if not current_line:
+            current_line = [word]
+        else:
+            last = current_line[-1]
+            if abs(word["top"] - last["top"]) <= LINE_Y_TOL:
+                current_line.append(word)
+            else:
+                lines_out.append(current_line)
+                current_line = [word]
+
+    if current_line:
+        lines_out.append(current_line)
+
+    text_lines = []
+    for line_words in lines_out:
+        line_words.sort(key=lambda w: w["x0"])
+        text_lines.append(" ".join(w["text"] for w in line_words))
+
+    return "\n".join(text_lines)
+
+
 def _extract_text_from_pdf(path: Path) -> str:
     """Extract text, tables, and embedded images from a PDF.
 
-    Uses pdfplumber for table-aware text extraction (preserves row/column
-    structure as pipe-separated lines), then falls back to pypdf for images.
+    Uses pdfplumber with column-aware word-level extraction so two-column
+    layouts, callout boxes, and sidebar text are read in natural reading order
+    rather than linearly left-to-right across the full page width.
 
     For each page:
       - Tables detected by pdfplumber → pipe-separated rows.
-      - Non-table text extracted verbatim.
+      - Non-table text extracted with column-aware ordering.
       - Images sent to Groq Vision for description.
     """
     import pypdf
@@ -290,22 +378,8 @@ def _extract_text_from_pdf(path: Path) -> str:
                 ]
                 lines.extend(_rows_to_text(raw_rows))
 
-            # ── Plain text (excluding table regions) ─────────────────────
-            if table_bboxes:
-                # Crop away table bounding boxes so we don't double-extract
-                crop = plumb_page
-                for bbox in table_bboxes:
-                    try:
-                        crop = crop.filter(lambda obj, bb=bbox: not (
-                            bb[0] <= obj.get("x0", 0) <= bb[2] and
-                            bb[1] <= obj.get("top", 0) <= bb[3]
-                        ))
-                    except Exception:
-                        pass
-                page_text = crop.extract_text() or ""
-            else:
-                page_text = plumb_page.extract_text() or ""
-
+            # ── Column-aware plain text (excluding table regions) ─────────
+            page_text = _extract_columns_from_page(plumb_page, table_bboxes)
             if page_text.strip():
                 lines.append(page_text.strip())
 
