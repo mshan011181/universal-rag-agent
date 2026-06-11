@@ -104,14 +104,23 @@ steps:
           .
     waitFor: [test]
 
+  # ── Stage 7b: Configure Docker auth for Artifact Registry ───────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: configure-docker-auth
+    entrypoint: bash
+    args:
+      - -c
+      - gcloud auth configure-docker ${_REGION}-docker.pkg.dev --quiet
+    waitFor: [build-api, build-frontend]
+
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: push-api
     args:
       - push
       - --all-tags
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api
-    waitFor: [build-api]
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
+    waitFor: [configure-docker-auth]
 
   # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
@@ -119,8 +128,8 @@ steps:
     args:
       - push
       - --all-tags
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend
-    waitFor: [build-frontend]
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
+    waitFor: [configure-docker-auth]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -130,7 +139,7 @@ steps:
       - run
       - deploy
       - rag-api
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api:$COMMIT_SHA
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
