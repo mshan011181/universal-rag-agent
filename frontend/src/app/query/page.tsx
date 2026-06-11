@@ -1089,9 +1089,9 @@ export default function QueryPage() {
         </div>
 
         {/* Right sidebar — 1 column */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-4 flex flex-col" style={{ minHeight: 'calc(100vh - 6rem)' }}>
           {/* Query Telemetry */}
-          <div className="card p-4 sticky top-4">
+          <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
               <Gauge className="w-4 h-4 text-brand-600" />
               <h3 className="text-sm font-semibold text-gray-900">Query Telemetry</h3>
@@ -1140,7 +1140,7 @@ export default function QueryPage() {
           </div>
 
           {/* Memory Browser */}
-          <div className="card p-4 sticky top-52">
+          <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 className="w-4 h-4 text-brand-600" />
               <h3 className="text-sm font-semibold text-gray-900">Memory Browser</h3>
@@ -1224,7 +1224,7 @@ export default function QueryPage() {
           </div>
 
           {/* Models Info */}
-          <div className="card p-4 sticky top-96">
+          <div className="card p-4 flex flex-col flex-1">
             <button
               onClick={() => setShowModelsInfo(!showModelsInfo)}
               className="flex items-center justify-between w-full"
@@ -1237,7 +1237,7 @@ export default function QueryPage() {
             </button>
 
             {showModelsInfo && (
-              <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+              <div className="mt-4 space-y-3 overflow-y-auto flex-1">
                 {/* Environments */}
                 <div className="space-y-2 border-b border-gray-200 pb-3">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">LLM Models by Environment</p>
