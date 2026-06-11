@@ -106,12 +106,15 @@ class PgCursor:
 
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+table_info\((\w+)\)\s*$", re.IGNORECASE)
 _SQLITE_DATETIME = re.compile(r"datetime\('now',\s*'([^']+)'\)", re.IGNORECASE)
+_SQLITE_AUTOINC = re.compile(r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT", re.IGNORECASE)
 
 
 def _translate(sql: str) -> str:
     """Translate SQLite-specific SQL to PostgreSQL."""
     # ? → %s
     sql = sql.replace("?", "%s")
+    # INTEGER PRIMARY KEY AUTOINCREMENT → BIGSERIAL PRIMARY KEY
+    sql = _SQLITE_AUTOINC.sub("BIGSERIAL PRIMARY KEY", sql)
     # datetime('now', '-30 days') → NOW() - INTERVAL '30 days'
     def _dt(m: re.Match) -> str:
         val = m.group(1).strip()          # e.g. "-30 days"  or  "-30 || ' days'"
@@ -153,7 +156,7 @@ class PgConn:
     def executescript(self, sql: str) -> PgCursor:
         """Execute a multi-statement SQL script (DDL)."""
         cur = self._conn.cursor()
-        cur.execute(sql)
+        cur.execute(_translate(sql))
         return PgCursor(cur)
 
     def commit(self) -> None:
