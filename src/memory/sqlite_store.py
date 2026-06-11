@@ -483,3 +483,24 @@ def delete_cache_by_source(source_name: str) -> int:
             conn.commit()
             deleted = len(ids_to_delete)
     return deleted
+
+
+# ── PostgreSQL override ───────────────────────────────────────────────────────
+# When DATABASE_URL points to PostgreSQL, replace every function defined above
+# with the psycopg2-backed equivalents from pg_store.  This block MUST be at
+# the bottom so the imports win over the sqlite definitions above.
+import os as _os
+_DATABASE_URL = _os.getenv("DATABASE_URL", "")
+if _DATABASE_URL.startswith("postgresql://") or _DATABASE_URL.startswith("postgres://"):
+    from src.memory.pg_store import (  # noqa: F401
+        get_conn, init_db,
+        get_history, write_turn,
+        write_performance, get_best_combo,
+        check_verified_knowledge, write_verified_knowledge, purge_stale_cache,
+        write_ingest, set_ingest_progress, get_ingest_history,
+        get_recent_docs, get_spreadsheet_files, delete_ingest,
+        write_audit, get_audit_logs,
+        get_retention_policy, set_retention_policy,
+        purge_audit_logs, export_audit_logs_csv, erase_user_data,
+        delete_cache_by_source,
+    )

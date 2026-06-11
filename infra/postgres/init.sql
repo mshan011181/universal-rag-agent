@@ -1,136 +1,129 @@
--- Users & Auth
+-- Universal RAG Enterprise — PostgreSQL schema
+-- Matches the application code's SQLite schema exactly (TEXT PKs, not UUIDs).
+-- Run via Cloud SQL init or: psql $DATABASE_URL -f infra/postgres/init.sql
+
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     hashed_password TEXT NOT NULL,
-    role TEXT DEFAULT 'user',       -- 'admin' | 'user' | 'readonly'
-    org_id UUID,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_login TIMESTAMPTZ
+    org_id TEXT NOT NULL DEFAULT '',
+    role TEXT DEFAULT 'user',
+    storage_quota_bytes BIGINT DEFAULT 524288000,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Organizations (multi-tenant)
-CREATE TABLE IF NOT EXISTS organizations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    plan TEXT DEFAULT 'free',       -- 'free' | 'pro' | 'enterprise'
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS organisations (
+    org_id TEXT PRIMARY KEY,
+    org_name TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    plan TEXT DEFAULT 'free',
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-ALTER TABLE users ADD CONSTRAINT fk_org FOREIGN KEY (org_id) REFERENCES organizations(id);
-
--- API Keys
-CREATE TABLE IF NOT EXISTS api_keys (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    key_hash TEXT UNIQUE NOT NULL,
-    label TEXT,
-    last_used TIMESTAMPTZ,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS org_invites (
+    id BIGSERIAL PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    org_id TEXT NOT NULL,
+    invited_email TEXT NOT NULL,
+    invited_by TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Sessions / Conversation History
+CREATE TABLE IF NOT EXISTS email_otps (
+    id BIGSERIAL PRIMARY KEY,
+    email TEXT NOT NULL,
+    otp TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    token TEXT,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS conversation_history (
     id BIGSERIAL PRIMARY KEY,
     session_id TEXT NOT NULL,
-    user_id UUID REFERENCES users(id),
-    org_id UUID REFERENCES organizations(id),
     turn INTEGER NOT NULL,
     query TEXT,
     rewritten_query TEXT,
     answer TEXT,
-    quality_score REAL,
-    patterns_used TEXT[],
-    latency_ms INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    timestamp TIMESTAMP DEFAULT NOW(),
+    archived INTEGER DEFAULT 0,
+    archived_at TIMESTAMP
 );
-CREATE INDEX idx_conv_session ON conversation_history(session_id);
-CREATE INDEX idx_conv_user ON conversation_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_history(session_id);
 
--- Pattern Performance
 CREATE TABLE IF NOT EXISTS pattern_performance (
     id BIGSERIAL PRIMARY KEY,
-    org_id UUID REFERENCES organizations(id),
-    pattern_combo TEXT NOT NULL,
+    pattern_combo TEXT,
     query_class TEXT,
     quality_score REAL,
     latency_ms INTEGER,
     retry_count INTEGER DEFAULT 0,
     success_rate REAL DEFAULT 1.0,
     run_count INTEGER DEFAULT 1,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_perf_combo ON pattern_performance(pattern_combo);
-CREATE INDEX idx_perf_org ON pattern_performance(org_id);
 
--- Routing Signals
 CREATE TABLE IF NOT EXISTS routing_signals (
     query_fingerprint TEXT PRIMARY KEY,
-    org_id UUID REFERENCES organizations(id),
     detected_class TEXT,
     recommended_combo TEXT,
     confidence_score REAL,
-    last_updated TIMESTAMPTZ DEFAULT NOW()
+    last_updated TIMESTAMP DEFAULT NOW()
 );
 
--- Verified Knowledge Cache
 CREATE TABLE IF NOT EXISTS verified_knowledge (
     id BIGSERIAL PRIMARY KEY,
-    org_id UUID REFERENCES organizations(id),
-    query_fingerprint TEXT NOT NULL,
+    query_fingerprint TEXT,
     answer TEXT,
     quality_score REAL,
-    chunk_ids JSONB,
+    chunk_ids TEXT,
     confirmed_count INTEGER DEFAULT 1,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(org_id, query_fingerprint)
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Document Registry
-CREATE TABLE IF NOT EXISTS documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id UUID REFERENCES organizations(id),
-    filename TEXT NOT NULL,
-    file_type TEXT,
+CREATE TABLE IF NOT EXISTS ingest_history (
+    ingest_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    ingest_type TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    source_url TEXT,
     file_size_bytes BIGINT,
-    chunk_count INTEGER,
-    ingestion_status TEXT DEFAULT 'pending',  -- 'pending'|'processing'|'done'|'failed'
-    error_message TEXT,
-    uploaded_by UUID REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    chunks_created INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    status TEXT DEFAULT 'done',
+    progress INTEGER DEFAULT 0,
+    progress_label TEXT DEFAULT ''
 );
 
--- Audit Log
 CREATE TABLE IF NOT EXISTS audit_log (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
-    org_id UUID REFERENCES organizations(id),
-    action TEXT NOT NULL,           -- 'query'|'ingest'|'delete'|'login'|'api_key_create'
-    resource_id TEXT,
-    ip_address INET,
-    user_agent TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    event_type TEXT NOT NULL,
+    user_id TEXT,
+    email TEXT,
+    org_id TEXT,
+    detail TEXT,
+    ip_address TEXT,
+    status TEXT DEFAULT 'success',
+    created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_audit_user ON audit_log(user_id);
-CREATE INDEX idx_audit_org ON audit_log(org_id);
-CREATE INDEX idx_audit_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_org   ON audit_log(org_id);
+CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_user  ON audit_log(user_id);
 
--- Rate Limiting Buckets (managed by Redis, schema for reference)
--- Stored in Redis as: rate:{user_id}:{window} = count
-
--- Cost Tracking
-CREATE TABLE IF NOT EXISTS usage_metrics (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
-    org_id UUID REFERENCES organizations(id),
-    query_id TEXT,
-    model TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    estimated_cost_usd REAL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS retention_policy (
+    org_id TEXT PRIMARY KEY,
+    audit_log_days INTEGER DEFAULT 90,
+    conversation_days INTEGER DEFAULT 90,
+    updated_at TIMESTAMP DEFAULT NOW()
 );

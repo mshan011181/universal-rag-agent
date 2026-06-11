@@ -54,7 +54,9 @@ python-jose[cryptography]>=3.4.0
 bcrypt>=4.0.0
 email-validator>=2.2.0
 
-# DB — Cloud SQL (same asyncpg driver; only the connection string changes)
+# DB — Cloud SQL PostgreSQL driver (sync, drop-in for sqlite3)
+psycopg2-binary>=2.9.9
+# Async driver + ORM (kept for future async refactor)
 asyncpg>=0.30.0
 sqlalchemy[asyncio]>=2.0.41
 

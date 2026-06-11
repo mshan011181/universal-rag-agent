@@ -9,6 +9,9 @@ DATA_DIR = BASE_DIR / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "memory_enterprise.db"
 
+# Database — PostgreSQL (Cloud SQL) in production, SQLite in local dev
+DATABASE_URL = os.getenv("DATABASE_URL", "")  # e.g. postgresql://user:pass@/dbname?host=/cloudsql/...
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")

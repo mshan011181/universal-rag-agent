@@ -34,9 +34,16 @@ app = FastAPI(
 
 # Middleware (order matters — outermost first)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+import os as _os
+_EXTRA_ORIGINS = [o.strip() for o in _os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://yourdomain.com"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8000",
+        *_EXTRA_ORIGINS,
+    ],
+    allow_origin_regex=r"https://.*\.run\.app",   # all Cloud Run services
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
