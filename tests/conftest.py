@@ -20,6 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True, scope="session")
+def init_test_db():
+    from src.memory.sqlite_store import init_db
+    init_db()
+
+
 # ── LLM mock ──────────────────────────────────────────────────────────────────
 LLM_JSON_RESPONSE = (
     '{"ambiguity": "low", "complexity": "simple", "data_type": "text", '
