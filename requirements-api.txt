@@ -77,3 +77,9 @@ tenacity>=9.1.2
 numpy>=2.2.5
 pandas>=2.2.3
 resend>=2.0.0
+
+# Media / YouTube / weblink ingestion (background tasks in api/routers/ingest.py)
+yt-dlp>=2026.3.17
+youtube-transcript-api>=1.2.4
+imageio-ffmpeg>=0.6.0
+beautifulsoup4>=4.12.0
