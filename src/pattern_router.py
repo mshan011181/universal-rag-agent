@@ -71,7 +71,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     _lang_key = language.lower().strip()
     _ENGLISH_VARIANTS = {"english", "american english", "british english", "australian english"}
     _lang_norm = "english" if _lang_key in _ENGLISH_VARIANTS else _lang_key
-    fingerprint = _hashlib.md5(f"{_fp_base}:{_lang_norm}".encode()).hexdigest()[:16]
+    fingerprint = _hashlib.md5(f"{_fp_base}:{_lang_norm}".encode(), usedforsecurity=False).hexdigest()[:16]
 
     # Check verified knowledge cache
     cached = check_verified_knowledge(fingerprint)

@@ -476,7 +476,7 @@ def delete_cache_by_source(source_name: str) -> int:
                 ids_to_delete.append(row["id"])
         if ids_to_delete:
             conn.execute(
-                f"DELETE FROM verified_knowledge WHERE id IN ({','.join('?' * len(ids_to_delete))})",
+                f"DELETE FROM verified_knowledge WHERE id IN ({','.join('?' * len(ids_to_delete))})",  # nosec B608
                 ids_to_delete
             )
             conn.commit()

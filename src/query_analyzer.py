@@ -74,7 +74,7 @@ def _normalize_for_fp(query: str) -> str:
 
 
 def fingerprint(query: str) -> str:
-    return hashlib.md5(_normalize_for_fp(query).encode()).hexdigest()[:16]
+    return hashlib.md5(_normalize_for_fp(query).encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def analyze_query(query: str, session_id: str, force_bi: bool = False) -> dict:

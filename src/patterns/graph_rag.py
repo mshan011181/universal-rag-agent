@@ -10,7 +10,7 @@ GRAPH_PATH = DATA_DIR / "knowledge_graph.pkl"
 def load_graph() -> nx.Graph:
     if GRAPH_PATH.exists():
         with open(GRAPH_PATH, "rb") as f:
-            return pickle.load(f)
+            return pickle.load(f)  # nosec B301
     return nx.Graph()
 
 

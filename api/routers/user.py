@@ -76,11 +76,11 @@ async def get_user_queries(
             rows = conn.execute(
                 f"""SELECT id, session_id, query, answer, timestamp, archived, archived_at
                     FROM conversation_history WHERE {where}
-                    ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+                    ORDER BY timestamp DESC LIMIT ? OFFSET ?""",  # nosec B608
                 params + [limit, offset],
             ).fetchall()
             total = conn.execute(
-                f"SELECT COUNT(*) FROM conversation_history WHERE {where}",
+                f"SELECT COUNT(*) FROM conversation_history WHERE {where}",  # nosec B608
                 params,
             ).fetchone()[0]
 

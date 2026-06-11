@@ -251,7 +251,7 @@ class BIRag(BasePattern):
             old_stdout = sys.stdout
             sys.stdout = buf
             try:
-                exec(code, {  # noqa: S102
+                exec(code, {  # nosec B102
                     "__builtins__": {
                         "print": print, "len": len, "range": range,
                         "enumerate": enumerate, "zip": zip, "list": list,

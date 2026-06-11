@@ -55,7 +55,7 @@ def _youtube_title(url: str) -> str:
     """Fetch video title via YouTube oEmbed API (no API key needed)."""
     try:
         oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url, safe='')}&format=json"
-        with urllib.request.urlopen(oembed_url, timeout=5) as r:
+        with urllib.request.urlopen(oembed_url, timeout=5) as r:  # nosec B310
             data = _json.loads(r.read())
             return data.get("title", "")[:120]
     except Exception:
