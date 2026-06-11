@@ -197,6 +197,17 @@ export async function submitQuery(payload: QueryRequest): Promise<QueryResponse>
   return request('/api/query/', { method: 'POST', body: JSON.stringify(payload) })
 }
 
+export interface ModelOption {
+  label: string
+  model_id: string
+  provider: string
+}
+
+export async function fetchModels(): Promise<ModelOption[]> {
+  const data = await request<{ models: ModelOption[] }>('/api/query/models')
+  return data.models
+}
+
 export interface ImageQueryItem {
   question: string
   answer: string

@@ -21,6 +21,7 @@ def ask(
     source_filters: list[str] | None = None,
     user_id: str = "",
     force_bi: bool = False,
+    model_override: str | None = None,
 ) -> RAGAgentResponse:
     _ensure_init()
     analysis = analyze_query(query, session_id, force_bi=force_bi)
@@ -28,6 +29,8 @@ def ask(
     analysis["language"] = language
     analysis["user_id"] = user_id
     if source_filters:
-        analysis["source_filters"] = source_filters  # list of original filenames
+        analysis["source_filters"] = source_filters
+    if model_override:
+        analysis["model_override"] = model_override
     response = route_and_execute(analysis, session_id)
     return response, analysis

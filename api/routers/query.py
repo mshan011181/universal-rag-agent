@@ -8,6 +8,7 @@ import structlog
 from api.auth_utils import get_current_user_or_api_key
 from src.agent import ask
 from src.memory.sqlite_store import write_audit
+from src.generation.llm import MODEL_REGISTRY
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -18,8 +19,9 @@ class QueryRequest(BaseModel):
     session_id: Optional[str] = Field(default="default", max_length=64)
     stream: bool = False
     language: str = Field(default="English", max_length=50)
-    source_filters: list[str] = Field(default_factory=list)  # filenames to restrict search to
-    force_bi: bool = False  # set True from BI page to bypass keyword detection
+    source_filters: list[str] = Field(default_factory=list)
+    force_bi: bool = False
+    model: Optional[str] = Field(default=None, max_length=100)  # api_model_id from MODEL_REGISTRY
 
 
 class QueryResponse(BaseModel):
@@ -35,7 +37,19 @@ class QueryResponse(BaseModel):
     suggested_followups: list[str]
     citation_map: dict
     session_id: str
+    model_used: Optional[str] = None
     request_id: Optional[str] = None
+
+
+@router.get("/models")
+async def list_models(user: dict = Depends(get_current_user_or_api_key)):
+    """Return available LLM models for the model selector UI."""
+    return {
+        "models": [
+            {"label": label, "model_id": model_id, "provider": provider}
+            for label, (provider, model_id) in MODEL_REGISTRY.items()
+        ]
+    }
 
 
 @router.post("/", response_model=QueryResponse)
@@ -64,6 +78,7 @@ async def query_endpoint(
             source_filters=body.source_filters or [],
             user_id=user["user_id"],
             force_bi=body.force_bi,
+            model_override=body.model or None,
         )
     except Exception as e:
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
@@ -107,6 +122,7 @@ async def query_endpoint(
         suggested_followups=response.suggested_followups,
         citation_map=response.citation_map,
         session_id=body.session_id,
+        model_used=body.model,
     )
 
 

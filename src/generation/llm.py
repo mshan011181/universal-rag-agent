@@ -60,38 +60,60 @@ _configure_langsmith()
 # Provider factory
 # ---------------------------------------------------------------------------
 
-def get_llm(temperature: float = 0.1, streaming: bool = False):
-    """Return a LangChain chat model for the configured provider.
+# Model registry — shown in UI model selector
+# Format: { "display_label": ("provider", "api_model_id") }
+MODEL_REGISTRY: dict[str, tuple[str, str]] = {
+    "Claude Sonnet 4.6 (Best)":    ("anthropic", "claude-sonnet-4-6"),
+    "Claude Haiku 4.5 (Fast)":     ("anthropic", "claude-haiku-4-5-20251001"),
+    "Llama 3.3 70B (Free/Fast)":   ("groq",      "llama-3.3-70b-versatile"),
+    "Llama 3.1 8B (Fastest)":      ("groq",      "llama-3.1-8b-instant"),
+}
 
+# Reverse lookup: api_model_id → provider
+_MODEL_ID_TO_PROVIDER: dict[str, str] = {mid: prov for prov, mid in MODEL_REGISTRY.values()}  # type: ignore
+
+
+def get_llm(temperature: float = 0.1, streaming: bool = False, model_override: str | None = None):
+    """Return a LangChain chat model.
+
+    model_override: api_model_id from MODEL_REGISTRY (e.g. 'claude-sonnet-4-6').
+    When provided it takes full precedence over LLM_PROVIDER / env defaults.
     All returned models are automatically traced by LangSmith when
     LANGCHAIN_TRACING_V2=true is set.
     """
-    if LLM_PROVIDER == "anthropic":
+    # Resolve provider and model_id from override or env defaults
+    if model_override:
+        provider = _MODEL_ID_TO_PROVIDER.get(model_override, LLM_PROVIDER)
+        model_id = model_override
+    else:
+        provider = LLM_PROVIDER
+        model_id = None  # each branch uses its own default
+
+    if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(
             api_key=ANTHROPIC_API_KEY,
-            model=ANTHROPIC_MODEL,
+            model=model_id or ANTHROPIC_MODEL,
             temperature=temperature,
             streaming=streaming,
-            # max_tokens required by Anthropic API; 4096 covers all RAG responses
             max_tokens=4096,
         )
 
-    if LLM_PROVIDER == "vertexai":
+    if provider == "vertexai":
         from langchain_google_vertexai import ChatVertexAI
         return ChatVertexAI(
-            model_name=VERTEXAI_MODEL,
+            model_name=model_id or VERTEXAI_MODEL,
             project=VERTEXAI_PROJECT,
             location=VERTEXAI_LOCATION,
             temperature=temperature,
             streaming=streaming,
         )
 
-    # Default: Groq (local dev / CI)
+    # Default: Groq
     from langchain_groq import ChatGroq
     return ChatGroq(
         api_key=GROQ_API_KEY,
-        model=GROQ_MODEL,
+        model=model_id or GROQ_MODEL,
         temperature=temperature,
         streaming=streaming,
     )
@@ -110,9 +132,9 @@ def safe_invoke(llm, messages: list) -> str:
 # RAG chain functions — all calls are traced in LangSmith automatically
 # ---------------------------------------------------------------------------
 
-def synthesize(context: str, query: str, language: str = "English") -> str:
+def synthesize(context: str, query: str, language: str = "English", model_override: str | None = None) -> str:
     from langchain_core.messages import SystemMessage, HumanMessage
-    llm = get_llm(temperature=0.1)
+    llm = get_llm(temperature=0.1, model_override=model_override)
     lang_instruction = (
         f" You MUST respond entirely in {language}. "
         f"Every word of your answer must be in {language}, including headers, labels, and explanations."
@@ -145,11 +167,12 @@ def synthesize_cross(
     query: str,
     sources: list[str],
     language: str = "English",
+    model_override: str | None = None,
 ) -> str:
     """Cross-document synthesis — explicitly labels claims by source and synthesizes."""
     from langchain_core.messages import SystemMessage, HumanMessage
 
-    llm = get_llm(temperature=0.1)
+    llm = get_llm(temperature=0.1, model_override=model_override)
 
     lang_instruction = (
         f" You MUST respond entirely in {language}. "
@@ -182,9 +205,9 @@ def synthesize_cross(
     return safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])
 
 
-def grade(answer: str, context: str, query: str) -> dict:
+def grade(answer: str, context: str, query: str, model_override: str | None = None) -> dict:
     from langchain_core.messages import SystemMessage, HumanMessage
-    llm = get_llm(temperature=0.0)
+    llm = get_llm(temperature=0.0, model_override=model_override)
     system = (
         "You are a strict quality evaluator for RAG answers. "
         "Score the answer on three dimensions, each 0.0-1.0:\n"
@@ -228,9 +251,9 @@ def grade(answer: str, context: str, query: str) -> dict:
         return {"quality_score": 0.5, "relevance": 0.5, "completeness": 0.5, "hallucination_risk": 0.5}
 
 
-def check_faithfulness(answer: str, chunks: list[dict]) -> dict:
+def check_faithfulness(answer: str, chunks: list[dict], model_override: str | None = None) -> dict:
     from langchain_core.messages import SystemMessage, HumanMessage
-    llm = get_llm(temperature=0.0)
+    llm = get_llm(temperature=0.0, model_override=model_override)
     context_str = "\n".join(f"[{i}] {c.get('content', '')}" for i, c in enumerate(chunks))
     system = (
         "You are a faithfulness verifier. For each sentence in the answer, "
@@ -247,9 +270,9 @@ def check_faithfulness(answer: str, chunks: list[dict]) -> dict:
         return {"citation_map": {}, "all_supported": True}
 
 
-def generate_followups(query: str, answer: str) -> list:
+def generate_followups(query: str, answer: str, model_override: str | None = None) -> list:
     from langchain_core.messages import SystemMessage, HumanMessage
-    llm = get_llm(temperature=0.3)
+    llm = get_llm(temperature=0.3, model_override=model_override)
     system = "Generate exactly 3 concise follow-up questions based on the query and answer. Return as JSON array of strings."
     human = f"Query: {query}\nAnswer: {answer}"
     raw = safe_invoke(llm, [SystemMessage(content=system), HumanMessage(content=human)])

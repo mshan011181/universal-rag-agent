@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, fetchUserStats, getIngestHistory, submitQueryFromImage } from '@/lib/api'
-import type { ImageQueryItem, ImageQueryResponse } from '@/lib/api'
+import { submitQuery, fetchUserStats, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
+import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
 import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, ImagePlus, Keyboard, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -95,6 +95,13 @@ export default function QueryPage() {
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
   const [copied, setCopied] = useState(false)
 
+  // Model selector
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('')
+  useEffect(() => {
+    fetchModels().then(setModels).catch(() => {})
+  }, [])
+
   // Image query mode
   const [inputMode, setInputMode] = useState<'text' | 'image'>('text')
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -175,6 +182,7 @@ export default function QueryPage() {
         pattern: pattern === 'auto' ? undefined : pattern,
         language,
         source_filters: selectedSources.length > 0 ? selectedSources : undefined,
+        model: selectedModel || undefined,
       })
       setResult(res)
       // Refresh personal stats after query
@@ -469,7 +477,7 @@ export default function QueryPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="label">RAG Pattern</label>
                   <select
@@ -481,6 +489,27 @@ export default function QueryPage() {
                       <option key={p} value={p}>
                         {p === 'auto' ? 'Auto (recommended)' : p.replace(/_/g, ' ')}
                       </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label flex items-center gap-1.5">
+                    LLM Model
+                    {selectedModel && (
+                      <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-violet-100 text-violet-700">
+                        {models.find(m => m.model_id === selectedModel)?.provider === 'anthropic' ? 'Claude' : 'Groq'}
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    className="input"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                  >
+                    <option value="">Default (env)</option>
+                    {models.map((m) => (
+                      <option key={m.model_id} value={m.model_id}>{m.label}</option>
                     ))}
                   </select>
                 </div>
@@ -774,6 +803,11 @@ export default function QueryPage() {
                       <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">{language}</span>
                     )}
                     <span className="text-xs text-gray-400">{result.latency_ms ?? 0}ms</span>
+                    {result.model_used && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-medium">
+                        {result.model_used.startsWith('claude') ? 'Claude' : 'Groq'} · {result.model_used}
+                      </span>
+                    )}
                     <button
                       onClick={copyQA}
                       title="Copy question & answer"

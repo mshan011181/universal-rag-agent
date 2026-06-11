@@ -16,8 +16,9 @@ export interface QueryRequest {
   pattern?: string
   top_k?: number
   language?: string
-  source_filters?: string[]   // filenames to restrict retrieval to
-  force_bi?: boolean          // bypass BI keyword detection (BI/Analytics page)
+  source_filters?: string[]
+  force_bi?: boolean
+  model?: string              // api_model_id — e.g. "claude-sonnet-4-6"
 }
 
 export interface SourceChunk {
@@ -28,8 +29,8 @@ export interface SourceChunk {
 
 export interface QueryResponse {
   answer: string
-  pattern_used: string        // kept for backward compat (mapped from patterns_used[0])
-  patterns_used: string[]     // actual list from API
+  pattern_used: string
+  patterns_used: string[]
   sources: SourceChunk[]
   quality_score: number
   follow_up_questions: string[]
@@ -39,6 +40,7 @@ export interface QueryResponse {
   fallback_used: boolean
   verified_knowledge_hit: boolean
   suggested_followups: string[]
+  model_used?: string
 }
 
 export interface IngestResponse {

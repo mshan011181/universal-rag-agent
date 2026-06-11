@@ -62,6 +62,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     query = analysis["query"]
     patterns = analysis["patterns"]
     language = analysis.get("language", "English")
+    model_override: str | None = analysis.get("model_override")
 
     # Always include language in fingerprint so each language has its own cache slot.
     # Normalise English variants to "english" so American/British/Australian share one slot.
@@ -76,7 +77,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     cached = check_verified_knowledge(fingerprint)
     if cached:
         try:
-            cache_followups = generate_followups(query, cached)
+            cache_followups = generate_followups(query, cached, model_override=model_override)
         except Exception:
             cache_followups = []
         return RAGAgentResponse(
@@ -111,12 +112,12 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 f"[Source: {c['metadata'].get('source','?')}]\n{c['content']}"
                 for c in state_chunks[:6]
             ])
-            answer = synthesize(context, query, language=language)
-            grade_result = grade(answer, context, query)
+            answer = synthesize(context, query, language=language, model_override=model_override)
+            grade_result = grade(answer, context, query, model_override=model_override)
             quality = grade_result.get("quality_score", 0.5)
             followups = []
             try:
-                followups = generate_followups(query, answer)
+                followups = generate_followups(query, answer, model_override=model_override)
             except Exception:
                 pass
             citation_map = {
@@ -287,12 +288,13 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 context, query,
                 sources=state["cross_sources"],
                 language=language,
+                model_override=model_override,
             )
         else:
-            state["answer"] = synthesize(context, query, language=language)
+            state["answer"] = synthesize(context, query, language=language, model_override=model_override)
 
     # Grade the answer
-    grade_result = grade(state["answer"], context, query)
+    grade_result = grade(state["answer"], context, query, model_override=model_override)
     quality = grade_result.get("quality_score", 0.5)
 
     # Faithfulness — run self_rag verification if not already done
@@ -300,14 +302,14 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     citation_map = state["citation_map"]
     if "self_rag" in patterns and not citation_map:
         from src.generation.llm import check_faithfulness
-        faith = check_faithfulness(state["answer"], state["chunks"])
+        faith = check_faithfulness(state["answer"], state["chunks"], model_override=model_override)
         citation_map = faith.get("citation_map", {})
         faithfulness = "pass" if faith.get("all_supported", True) else "warn"
 
     # Follow-up suggestions
     followups = []
     try:
-        followups = generate_followups(query, state["answer"])
+        followups = generate_followups(query, state["answer"], model_override=model_override)
     except Exception:
         pass
 
