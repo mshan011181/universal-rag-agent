@@ -4,8 +4,7 @@ Tests for the Redis-backed rate limiter middleware.
 The Redis client is mocked by conftest.py (mock_redis fixture).
 """
 
-import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 
 def test_request_below_limit_passes(client):

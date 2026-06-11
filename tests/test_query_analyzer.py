@@ -1,7 +1,6 @@
 """Tests for the 5-dimension query analyzer."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from src.query_analyzer import fingerprint
 
 

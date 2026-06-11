@@ -6,7 +6,7 @@ conftest.py so no network calls or model downloads happen.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 def test_retrieve_returns_list(mock_pinecone):

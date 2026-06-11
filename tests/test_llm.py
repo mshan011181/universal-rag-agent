@@ -3,7 +3,6 @@ Tests for the LLM provider abstraction (Groq / Vertex AI switching).
 """
 
 import os
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -15,7 +14,7 @@ def test_get_llm_returns_groq_by_default():
 
     with patch("src.generation.llm.ChatGroq") as mock_groq:
         mock_groq.return_value = MagicMock()
-        llm = llm_module.get_llm()
+        llm_module.get_llm()
         mock_groq.assert_called_once()
 
 
@@ -29,7 +28,7 @@ def test_get_llm_returns_vertexai_when_set(monkeypatch):
 
     with patch("src.generation.llm.ChatVertexAI") as mock_vertex:
         mock_vertex.return_value = MagicMock()
-        llm = llm_module.get_llm()
+        llm_module.get_llm()
         mock_vertex.assert_called_once()
 
 
