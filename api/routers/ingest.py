@@ -836,6 +836,7 @@ async def ingest_media_file_endpoint(
 
     ingest_id = str(uuid.uuid4())
     user_id = user["user_id"]
+    org_id = user.get("org_id", "default")
 
     # Write to database immediately
     logger.info("media_file_queued", ingest_id=ingest_id, filename=filename, media_type=media_type, user_id=user_id)
