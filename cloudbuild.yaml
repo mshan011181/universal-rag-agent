@@ -171,10 +171,12 @@ steps:
   # ── Stage 12: Upload coverage report as build artifact ────────────────────────
   - name: gcr.io/cloud-builders/gsutil
     id: upload-coverage
+    entrypoint: bash
     args:
-      - cp
-      - coverage.xml
-      - gs://$PROJECT_ID-build-artifacts/rag/$COMMIT_SHA/coverage.xml
+      - -c
+      - |
+        gsutil mb gs://${_PROJECT}-build-artifacts 2>/dev/null || true
+        gsutil cp coverage.xml gs://${_PROJECT}-build-artifacts/rag/$COMMIT_SHA/coverage.xml || true
     waitFor: [test]
 
 images:
