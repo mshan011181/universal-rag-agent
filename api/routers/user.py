@@ -107,6 +107,34 @@ class ArchiveRequest(BaseModel):
     before_days: int = 30   # archive entries older than this many days
 
 
+@router.post("/queries/{query_id}/email")
+async def email_query(
+    query_id: int,
+    user: dict = Depends(get_current_user_or_api_key),
+):
+    """Send a single Q&A entry to the logged-in user's email."""
+    from api.email_service import send_query_email
+    user_id = user["user_id"]
+    to_email = user.get("email")
+    if not to_email:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No email address on file for this account.")
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT query, answer, timestamp FROM conversation_history WHERE id=? AND session_id LIKE ?",
+                (query_id, f"{user_id}:%"),
+            ).fetchone()
+        if not row:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Query not found.")
+        sent = send_query_email(to_email, row[0] or "", row[1] or "", row[2] or "")
+        return {"sent": sent, "to": to_email}
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/queries/archive")
 async def archive_queries(
     body: ArchiveRequest,

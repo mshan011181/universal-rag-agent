@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { fetchUserQueries, fetchArchiveStats, archiveQueries, unarchiveQueries } from '@/lib/api'
+import { fetchUserQueries, fetchArchiveStats, archiveQueries, unarchiveQueries, emailQuery } from '@/lib/api'
 import type { UserQueryItem } from '@/lib/api'
-import { Search, ChevronDown, ChevronUp, Clock, MessageSquare, X, Copy, Download, Check, Archive, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, Clock, MessageSquare, X, Copy, Download, Check, Archive, RotateCcw, AlertTriangle, Mail } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -37,6 +37,7 @@ function downloadText(content: string, filename: string) {
 function HistoryItem({ item }: { item: UserQueryItem }) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
 
   function handleCopy() {
     navigator.clipboard.writeText(itemToText(item))
@@ -47,6 +48,18 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
   function handleDownload() {
     const filename = `query_${item.id}_${item.timestamp.slice(0, 10)}.txt`
     downloadText(itemToText(item), filename)
+  }
+
+  async function handleEmail() {
+    setEmailStatus('sending')
+    try {
+      await emailQuery(item.id)
+      setEmailStatus('sent')
+      setTimeout(() => setEmailStatus('idle'), 3000)
+    } catch {
+      setEmailStatus('error')
+      setTimeout(() => setEmailStatus('idle'), 3000)
+    }
   }
 
   return (
@@ -86,6 +99,21 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
           >
             <Download className="w-3.5 h-3.5" />
             Save
+          </button>
+          <button
+            onClick={handleEmail}
+            disabled={emailStatus === 'sending'}
+            title="Send to my email"
+            className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors
+              ${emailStatus === 'sent'  ? 'border-green-400 text-green-600 bg-green-50' :
+                emailStatus === 'error' ? 'border-red-400 text-red-600 bg-red-50' :
+                'border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600'}
+              disabled:opacity-60`}
+          >
+            {emailStatus === 'sent'    ? <><Check className="w-3.5 h-3.5" /> Sent!</> :
+             emailStatus === 'error'   ? <><Mail className="w-3.5 h-3.5" /> Failed</> :
+             emailStatus === 'sending' ? <><Mail className="w-3.5 h-3.5" /> Sending…</> :
+                                         <><Mail className="w-3.5 h-3.5" /> Email</>}
           </button>
           <button
             onClick={() => setExpanded(e => !e)}

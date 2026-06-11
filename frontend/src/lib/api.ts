@@ -348,6 +348,10 @@ export async function fetchUserQueries(params?: {
   return request(`/api/user/queries?${qs}`)
 }
 
+export async function emailQuery(queryId: number): Promise<{ sent: boolean; to: string }> {
+  return request(`/api/user/queries/${queryId}/email`, { method: 'POST' })
+}
+
 export async function fetchArchiveStats(beforeDays: number): Promise<{
   eligible: number; already_archived: number; before_days: number; cutoff: string
 }> {

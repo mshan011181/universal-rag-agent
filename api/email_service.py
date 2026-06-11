@@ -127,6 +127,30 @@ def send_reset_otp(to: str, otp: str, reset_link: str) -> bool:
     )
 
 
+def send_query_email(to: str, query: str, answer: str, timestamp: str) -> bool:
+    """Send a single Q&A entry to the user's email."""
+    import html as html_lib
+    q_escaped = html_lib.escape(query)
+    a_escaped = html_lib.escape(answer).replace("\n", "<br>")
+    body = f"""
+    <p style="color:#1e293b;font-size:14px;margin-bottom:4px;">
+      <strong>Asked on:</strong> {timestamp}
+    </p>
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;">Question</p>
+      <p style="margin:0;font-size:15px;color:#1e293b;font-weight:600;">{q_escaped}</p>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;">Answer</p>
+      <p style="margin:0;font-size:14px;color:#334155;line-height:1.6;">{a_escaped}</p>
+    </div>
+    <p style="color:#94a3b8;font-size:12px;margin-top:24px;">
+      This Q&amp;A was exported from your Universal RAG Enterprise history.
+    </p>
+    """
+    return _send(to, f"RAG Answer: {query[:80]}", _base_html("Query Export", body))
+
+
 def send_org_invite(to: str, invited_by: str, org_name: str, invite_link: str) -> bool:
     body = f"""
     <p style="color:#1e293b;font-size:15px;">
