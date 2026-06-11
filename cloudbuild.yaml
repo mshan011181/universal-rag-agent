@@ -2,6 +2,7 @@ substitutions:
   _REGION: us-central1
   _REPO: rag-repo
   _PROJECT: shan-project2
+  _API_URL: https://rag-api-5tnihixkqq-uc.a.run.app
 
 steps:
   # ── Stage 1: Install dev + API dependencies ───────────────────────────────────
@@ -85,23 +86,24 @@ steps:
     waitFor: [test]
 
   # ── Stage 7: Build Frontend image (Next.js — replaces Streamlit) ─────────────
-  # NEXT_PUBLIC_API_URL is baked in at build time; the deploy step below reads
-  # the live API URL after rag-api is deployed and passes it as a build-arg.
+  # NEXT_PUBLIC_API_URL is baked into the client bundle at build time. The
+  # docker builder image has no gcloud, so the URL comes from the _API_URL
+  # substitution (Cloud Run URLs are stable per service+project).
   - name: gcr.io/cloud-builders/docker
     id: build-frontend
-    entrypoint: bash
     args:
-      - -c
-      - |
-        API_URL=$$(gcloud run services describe rag-api \
-          --region=${_REGION} --project=${_PROJECT} --format="value(status.url)" 2>/dev/null \
-          || echo "https://rag-api-placeholder.a.run.app")
-        docker build -f Dockerfile.nextjs \
-          --build-arg NEXT_PUBLIC_API_URL="$$API_URL" \
-          -t ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:$COMMIT_SHA \
-          -t ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:latest \
-          --label git.sha=$COMMIT_SHA \
-          .
+      - build
+      - -f
+      - Dockerfile.nextjs
+      - --build-arg
+      - NEXT_PUBLIC_API_URL=${_API_URL}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:$COMMIT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:latest
+      - --label
+      - git.sha=$COMMIT_SHA
+      - .
     waitFor: [test]
 
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
