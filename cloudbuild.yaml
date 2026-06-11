@@ -104,33 +104,16 @@ steps:
           .
     waitFor: [test]
 
-  # ── Stage 8a: Write docker credentials into shared volume ────────────────────
-  # cloud-sdk has gcloud but no docker CLI; cloud-builders/docker has docker but
-  # no gcloud. We bridge them with a named volume that holds the docker config.
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    id: configure-docker-auth
-    entrypoint: gcloud
-    args:
-      - auth
-      - configure-docker
-      - ${_REGION}-docker.pkg.dev
-      - --quiet
-    volumes:
-      - name: docker-config
-        path: /root/.docker
-    waitFor: [build-api, build-frontend]
-
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
+  # cloud-builders/docker uses the GCE metadata server for credentials — no
+  # explicit auth step needed once the Cloud Build SA has artifactregistry.writer.
   - name: gcr.io/cloud-builders/docker
     id: push-api
     args:
       - push
       - --all-tags
       - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
-    volumes:
-      - name: docker-config
-        path: /root/.docker
-    waitFor: [configure-docker-auth]
+    waitFor: [build-api]
 
   # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
@@ -139,10 +122,7 @@ steps:
       - push
       - --all-tags
       - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
-    volumes:
-      - name: docker-config
-        path: /root/.docker
-    waitFor: [configure-docker-auth]
+    waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
