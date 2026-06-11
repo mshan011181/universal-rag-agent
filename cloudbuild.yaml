@@ -94,13 +94,13 @@ steps:
       - -c
       - |
         API_URL=$$(gcloud run services describe rag-api \
-          --region=${_REGION} --project=$$PROJECT_ID --format="value(status.url)" 2>/dev/null \
+          --region=${_REGION} --project=${_PROJECT} --format="value(status.url)" 2>/dev/null \
           || echo "https://rag-api-placeholder.a.run.app")
         docker build -f Dockerfile.nextjs \
           --build-arg NEXT_PUBLIC_API_URL="$$API_URL" \
-          -t ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_REPO}/rag-frontend:$$COMMIT_SHA \
-          -t ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_REPO}/rag-frontend:latest \
-          --label git.sha=$$COMMIT_SHA \
+          -t ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:$COMMIT_SHA \
+          -t ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:latest \
+          --label git.sha=$COMMIT_SHA \
           .
     waitFor: [test]
 
@@ -153,9 +153,9 @@ steps:
       - -c
       - |
         API_URL=$$(gcloud run services describe rag-api \
-          --region=${_REGION} --project=$$PROJECT_ID --format="value(status.url)")
+          --region=${_REGION} --project=${_PROJECT} --format="value(status.url)")
         gcloud run deploy rag-frontend \
-          --image=${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_REPO}/rag-frontend:$$COMMIT_SHA \
+          --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend:$COMMIT_SHA \
           --region=${_REGION} \
           --platform=managed \
           --allow-unauthenticated \
