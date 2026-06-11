@@ -38,6 +38,7 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [emailError, setEmailError] = useState('')
 
   function handleCopy() {
     navigator.clipboard.writeText(itemToText(item))
@@ -52,13 +53,16 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
 
   async function handleEmail() {
     setEmailStatus('sending')
+    setEmailError('')
     try {
       await emailQuery(item.id)
       setEmailStatus('sent')
       setTimeout(() => setEmailStatus('idle'), 3000)
-    } catch {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Email failed'
+      setEmailError(msg)
       setEmailStatus('error')
-      setTimeout(() => setEmailStatus('idle'), 3000)
+      setTimeout(() => { setEmailStatus('idle'); setEmailError('') }, 5000)
     }
   }
 
@@ -100,21 +104,28 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
             <Download className="w-3.5 h-3.5" />
             Save
           </button>
-          <button
-            onClick={handleEmail}
-            disabled={emailStatus === 'sending'}
-            title="Send to my email"
-            className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors
-              ${emailStatus === 'sent'  ? 'border-green-400 text-green-600 bg-green-50' :
-                emailStatus === 'error' ? 'border-red-400 text-red-600 bg-red-50' :
-                'border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600'}
-              disabled:opacity-60`}
-          >
-            {emailStatus === 'sent'    ? <><Check className="w-3.5 h-3.5" /> Sent!</> :
-             emailStatus === 'error'   ? <><Mail className="w-3.5 h-3.5" /> Failed</> :
-             emailStatus === 'sending' ? <><Mail className="w-3.5 h-3.5" /> Sending…</> :
-                                         <><Mail className="w-3.5 h-3.5" /> Email</>}
-          </button>
+          <div className="relative group">
+            <button
+              onClick={handleEmail}
+              disabled={emailStatus === 'sending'}
+              title={emailError || 'Send to my email'}
+              className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors
+                ${emailStatus === 'sent'  ? 'border-green-400 text-green-600 bg-green-50' :
+                  emailStatus === 'error' ? 'border-red-400 text-red-600 bg-red-50' :
+                  'border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600'}
+                disabled:opacity-60`}
+            >
+              {emailStatus === 'sent'    ? <><Check className="w-3.5 h-3.5" /> Sent!</> :
+               emailStatus === 'error'   ? <><Mail className="w-3.5 h-3.5" /> Failed</> :
+               emailStatus === 'sending' ? <><Mail className="w-3.5 h-3.5" /> Sending…</> :
+                                           <><Mail className="w-3.5 h-3.5" /> Email</>}
+            </button>
+            {emailStatus === 'error' && emailError && (
+              <div className="absolute right-0 top-8 z-10 w-72 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 shadow-lg">
+                {emailError}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setExpanded(e => !e)}
             className="p-1 rounded text-gray-400 hover:text-gray-600"

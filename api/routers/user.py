@@ -129,10 +129,16 @@ async def email_query(
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Query not found.")
         sent = send_query_email(to_email, row[0] or "", row[1] or "", row[2] or "")
-        return {"sent": sent, "to": to_email}
+        if not sent:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="Email could not be sent. Resend free tier only allows sending to the domain owner's address. Please verify a domain at resend.com/domains to enable sending to all users."
+            )
+        return {"sent": True, "to": to_email}
     except Exception as e:
         from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @router.post("/queries/archive")
