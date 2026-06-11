@@ -27,6 +27,9 @@ class RAGAgentResponse:
     # Continuation
     suggested_followups: list = field(default_factory=list)
 
+    # Token usage for this query (input, output, cost)
+    token_usage: dict = field(default_factory=dict)
+
     def __post_init__(self):
         if self.quality_score >= HIGH_CONFIDENCE:
             self.confidence = "HIGH"

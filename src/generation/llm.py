@@ -19,6 +19,7 @@ Tracing env vars (set in Secret Manager / Cloud Run):
 import os
 import json
 import logging
+import threading
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -61,7 +62,7 @@ _configure_langsmith()
 # ---------------------------------------------------------------------------
 
 # Model registry — shown in UI model selector
-# Format: { "display_label": ("provider", "api_model_id") }
+# Format: { "display_label": ("provider", "api_model_id", context_window_k) }
 MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     "Claude Sonnet 4.6 (Best)":    ("anthropic", "claude-sonnet-4-6"),
     "Claude Haiku 4.5 (Fast)":     ("anthropic", "claude-haiku-4-5-20251001"),
@@ -69,8 +70,59 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     "Llama 3.1 8B (Fastest)":      ("groq",      "llama-3.1-8b-instant"),
 }
 
+# Extended metadata: context window (tokens) and pricing (USD per million tokens)
+MODEL_METADATA: dict[str, dict] = {
+    "claude-sonnet-4-6":           {"context_k": 200, "input_usd_per_mtok": 3.0,  "output_usd_per_mtok": 15.0, "free": False},
+    "claude-haiku-4-5-20251001":   {"context_k": 200, "input_usd_per_mtok": 0.8,  "output_usd_per_mtok": 4.0,  "free": False},
+    "llama-3.3-70b-versatile":     {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
+    "llama-3.1-8b-instant":        {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
+}
+
 # Reverse lookup: api_model_id → provider
 _MODEL_ID_TO_PROVIDER: dict[str, str] = {mid: prov for prov, mid in MODEL_REGISTRY.values()}  # type: ignore
+
+# ---------------------------------------------------------------------------
+# Per-request token usage tracker (thread-local)
+# ---------------------------------------------------------------------------
+
+_token_usage = threading.local()
+
+
+def reset_token_usage() -> None:
+    _token_usage.calls = []
+
+
+def record_token_usage(model_id: str, input_tokens: int, output_tokens: int) -> None:
+    if not hasattr(_token_usage, "calls"):
+        _token_usage.calls = []
+    _token_usage.calls.append({
+        "model": model_id,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    })
+
+
+def get_token_usage() -> dict:
+    calls = getattr(_token_usage, "calls", [])
+    total_input = sum(c["input_tokens"] for c in calls)
+    total_output = sum(c["output_tokens"] for c in calls)
+    total_tokens = total_input + total_output
+
+    # Estimate cost from the first model seen (dominant model for the query)
+    estimated_cost = 0.0
+    for c in calls:
+        meta = MODEL_METADATA.get(c["model"], {})
+        in_rate = meta.get("input_usd_per_mtok", 0.0)
+        out_rate = meta.get("output_usd_per_mtok", 0.0)
+        estimated_cost += (c["input_tokens"] * in_rate + c["output_tokens"] * out_rate) / 1_000_000
+
+    return {
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "total_tokens": total_tokens,
+        "llm_calls": len(calls),
+        "estimated_cost_usd": round(estimated_cost, 6),
+    }
 
 
 def get_llm(temperature: float = 0.1, streaming: bool = False, model_override: str | None = None):
@@ -129,17 +181,32 @@ def _get_fallback_llm(temperature: float = 0.1):
 # Retry wrapper
 # ---------------------------------------------------------------------------
 
+def _record_response(resp, model_id: str) -> str:
+    """Extract content and record token usage from a LangChain response."""
+    usage = getattr(resp, "usage_metadata", None)
+    if usage:
+        record_token_usage(
+            model_id=model_id,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+    return resp.content
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
 def safe_invoke(llm, messages: list) -> str:
+    model_id = getattr(llm, "model", None) or getattr(llm, "model_name", "") or ""
     try:
-        return llm.invoke(messages).content
+        resp = llm.invoke(messages)
+        return _record_response(resp, model_id)
     except Exception as e:
         err_str = str(e).lower()
         # Anthropic billing/quota errors — fall back to Groq so the query still works
         if "credit balance is too low" in err_str or "insufficient_quota" in err_str or "payment_required" in err_str:
             logger.warning("Anthropic billing error — falling back to Groq: %s", e)
             fallback = _get_fallback_llm()
-            return fallback.invoke(messages).content
+            resp = fallback.invoke(messages)
+            return _record_response(resp, GROQ_MODEL)
         raise
 
 

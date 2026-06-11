@@ -2,6 +2,7 @@ from src.query_analyzer import analyze_query
 from src.pattern_router import route_and_execute
 from src.memory.sqlite_store import init_db
 from src.models import RAGAgentResponse
+from src.generation.llm import reset_token_usage, get_token_usage
 
 _initialized = False
 
@@ -24,6 +25,7 @@ def ask(
     model_override: str | None = None,
 ) -> RAGAgentResponse:
     _ensure_init()
+    reset_token_usage()
     analysis = analyze_query(query, session_id, force_bi=force_bi)
     analysis["namespace"] = namespace
     analysis["language"] = language
@@ -33,4 +35,5 @@ def ask(
     if model_override:
         analysis["model_override"] = model_override
     response = route_and_execute(analysis, session_id)
+    response.token_usage = get_token_usage()
     return response, analysis

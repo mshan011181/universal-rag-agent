@@ -201,11 +201,27 @@ export interface ModelOption {
   label: string
   model_id: string
   provider: string
+  context_k: number
+  input_usd_per_mtok: number
+  output_usd_per_mtok: number
+  free: boolean
 }
 
 export async function fetchModels(): Promise<ModelOption[]> {
   const data = await request<{ models: ModelOption[] }>('/api/query/models')
   return data.models
+}
+
+export interface TokenStats {
+  query_count: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_tokens: number
+  total_cost_usd: number
+}
+
+export async function fetchTokenStats(): Promise<TokenStats> {
+  return request<TokenStats>('/api/query/token-stats')
 }
 
 export interface ImageQueryItem {

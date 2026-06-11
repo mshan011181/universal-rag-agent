@@ -21,6 +21,14 @@ export interface QueryRequest {
   model?: string              // api_model_id — e.g. "claude-sonnet-4-6"
 }
 
+export interface TokenUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  llm_calls: number
+  estimated_cost_usd: number
+}
+
 export interface SourceChunk {
   content: string
   metadata: Record<string, unknown>
@@ -41,6 +49,7 @@ export interface QueryResponse {
   verified_knowledge_hit: boolean
   suggested_followups: string[]
   model_used?: string
+  token_usage?: TokenUsage
 }
 
 export interface IngestResponse {

@@ -8,7 +8,7 @@ import structlog
 from api.auth_utils import get_current_user_or_api_key
 from src.agent import ask
 from src.memory.sqlite_store import write_audit
-from src.generation.llm import MODEL_REGISTRY
+from src.generation.llm import MODEL_REGISTRY, MODEL_METADATA
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -22,6 +22,14 @@ class QueryRequest(BaseModel):
     source_filters: list[str] = Field(default_factory=list)
     force_bi: bool = False
     model: Optional[str] = Field(default=None, max_length=100)  # api_model_id from MODEL_REGISTRY
+
+
+class TokenUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    llm_calls: int = 0
+    estimated_cost_usd: float = 0.0
 
 
 class QueryResponse(BaseModel):
@@ -38,17 +46,63 @@ class QueryResponse(BaseModel):
     citation_map: dict
     session_id: str
     model_used: Optional[str] = None
+    token_usage: Optional[TokenUsage] = None
     request_id: Optional[str] = None
 
 
 @router.get("/models")
 async def list_models(user: dict = Depends(get_current_user_or_api_key)):
-    """Return available LLM models for the model selector UI."""
+    """Return available LLM models with pricing/context metadata for the UI."""
+    models = []
+    for label, (provider, model_id) in MODEL_REGISTRY.items():
+        meta = MODEL_METADATA.get(model_id, {})
+        models.append({
+            "label": label,
+            "model_id": model_id,
+            "provider": provider,
+            "context_k": meta.get("context_k", 0),
+            "input_usd_per_mtok": meta.get("input_usd_per_mtok", 0.0),
+            "output_usd_per_mtok": meta.get("output_usd_per_mtok", 0.0),
+            "free": meta.get("free", False),
+        })
+    return {"models": models}
+
+
+@router.get("/token-stats")
+async def token_stats(user: dict = Depends(get_current_user_or_api_key)):
+    """Return cumulative token usage for the current user from audit logs."""
+    from src.memory.sqlite_store import get_conn
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT detail FROM audit_log WHERE event_type='query' AND user_id=?",
+            (user["user_id"],),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    total_input = 0
+    total_output = 0
+    total_cost = 0.0
+    query_count = 0
+
+    for (detail_str,) in rows:
+        try:
+            detail = json.loads(detail_str) if detail_str else {}
+        except Exception:
+            continue
+        tu = detail.get("token_usage") or {}
+        total_input += tu.get("input_tokens", 0)
+        total_output += tu.get("output_tokens", 0)
+        total_cost += tu.get("estimated_cost_usd", 0.0)
+        query_count += 1
+
     return {
-        "models": [
-            {"label": label, "model_id": model_id, "provider": provider}
-            for label, (provider, model_id) in MODEL_REGISTRY.items()
-        ]
+        "query_count": query_count,
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total_input + total_output,
+        "total_cost_usd": round(total_cost, 4),
     }
 
 
@@ -103,6 +157,7 @@ async def query_endpoint(
             "latency_ms": response.latency_ms,
             "channel": response.retrieval_channel,
             "cache_hit": response.verified_knowledge_hit,
+            "token_usage": response.token_usage,
         },
         ip_address=ip,
     )
@@ -115,6 +170,7 @@ async def query_endpoint(
         latency_ms=response.latency_ms,
     )
 
+    tu = response.token_usage or {}
     return QueryResponse(
         answer=response.answer_text,
         quality_score=response.quality_score,
@@ -129,6 +185,7 @@ async def query_endpoint(
         citation_map=response.citation_map,
         session_id=body.session_id,
         model_used=body.model,
+        token_usage=TokenUsage(**tu) if tu else None,
     )
 
 
