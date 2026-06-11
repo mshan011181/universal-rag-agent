@@ -64,9 +64,16 @@ def mock_pinecone():
     mock_embedder = MagicMock()
     mock_embedder.encode.return_value = np.array([[0.1] * 384])
 
+    import src.retrieval.vector_store as vs
     with patch("src.retrieval.vector_store.Pinecone", return_value=mock_pc), \
          patch("src.retrieval.vector_store.SentenceTransformer", return_value=mock_embedder):
+        vs._index = None
+        vs._pc = None
+        vs._embedder = None
         yield mock_index
+        vs._index = None
+        vs._pc = None
+        vs._embedder = None
 
 
 # ── Redis mock ─────────────────────────────────────────────────────────────────

@@ -90,8 +90,8 @@ def test_collection_count_handles_error():
 
 def test_ingest_file_unsupported_type(mock_pinecone, tmp_path):
     from src.retrieval.vector_store import ingest_file
-    bad_file = tmp_path / "file.csv"
-    bad_file.write_text("a,b,c")
+    bad_file = tmp_path / "file.xyz"
+    bad_file.write_text("unsupported content")
     with pytest.raises(ValueError, match="Unsupported file type"):
         ingest_file(str(bad_file))
 
