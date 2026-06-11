@@ -110,7 +110,7 @@ export default function QueryPage() {
   const [imageLoading, setImageLoading] = useState(false)
   const [imageError, setImageError] = useState('')
   const [expandedAnswers, setExpandedAnswers] = useState<Set<number>>(new Set())
-  const [showModelsInfo, setShowModelsInfo] = useState(false)
+  const [showModelsInfo, setShowModelsInfo] = useState(true)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
 
