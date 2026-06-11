@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from api.auth_utils import get_current_user_or_api_key
 from src.memory.sqlite_store import get_conn
 
@@ -47,3 +47,56 @@ async def get_user_stats(user: dict = Depends(get_current_user_or_api_key)):
         "storage_used_bytes": storage_used,
         "storage_quota_bytes": quota,
     }
+
+
+@router.get("/queries")
+async def get_user_queries(
+    user: dict = Depends(get_current_user_or_api_key),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    search: str = Query(default=""),
+):
+    """Return the current user's query history."""
+    user_id = user["user_id"]
+    try:
+        with get_conn() as conn:
+            if search:
+                pattern = f"%{search}%"
+                rows = conn.execute(
+                    """SELECT id, session_id, query, answer, timestamp
+                       FROM conversation_history
+                       WHERE session_id LIKE ? AND (query LIKE ? OR answer LIKE ?)
+                       ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+                    (f"{user_id}:%", pattern, pattern, limit, offset),
+                ).fetchall()
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM conversation_history WHERE session_id LIKE ? AND (query LIKE ? OR answer LIKE ?)",
+                    (f"{user_id}:%", pattern, pattern),
+                ).fetchone()[0]
+            else:
+                rows = conn.execute(
+                    """SELECT id, session_id, query, answer, timestamp
+                       FROM conversation_history
+                       WHERE session_id LIKE ?
+                       ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+                    (f"{user_id}:%", limit, offset),
+                ).fetchall()
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM conversation_history WHERE session_id LIKE ?",
+                    (f"{user_id}:%",),
+                ).fetchone()[0]
+        return {
+            "total": total,
+            "queries": [
+                {
+                    "id": r[0],
+                    "session_id": r[1].split(":", 1)[1] if ":" in r[1] else r[1],
+                    "query": r[2],
+                    "answer": r[3],
+                    "timestamp": r[4],
+                }
+                for r in rows
+            ],
+        }
+    except Exception:
+        return {"total": 0, "queries": []}

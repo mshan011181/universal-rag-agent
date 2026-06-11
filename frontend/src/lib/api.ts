@@ -324,6 +324,26 @@ export async function ingestImage(file: File): Promise<IngestResponse> {
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
+export interface UserQueryItem {
+  id: number
+  session_id: string
+  query: string
+  answer: string
+  timestamp: string
+}
+
+export async function fetchUserQueries(params?: {
+  limit?: number
+  offset?: number
+  search?: string
+}): Promise<{ total: number; queries: UserQueryItem[] }> {
+  const qs = new URLSearchParams()
+  if (params?.limit)  qs.set('limit',  String(params.limit))
+  if (params?.offset) qs.set('offset', String(params.offset))
+  if (params?.search) qs.set('search', params.search)
+  return request(`/api/user/queries?${qs}`)
+}
+
 export async function fetchUserStats(): Promise<{
   total_queries: number
   total_documents: number
