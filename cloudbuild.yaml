@@ -104,27 +104,41 @@ steps:
           .
     waitFor: [test]
 
-  # ── Stage 8: Push API image ───────────────────────────────────────────────────
+  # ── Stage 8a: Write docker credentials into shared volume ────────────────────
+  # cloud-sdk has gcloud but no docker CLI; cloud-builders/docker has docker but
+  # no gcloud. We bridge them with a named volume that holds the docker config.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: configure-docker-auth
+    entrypoint: gcloud
+    args: [auth, configure-docker, ${_REGION}-docker.pkg.dev, --quiet]
+    volumes:
+      - name: docker-config
+        path: /root/.docker
+    waitFor: [build-api, build-frontend]
+
+  # ── Stage 8: Push API image ───────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
     id: push-api
-    entrypoint: bash
     args:
-      - -c
-      - |
-        gcloud auth configure-docker ${_REGION}-docker.pkg.dev --quiet
-        docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
-    waitFor: [build-api]
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
+    volumes:
+      - name: docker-config
+        path: /root/.docker
+    waitFor: [configure-docker-auth]
 
   # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+  - name: gcr.io/cloud-builders/docker
     id: push-frontend
-    entrypoint: bash
     args:
-      - -c
-      - |
-        gcloud auth configure-docker ${_REGION}-docker.pkg.dev --quiet
-        docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
-    waitFor: [build-frontend]
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
+    volumes:
+      - name: docker-config
+        path: /root/.docker
+    waitFor: [configure-docker-auth]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
