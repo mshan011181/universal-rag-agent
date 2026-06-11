@@ -105,23 +105,28 @@ steps:
     waitFor: [test]
 
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
-  # cloud-builders/docker uses the GCE metadata server for credentials — no
-  # explicit auth step needed once the Cloud Build SA has artifactregistry.writer.
+  # docker-credential-gcr is pre-installed but only covers gcr.io by default.
+  # configure-docker registers it for pkg.dev so docker push authenticates via
+  # the GCE metadata server (Cloud Build SA identity).
   - name: gcr.io/cloud-builders/docker
     id: push-api
+    entrypoint: bash
     args:
-      - push
-      - --all-tags
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
+      - -c
+      - |
+        docker-credential-gcr configure-docker --registries=${_REGION}-docker.pkg.dev
+        docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
     waitFor: [build-api]
 
   # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: push-frontend
+    entrypoint: bash
     args:
-      - push
-      - --all-tags
-      - ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
+      - -c
+      - |
+        docker-credential-gcr configure-docker --registries=${_REGION}-docker.pkg.dev
+        docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
     waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
