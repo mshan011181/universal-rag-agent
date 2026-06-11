@@ -97,14 +97,26 @@ def _seed_otp(email: str, otp: str = "123456") -> None:
     """Insert a valid registration OTP directly into the DB for tests."""
     from datetime import datetime, timedelta
     from src.memory.sqlite_store import get_conn
-    from api.routers.auth import _ensure_otp_table
-    _ensure_otp_table()
     expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO email_otps (email, otp, purpose, expires_at) VALUES (?,?,?,?)",
-            (email.lower(), otp, "register", expires),
-        )
+    conn = get_conn()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS email_otps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            otp TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            token TEXT,
+            expires_at TEXT NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute(
+        "INSERT INTO email_otps (email, otp, purpose, expires_at) VALUES (?,?,?,?)",
+        (email.lower(), otp, "register", expires),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── Authenticated client fixture ───────────────────────────────────────────────
