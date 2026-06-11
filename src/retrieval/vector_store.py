@@ -369,7 +369,6 @@ def _extract_text_from_pptx(path: Path) -> str:
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
-    from pptx.util import Emu
 
     prs = Presentation(str(path))
     lines = []
@@ -744,7 +743,6 @@ def _extract_text_from_docx(path: Path) -> str:
     # ── Paragraphs and tables in document order ────────────────────────
     # We walk the XML body children to interleave paragraphs and tables
     # correctly instead of iterating them separately (which loses ordering).
-    from docx.oxml.ns import qn
     from docx.table import Table as DocxTable
     from docx.text.paragraph import Paragraph as DocxParagraph
 

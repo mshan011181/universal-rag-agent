@@ -20,7 +20,6 @@ import logging
 import os
 import re
 import threading
-from contextlib import contextmanager
 from typing import Any
 
 import psycopg2

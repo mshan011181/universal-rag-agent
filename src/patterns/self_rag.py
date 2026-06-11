@@ -1,4 +1,3 @@
-import json
 from src.patterns.base import BasePattern
 from src.generation.llm import check_faithfulness
 

@@ -200,7 +200,7 @@ def ingest_youtube(url: str) -> tuple[int, str]:
         except yt_dlp.utils.DownloadError as e:
             if "unavailable" in str(e).lower() or "not available" in str(e).lower():
                 raise ValueError(
-                    f"YouTube video is unavailable or does not exist. "
+                    "YouTube video is unavailable or does not exist. "
                     "Please check the URL and try again."
                 )
         except ValueError:

@@ -1,3 +1,4 @@
+import os as _os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -34,7 +35,6 @@ app = FastAPI(
 
 # Middleware (order matters — outermost first)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-import os as _os
 _EXTRA_ORIGINS = [o.strip() for o in _os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,

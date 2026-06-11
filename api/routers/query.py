@@ -1,4 +1,3 @@
-import time
 import base64
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
 from pydantic import BaseModel, Field

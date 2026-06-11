@@ -1,4 +1,3 @@
-import os
 import uuid
 import hashlib
 import urllib.request
@@ -65,7 +64,7 @@ def _youtube_title(url: str) -> str:
 
 import urllib.parse
 
-from api.auth_utils import get_current_user_or_api_key, require_role
+from api.auth_utils import require_role
 from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source
 from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn, write_audit, set_ingest_progress
 from src.config import UPLOADS_DIR

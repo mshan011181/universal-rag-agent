@@ -221,7 +221,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                     suggested_followups=[],
                     memory_write={"session_id": session_id, "turn": analysis["turn"]},
                 )
-        except Exception as e:
+        except Exception:
             # Pattern failure → continue with what we have
             pass
 

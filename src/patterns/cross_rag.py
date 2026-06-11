@@ -13,7 +13,7 @@ Falls back silently (returns {}) if fewer than 2 distinct sources found.
 
 import re
 from .base import BasePattern
-from src.retrieval.vector_store import retrieve, retrieve_by_source
+from src.retrieval.vector_store import retrieve_by_source
 from src.retrieval.reranker import rerank
 from src.memory.sqlite_store import get_recent_docs
 

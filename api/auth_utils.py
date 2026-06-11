@@ -70,7 +70,6 @@ async def get_current_user_or_api_key(
 ):
     if api_key:
         # Validate API key from DB
-        key_hash = hash_api_key(api_key)
         # DB lookup would go here in real implementation
         return {"user_id": "api_key_user", "org_id": None, "role": "user", "auth_method": "api_key"}
     if token:

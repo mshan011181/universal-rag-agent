@@ -1,7 +1,5 @@
 import sqlite3
 import json
-from datetime import datetime
-from pathlib import Path
 from src.config import DB_PATH
 
 
@@ -412,7 +410,8 @@ def export_audit_logs_csv(
     since: str | None = None,
 ) -> str:
     """Return all audit log rows for the org as a CSV string (for download/backup)."""
-    import csv, io
+    import csv
+    import io
     query = "SELECT id, event_type, user_id, email, org_id, detail, ip_address, status, created_at FROM audit_log WHERE org_id=?"
     params: list = [org_id]
     if event_type:

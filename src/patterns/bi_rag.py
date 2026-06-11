@@ -182,7 +182,7 @@ class BIRag(BasePattern):
         for var, path in var_map.items():
             ext = ext_map[var]
             fn = "read_csv" if ext == ".csv" else "read_excel"
-            escaped = path.replace("\\", "\\\\")
+            path.replace("\\", "\\\\")
             lines.append(f'{var} = pd.{fn}(r"{path}")')
         return "\n".join(lines)
 

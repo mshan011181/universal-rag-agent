@@ -25,7 +25,7 @@ class UpdateQuotaRequest(BaseModel):
 @router.get("/stats")
 async def get_stats(user: dict = Depends(require_role("admin"))):
     user_id = user["user_id"]
-    org_id = user.get("org_id", "")
+    user.get("org_id", "")
     try:
         with get_conn() as conn:
             query_count = conn.execute(

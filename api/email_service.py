@@ -13,7 +13,7 @@ Sign up at https://resend.com → API Keys → Create API Key
 import logging
 import resend
 
-from src.config import RESEND_API_KEY, EMAIL_FROM, APP_BASE_URL
+from src.config import RESEND_API_KEY, EMAIL_FROM
 
 logger = logging.getLogger(__name__)
 

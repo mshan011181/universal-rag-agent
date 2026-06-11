@@ -1,0 +1,10 @@
+[lint]
+# E402 — module-level import not at top: several legacy files have helper
+#         functions before their imports (vector_store.py, ingest.py, etc.)
+# E702 — multiple statements on one line: pre-existing style in pattern files
+# E741 — ambiguous variable name: pre-existing in pattern code
+# F821 — undefined name: false positives from conditional import blocks
+ignore = ["E402", "E501", "E702", "E741", "F821"]
+
+# Only flag the rules that actually matter for correctness
+select = ["F", "E"]

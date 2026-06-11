@@ -3,7 +3,6 @@ import networkx as nx
 from src.patterns.base import BasePattern
 from src.config import DATA_DIR
 import pickle
-from pathlib import Path
 
 GRAPH_PATH = DATA_DIR / "knowledge_graph.pkl"
 

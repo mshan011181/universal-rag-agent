@@ -1,7 +1,7 @@
 import hashlib
 import json
 from src.generation.llm import get_llm, safe_invoke
-from src.memory.sqlite_store import get_history, check_verified_knowledge
+from src.memory.sqlite_store import get_history
 from src.security.pii_masker import mask_pii
 from langchain_core.messages import SystemMessage, HumanMessage
 
