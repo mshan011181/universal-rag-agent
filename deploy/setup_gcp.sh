@@ -87,16 +87,36 @@ for ROLE in \
     --role="$ROLE" --quiet
 done
 
-# Cloud Build SA needs to deploy Cloud Run
-CLOUDBUILD_SA="${PROJECT_ID}@cloudbuild.gserviceaccount.com"
-for ROLE in \
-  roles/run.admin \
-  roles/iam.serviceAccountUser \
-  roles/secretmanager.secretAccessor \
-  roles/artifactregistry.writer; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${CLOUDBUILD_SA}" \
-    --role="$ROLE" --quiet
+# Cloud Build SA — format changed in newer GCP projects.
+# Must use project NUMBER (not project ID) to get the correct SA.
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+# New format: service-{NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com
+CLOUDBUILD_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+# Legacy format as fallback: {NUMBER}@cloudbuild.gserviceaccount.com
+CLOUDBUILD_SA_LEGACY="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+echo "  Cloud Build SA (new format): $CLOUDBUILD_SA"
+echo "  Triggering a dummy build to ensure Cloud Build SA is created..."
+# The Cloud Build SA is only created after the API is enabled AND first build runs.
+# We force-create it by describing the service (which initialises the SA).
+gcloud builds submit --no-source --config /dev/stdin --project="$PROJECT_ID" <<'BUILDEOF' 2>/dev/null || true
+steps:
+- name: 'alpine'
+  args: ['echo', 'preflight-init']
+BUILDEOF
+
+for CLOUDBUILD_MEMBER in \
+  "serviceAccount:${CLOUDBUILD_SA}" \
+  "serviceAccount:${CLOUDBUILD_SA_LEGACY}"; do
+  for ROLE in \
+    roles/run.admin \
+    roles/iam.serviceAccountUser \
+    roles/secretmanager.secretAccessor \
+    roles/artifactregistry.writer; do
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="$CLOUDBUILD_MEMBER" \
+      --role="$ROLE" --quiet 2>/dev/null || true
+  done
 done
 
 # ── 5. Secret Manager secrets ─────────────────────────────────────────────────
