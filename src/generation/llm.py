@@ -119,13 +119,28 @@ def get_llm(temperature: float = 0.1, streaming: bool = False, model_override: s
     )
 
 
+def _get_fallback_llm(temperature: float = 0.1):
+    """Return the default Groq LLM as a fallback."""
+    from langchain_groq import ChatGroq
+    return ChatGroq(api_key=GROQ_API_KEY, model=GROQ_MODEL, temperature=temperature)
+
+
 # ---------------------------------------------------------------------------
 # Retry wrapper
 # ---------------------------------------------------------------------------
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
 def safe_invoke(llm, messages: list) -> str:
-    return llm.invoke(messages).content
+    try:
+        return llm.invoke(messages).content
+    except Exception as e:
+        err_str = str(e).lower()
+        # Anthropic billing/quota errors — fall back to Groq so the query still works
+        if "credit balance is too low" in err_str or "insufficient_quota" in err_str or "payment_required" in err_str:
+            logger.warning("Anthropic billing error — falling back to Groq: %s", e)
+            fallback = _get_fallback_llm()
+            return fallback.invoke(messages).content
+        raise
 
 
 # ---------------------------------------------------------------------------

@@ -81,7 +81,13 @@ async def query_endpoint(
             model_override=body.model or None,
         )
     except Exception as e:
+        err_str = str(e).lower()
         logger.error("query_failed", error=str(e), user_id=user["user_id"])
+        if "credit balance is too low" in err_str or "insufficient_quota" in err_str:
+            raise HTTPException(
+                status_code=402,
+                detail="Anthropic API credits are exhausted. Please add credits at console.anthropic.com or switch to a Groq/Llama model.",
+            )
         raise HTTPException(status_code=500, detail="Query processing failed")
 
     ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
