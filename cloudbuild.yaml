@@ -105,16 +105,21 @@ steps:
     waitFor: [test]
 
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
-  # docker-credential-gcr is pre-installed but only covers gcr.io by default.
-  # configure-docker registers it for pkg.dev so docker push authenticates via
-  # the GCE metadata server (Cloud Build SA identity).
+  # Fetch an OAuth2 token from the GCE metadata server (always available in
+  # Cloud Build) and use it to docker login — no gcloud or credential helper
+  # binary needed. The SA must have roles/artifactregistry.writer on rag-repo.
   - name: gcr.io/cloud-builders/docker
     id: push-api
     entrypoint: bash
     args:
       - -c
       - |
-        docker-credential-gcr configure-docker --registries=${_REGION}-docker.pkg.dev
+        TOKEN=$(curl -sf \
+          "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+          -H "Metadata-Flavor: Google" \
+          | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+        echo "$$TOKEN" | docker login -u oauth2accesstoken --password-stdin \
+          https://${_REGION}-docker.pkg.dev
         docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api
     waitFor: [build-api]
 
@@ -125,7 +130,12 @@ steps:
     args:
       - -c
       - |
-        docker-credential-gcr configure-docker --registries=${_REGION}-docker.pkg.dev
+        TOKEN=$(curl -sf \
+          "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+          -H "Metadata-Flavor: Google" \
+          | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+        echo "$$TOKEN" | docker login -u oauth2accesstoken --password-stdin \
+          https://${_REGION}-docker.pkg.dev
         docker push --all-tags ${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-frontend
     waitFor: [build-frontend]
 
