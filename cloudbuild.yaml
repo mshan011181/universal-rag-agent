@@ -107,13 +107,19 @@ steps:
   # ── Stage 8: Push API image ───────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: push-api
-    args: [push, --all-tags, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api]
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-api
     waitFor: [build-api]
 
   # ── Stage 9: Push Frontend image ─────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: push-frontend
-    args: [push, --all-tags, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend]
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rag-frontend
     waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
