@@ -3,7 +3,7 @@ Tests for the LLM provider abstraction (Groq / Vertex AI switching).
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 def test_get_llm_returns_groq_by_default():

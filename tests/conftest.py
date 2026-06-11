@@ -93,13 +93,29 @@ def client():
     return TestClient(app)
 
 
+def _seed_otp(email: str, otp: str = "123456") -> None:
+    """Insert a valid registration OTP directly into the DB for tests."""
+    from datetime import datetime, timedelta
+    from src.memory.sqlite_store import get_conn
+    from api.routers.auth import _ensure_otp_table
+    _ensure_otp_table()
+    expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO email_otps (email, otp, purpose, expires_at) VALUES (?,?,?,?)",
+            (email.lower(), otp, "register", expires),
+        )
+
+
 # ── Authenticated client fixture ───────────────────────────────────────────────
 @pytest.fixture
 def auth_client(client):
+    _seed_otp("fixture@example.com")
     client.post("/api/auth/register", json={
         "email": "fixture@example.com",
         "password": "FixturePass1!",
         "org_name": "fixture-org",
+        "otp": "123456",
     })
     resp = client.post("/api/auth/token", data={
         "username": "fixture@example.com",

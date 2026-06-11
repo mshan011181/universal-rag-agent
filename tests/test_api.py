@@ -27,19 +27,25 @@ def test_readiness_includes_vector_store_check(client):
 
 # ── Auth — registration ────────────────────────────────────────────────────────
 def test_register_returns_201(client):
+    from tests.conftest import _seed_otp
+    _seed_otp("new@example.com")
     r = client.post("/api/auth/register", json={
         "email": "new@example.com",
         "password": "NewPass123!",
         "org_name": "test-org",
+        "otp": "123456",
     })
     assert r.status_code == 201
 
 
 def test_register_returns_user_and_org_ids(client):
+    from tests.conftest import _seed_otp
+    _seed_otp("ids@example.com")
     r = client.post("/api/auth/register", json={
         "email": "ids@example.com",
         "password": "IdsPass123!",
         "org_name": "ids-org",
+        "otp": "123456",
     })
     body = r.json()
     assert "user_id" in body
@@ -48,8 +54,11 @@ def test_register_returns_user_and_org_ids(client):
 
 
 def test_register_duplicate_email_returns_409(client):
-    payload = {"email": "dup@example.com", "password": "DupPass1!", "org_name": "org"}
+    from tests.conftest import _seed_otp
+    _seed_otp("dup@example.com")
+    payload = {"email": "dup@example.com", "password": "DupPass1!", "org_name": "org", "otp": "123456"}
     client.post("/api/auth/register", json=payload)
+    _seed_otp("dup@example.com")
     r = client.post("/api/auth/register", json=payload)
     assert r.status_code == 409
 
@@ -65,10 +74,13 @@ def test_register_invalid_email_returns_422(client):
 
 # ── Auth — login ───────────────────────────────────────────────────────────────
 def test_login_returns_tokens(client):
+    from tests.conftest import _seed_otp
+    _seed_otp("login@example.com")
     client.post("/api/auth/register", json={
         "email": "login@example.com",
         "password": "LoginPass1!",
         "org_name": "org",
+        "otp": "123456",
     })
     r = client.post("/api/auth/token", data={
         "username": "login@example.com",
@@ -82,10 +94,13 @@ def test_login_returns_tokens(client):
 
 
 def test_login_wrong_password_returns_401(client):
+    from tests.conftest import _seed_otp
+    _seed_otp("wrongpw@example.com")
     client.post("/api/auth/register", json={
         "email": "wrongpw@example.com",
         "password": "CorrectPass1!",
         "org_name": "org",
+        "otp": "123456",
     })
     r = client.post("/api/auth/token", data={
         "username": "wrongpw@example.com",
@@ -115,10 +130,13 @@ def test_ingest_without_token_returns_401(client):
 
 # ── Auth — refresh token ───────────────────────────────────────────────────────
 def test_refresh_token_returns_new_tokens(client):
+    from tests.conftest import _seed_otp
+    _seed_otp("refresh@example.com")
     client.post("/api/auth/register", json={
         "email": "refresh@example.com",
         "password": "RefreshPass1!",
         "org_name": "org",
+        "otp": "123456",
     })
     login = client.post("/api/auth/token", data={
         "username": "refresh@example.com",
