@@ -60,8 +60,9 @@ def mock_pinecone():
     mock_pc.list_indexes.return_value = [MagicMock(name="test-index")]
     mock_pc.describe_index.return_value = MagicMock(status={"ready": True})
 
+    import numpy as np
     mock_embedder = MagicMock()
-    mock_embedder.encode.return_value = [[0.1] * 384]
+    mock_embedder.encode.return_value = np.array([[0.1] * 384])
 
     with patch("src.retrieval.vector_store.Pinecone", return_value=mock_pc), \
          patch("src.retrieval.vector_store.SentenceTransformer", return_value=mock_embedder):

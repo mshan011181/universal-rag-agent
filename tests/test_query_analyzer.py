@@ -25,8 +25,7 @@ def test_fingerprint_length():
 def _analyze(query, llm_response, history=None):
     """Helper: patch LLM + history then call analyze_query."""
     with patch("src.query_analyzer.safe_invoke", return_value=llm_response), \
-         patch("src.query_analyzer.get_history", return_value=history or []), \
-         patch("src.query_analyzer.check_verified_knowledge", return_value=None):
+         patch("src.query_analyzer.get_history", return_value=history or []):
         from src.query_analyzer import analyze_query
         return analyze_query(query, "test-session")
 
