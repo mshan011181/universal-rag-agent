@@ -4,7 +4,7 @@ import { useState, FormEvent, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Database, ArrowLeft, CheckCircle, RefreshCw, Eye, EyeOff } from 'lucide-react'
-import { forgotPassword, resetPassword } from '@/lib/api'
+import { forgotPassword, verifyOTP, resetPassword } from '@/lib/api'
 
 type Step = 'email' | 'otp' | 'password' | 'done'
 
@@ -62,12 +62,7 @@ export default function ForgotPasswordPage() {
     if (code.length < 6) { setError('Enter all 6 digits'); return }
     setError(''); setLoading(true)
     try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp: code, purpose: 'reset' }),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Invalid OTP') }
+      await verifyOTP(email, code, 'reset')
       setStep('password')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid OTP')

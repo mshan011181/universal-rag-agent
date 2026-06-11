@@ -4,7 +4,7 @@ import { useState, FormEvent, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Database, Mail, KeyRound, Building2, CheckCircle, RefreshCw, Eye, EyeOff } from 'lucide-react'
-import { sendOTP, register, validateInvite } from '@/lib/api'
+import { sendOTP, verifyOTP, register, validateInvite } from '@/lib/api'
 
 type Step = 'email' | 'otp' | 'org' | 'password'
 
@@ -75,11 +75,7 @@ function RegisterForm() {
     if (code.length < 6) { setError('Enter all 6 digits'); return }
     setError(''); setLoading(true)
     try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp: code, purpose: 'register' }),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Invalid OTP') }
+      await verifyOTP(email, code, 'register')
       setStep('org')
     } catch (err) { setError(err instanceof Error ? err.message : 'Invalid OTP') }
     finally { setLoading(false) }
