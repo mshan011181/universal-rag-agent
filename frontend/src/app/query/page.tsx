@@ -1238,43 +1238,6 @@ export default function QueryPage() {
 
             {showModelsInfo && (
               <div className="mt-4 space-y-3 overflow-y-auto flex-1">
-                {/* Environments */}
-                <div className="space-y-2 border-b border-gray-200 pb-3">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">LLM Models by Environment</p>
-                  {Object.entries(MODELS_BY_ENVIRONMENT).map(([env, roles]) => {
-                    const synthesizer = roles.synthesizer
-                    return (
-                      <div key={env} className="bg-gray-50 rounded p-2 text-xs">
-                        <div
-                          onClick={() => setExpandedEnv(expandedEnv === env ? null : env)}
-                          className="cursor-pointer flex items-center justify-between"
-                        >
-                          <div className="font-medium text-gray-900 capitalize">{env}</div>
-                          <ChevronRight
-                            className={clsx('w-3 h-3 transition-transform', expandedEnv === env && 'rotate-90')}
-                          />
-                        </div>
-                        {expandedEnv === env && (
-                          <div className="mt-2 space-y-1 pt-2 border-t border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600">Model:</span>
-                              <span className="text-gray-900 font-medium">{synthesizer.name}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600">Provider:</span>
-                              <span className="text-gray-900">{synthesizer.provider}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-600">Context:</span>
-                              <span className="text-gray-900">{synthesizer.contextWindow.toLocaleString()} tokens</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
                 {/* Patterns */}
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">RAG Patterns</p>
