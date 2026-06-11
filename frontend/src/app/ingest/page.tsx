@@ -447,7 +447,7 @@ export default function IngestPage() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-semibold text-gray-900">{TAB_CONFIG[activeTab].label} ({currentItems.length})</h2>
                 <button
-                  onClick={loadHistory}
+                  onClick={() => loadHistory()}
                   disabled={historyLoading}
                   className="p-1 text-gray-500 hover:text-brand-600 transition-colors disabled:opacity-50"
                   title="Refresh history"

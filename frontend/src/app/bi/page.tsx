@@ -83,7 +83,7 @@ export default function BIPage() {
   const loadFiles = async (silent = false) => {
     try {
       const hist = await getIngestHistory()
-      const all: IngestedItem[] = Object.values(hist.by_type).flat()
+      const all = (Object.values(hist.by_type) as IngestedItem[][]).flat()
       setExcelFiles(all.filter(d => ACCEPTED_RE.test(d.name)))
     } catch {
       if (!silent) setUploadMsg({ type: 'error', text: 'Failed to load file list' })

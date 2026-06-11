@@ -5,7 +5,7 @@
  * - Auto-retries with refreshed token on 401
  */
 
-import type { AuthTokens, QueryRequest, QueryResponse, IngestResponse, AdminStats } from '@/types'
+import type { AuthTokens, QueryRequest, QueryResponse, IngestResponse, AdminStats, IngestHistory } from '@/types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || ''
 
