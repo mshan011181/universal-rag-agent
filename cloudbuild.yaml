@@ -110,7 +110,11 @@ steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: configure-docker-auth
     entrypoint: gcloud
-    args: [auth, configure-docker, ${_REGION}-docker.pkg.dev, --quiet]
+    args:
+      - auth
+      - configure-docker
+      - ${_REGION}-docker.pkg.dev
+      - --quiet
     volumes:
       - name: docker-config
         path: /root/.docker
