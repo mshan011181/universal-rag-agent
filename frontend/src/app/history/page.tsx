@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { fetchUserQueries } from '@/lib/api'
+import { fetchUserQueries, fetchArchiveStats, archiveQueries, unarchiveQueries } from '@/lib/api'
 import type { UserQueryItem } from '@/lib/api'
-import { Search, ChevronDown, ChevronUp, Clock, MessageSquare, X, Copy, Download, Check } from 'lucide-react'
+import { Search, ChevronDown, ChevronUp, Clock, MessageSquare, X, Copy, Download, Check, Archive, RotateCcw, AlertTriangle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -127,6 +127,13 @@ export default function HistoryPage() {
   const [searchInput, setSearchInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [archiveDays, setArchiveDays] = useState(30)
+  const [archiveStats, setArchiveStats] = useState<{ eligible: number; already_archived: number } | null>(null)
+  const [archiving, setArchiving] = useState(false)
+  const [archiveMsg, setArchiveMsg] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedQueries, setArchivedQueries] = useState<UserQueryItem[]>([])
+  const [archivedTotal, setArchivedTotal] = useState(0)
 
   const load = useCallback(async (pg: number, q: string) => {
     setLoading(true)
@@ -180,6 +187,51 @@ export default function HistoryPage() {
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  async function previewArchive(days: number) {
+    try {
+      const stats = await fetchArchiveStats(days)
+      setArchiveStats(stats)
+      setArchiveMsg('')
+    } catch { /* ignore */ }
+  }
+
+  async function handleArchive() {
+    setArchiving(true)
+    setArchiveMsg('')
+    try {
+      const res = await archiveQueries(archiveDays)
+      setArchiveMsg(`Archived ${res.archived} quer${res.archived === 1 ? 'y' : 'ies'} older than ${archiveDays} days.`)
+      setArchiveStats(null)
+      load(page, search)  // refresh active list
+    } finally {
+      setArchiving(false)
+    }
+  }
+
+  async function handleUnarchive() {
+    setArchiving(true)
+    setArchiveMsg('')
+    try {
+      const res = await unarchiveQueries()
+      setArchiveMsg(`Restored ${res.restored} archived quer${res.restored === 1 ? 'y' : 'ies'}.`)
+      setArchiveStats(null)
+      setArchivedQueries([])
+      setArchivedTotal(0)
+      setShowArchived(false)
+      load(page, search)
+    } finally {
+      setArchiving(false)
+    }
+  }
+
+  async function loadArchived() {
+    try {
+      const data = await fetchUserQueries({ limit: 500, archived: true })
+      setArchivedQueries(data.queries)
+      setArchivedTotal(data.total)
+    } catch { /* ignore */ }
+  }
 
   return (
     <AppShell>
@@ -286,6 +338,116 @@ export default function HistoryPage() {
             </button>
           </div>
         )}
+        {/* ── Archive Section ──────────────────────────── */}
+        <div className="mt-10 border-t border-gray-200 pt-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Archive className="w-5 h-5 text-gray-500" />
+            <h2 className="text-lg font-semibold text-gray-800">Archive</h2>
+            <span className="text-xs text-gray-400 ml-1">Move old queries out of your active history</span>
+          </div>
+
+          {/* Archive controls */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 space-y-4">
+            {/* Default auto-archive notice */}
+            <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Default: queries older than <strong>30 days</strong> can be archived to keep your history clean.</span>
+            </div>
+
+            {/* Days selector + preview */}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm font-medium text-gray-700">Archive queries older than</label>
+              <select
+                className="input w-32 text-sm"
+                value={archiveDays}
+                onChange={(e) => { setArchiveDays(Number(e.target.value)); setArchiveStats(null); setArchiveMsg('') }}
+              >
+                {[7, 14, 30, 60, 90, 180, 365].map(d => (
+                  <option key={d} value={d}>{d} days</option>
+                ))}
+              </select>
+              <button
+                onClick={() => previewArchive(archiveDays)}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-white transition-colors"
+              >
+                Preview
+              </button>
+              <button
+                onClick={handleArchive}
+                disabled={archiving}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-60"
+              >
+                <Archive className="w-4 h-4" />
+                {archiving ? 'Archiving…' : 'Archive now'}
+              </button>
+            </div>
+
+            {/* Preview result */}
+            {archiveStats && (
+              <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-lg px-4 py-2">
+                <span className="font-medium text-orange-600">{archiveStats.eligible}</span> quer{archiveStats.eligible === 1 ? 'y' : 'ies'} will be archived &nbsp;·&nbsp;
+                <span className="font-medium">{archiveStats.already_archived}</span> already archived
+              </div>
+            )}
+
+            {/* Feedback message */}
+            {archiveMsg && (
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                {archiveMsg}
+              </div>
+            )}
+          </div>
+
+          {/* View / Restore archived */}
+          <div className="mt-4">
+            <button
+              onClick={() => {
+                if (!showArchived) loadArchived()
+                setShowArchived(v => !v)
+              }}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {showArchived ? 'Hide archived queries' : 'View archived queries'}
+              {archivedTotal > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 text-xs font-medium">{archivedTotal}</span>
+              )}
+            </button>
+
+            {showArchived && (
+              <div className="mt-3 space-y-2">
+                {archivedQueries.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">No archived queries yet.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-400">{archivedTotal} archived</span>
+                      <button
+                        onClick={handleUnarchive}
+                        disabled={archiving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-white transition-colors disabled:opacity-60"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore all
+                      </button>
+                    </div>
+                    {archivedQueries.map(item => (
+                      <div key={item.id} className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-3">
+                        <p className="text-sm text-gray-500 truncate">{item.query}</p>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                          <Clock className="w-3 h-3" />
+                          <span>{formatDate(item.timestamp)}</span>
+                          {item.archived_at && <span>· Archived {formatDate(item.archived_at)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
     </AppShell>
   )

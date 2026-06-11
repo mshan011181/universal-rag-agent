@@ -108,12 +108,14 @@ def init_db():
         """)
     # Schema migrations — safe to run on existing databases
     with get_conn() as conn:
-        for col, definition in [
-            ("progress",       "INTEGER DEFAULT 0"),
-            ("progress_label", "TEXT DEFAULT ''"),
+        for table, col, definition in [
+            ("ingest_history",       "progress",       "INTEGER DEFAULT 0"),
+            ("ingest_history",       "progress_label", "TEXT DEFAULT ''"),
+            ("conversation_history", "archived",       "INTEGER DEFAULT 0"),
+            ("conversation_history", "archived_at",    "TIMESTAMP"),
         ]:
             try:
-                conn.execute(f"ALTER TABLE ingest_history ADD COLUMN {col} {definition}")
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
                 conn.commit()
             except Exception:
                 pass  # column already exists

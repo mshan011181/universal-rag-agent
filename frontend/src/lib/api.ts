@@ -330,18 +330,36 @@ export interface UserQueryItem {
   query: string
   answer: string
   timestamp: string
+  archived: boolean
+  archived_at?: string
 }
 
 export async function fetchUserQueries(params?: {
   limit?: number
   offset?: number
   search?: string
+  archived?: boolean
 }): Promise<{ total: number; queries: UserQueryItem[] }> {
   const qs = new URLSearchParams()
-  if (params?.limit)  qs.set('limit',  String(params.limit))
-  if (params?.offset) qs.set('offset', String(params.offset))
-  if (params?.search) qs.set('search', params.search)
+  if (params?.limit !== undefined)    qs.set('limit',    String(params.limit))
+  if (params?.offset !== undefined)   qs.set('offset',   String(params.offset))
+  if (params?.search)                 qs.set('search',   params.search)
+  if (params?.archived !== undefined) qs.set('archived', String(params.archived))
   return request(`/api/user/queries?${qs}`)
+}
+
+export async function fetchArchiveStats(beforeDays: number): Promise<{
+  eligible: number; already_archived: number; before_days: number; cutoff: string
+}> {
+  return request(`/api/user/queries/archive-stats?before_days=${beforeDays}`)
+}
+
+export async function archiveQueries(beforeDays: number): Promise<{ archived: number }> {
+  return request('/api/user/queries/archive', { method: 'POST', body: JSON.stringify({ before_days: beforeDays }) })
+}
+
+export async function unarchiveQueries(): Promise<{ restored: number }> {
+  return request('/api/user/queries/unarchive', { method: 'POST' })
 }
 
 export async function fetchUserStats(): Promise<{
