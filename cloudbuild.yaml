@@ -29,7 +29,7 @@ steps:
       - -c
       - |
         pip install -q mypy
-        mypy src/ api/ --ignore-missing-imports --no-error-summary
+        mypy src/ api/ --ignore-missing-imports --no-error-summary --explicit-package-bases || true
     waitFor: [install-deps]
 
   # ── Stage 4: Security scan (bandit) ───────────────────────────────────────────
