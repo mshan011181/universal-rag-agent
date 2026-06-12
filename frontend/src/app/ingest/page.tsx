@@ -25,11 +25,11 @@ export default function IngestPage() {
   const [history, setHistory] = useState<IngestHistory>({ by_type: {}, total: 0 })
   const [historyLoading, setHistoryLoading] = useState(true)
 
-  // Form fields
-  const [file, setFile] = useState<File | null>(null)
-  const [audioFile, setAudioFile] = useState<File | null>(null)
-  const [videoFile, setVideoFile] = useState<File | null>(null)
-  const [imageFile, setImageFile] = useState<File | null>(null)
+  // Form fields (multi-select: each holds the list of files picked)
+  const [files, setFiles] = useState<File[]>([])
+  const [audioFiles, setAudioFiles] = useState<File[]>([])
+  const [videoFiles, setVideoFiles] = useState<File[]>([])
+  const [imageFiles, setImageFiles] = useState<File[]>([])
   const [dragging, setDragging] = useState(false)
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
@@ -73,20 +73,33 @@ export default function IngestPage() {
     setTimeout(() => setMessage(null), 4000)
   }
 
+  // Upload many files in parallel with a small concurrency cap so several
+  // large videos don't saturate the connection (or one Cloud Run instance).
+  const uploadAll = async (list: File[], uploader: (f: File) => Promise<unknown>, limit = 3) => {
+    const queue = [...list]
+    const failed: string[] = []
+    const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+      for (let f = queue.shift(); f; f = queue.shift()) {
+        try { await uploader(f) } catch { failed.push(f.name) }
+      }
+    })
+    await Promise.all(workers)
+    return failed
+  }
+
   const handleIngestFile = async () => {
-    if (!file) {
-      showMessage('error', 'Please select a file')
+    if (files.length === 0) {
+      showMessage('error', 'Please select at least one file')
       return
     }
     setLoading(true)
     try {
-      await ingestFile(file)
-      showMessage('success', `${file.name} queued for ingestion. Will appear in the list shortly.`)
-      setFile(null)
+      const failed = await uploadAll(files, (f) => ingestFile(f))
+      if (failed.length) showMessage('error', `Failed: ${failed.join(', ')}`)
+      else showMessage('success', `${files.length} file(s) queued for ingestion. Will appear in the list shortly.`)
+      setFiles([])
       loadHistory(true)
       setTimeout(() => loadHistory(true), 1000)
-    } catch (e) {
-      showMessage('error', e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setLoading(false)
     }
@@ -169,57 +182,55 @@ export default function IngestPage() {
   }
 
   const handleIngestAudioFile = async () => {
-    if (!audioFile) {
-      showMessage('error', 'Please select an audio file')
+    if (audioFiles.length === 0) {
+      showMessage('error', 'Please select at least one audio file')
       return
     }
     setLoading(true)
     try {
-      await ingestAudioFile(audioFile)
-      showMessage('success', `${audioFile.name} queued for transcription. Will appear shortly.`)
-      setAudioFile(null)
+      const failed = await uploadAll(audioFiles, (f) => ingestAudioFile(f))
+      if (failed.length) showMessage('error', `Failed: ${failed.join(', ')}`)
+      else showMessage('success', `${audioFiles.length} audio file(s) queued for transcription. Will appear shortly.`)
+      setAudioFiles([])
       loadHistory(true)
       setTimeout(() => loadHistory(true), 1500)
-    } catch (e) {
-      showMessage('error', e instanceof Error ? e.message : 'Audio upload failed')
     } finally {
       setLoading(false)
     }
   }
 
   const handleIngestVideoFile = async () => {
-    if (!videoFile) {
-      showMessage('error', 'Please select a video file')
+    if (videoFiles.length === 0) {
+      showMessage('error', 'Please select at least one video file')
       return
     }
     setLoading(true)
     try {
-      await ingestVideoFile(videoFile)
-      showMessage('success', `${videoFile.name} queued for transcription. Will appear shortly.`)
-      setVideoFile(null)
+      // Cap of 2 for videos — they can be hundreds of MB each
+      const failed = await uploadAll(videoFiles, (f) => ingestVideoFile(f), 2)
+      if (failed.length) showMessage('error', `Failed: ${failed.join(', ')}`)
+      else showMessage('success', `${videoFiles.length} video(s) queued for transcription. Will appear shortly.`)
+      setVideoFiles([])
       loadHistory(true)
       setTimeout(() => loadHistory(true), 1500)
-    } catch (e) {
-      showMessage('error', e instanceof Error ? e.message : 'Video upload failed')
     } finally {
       setLoading(false)
     }
   }
 
   const handleIngestImage = async () => {
-    if (!imageFile) {
-      showMessage('error', 'Please select an image file')
+    if (imageFiles.length === 0) {
+      showMessage('error', 'Please select at least one image file')
       return
     }
     setLoading(true)
     try {
-      await ingestImage(imageFile)
-      showMessage('success', `${imageFile.name} queued for vision extraction. Will appear shortly.`)
-      setImageFile(null)
+      const failed = await uploadAll(imageFiles, (f) => ingestImage(f))
+      if (failed.length) showMessage('error', `Failed: ${failed.join(', ')}`)
+      else showMessage('success', `${imageFiles.length} image(s) queued for vision extraction. Will appear shortly.`)
+      setImageFiles([])
       loadHistory(true)
       setTimeout(() => loadHistory(true), 2000)
-    } catch (e) {
-      showMessage('error', e instanceof Error ? e.message : 'Image ingestion failed')
     } finally {
       setLoading(false)
     }
@@ -250,8 +261,8 @@ export default function IngestPage() {
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragging(false)
-    const f = e.dataTransfer.files[0]
-    if (f) setFile(f)
+    const dropped = Array.from(e.dataTransfer.files)
+    if (dropped.length) setFiles(dropped)
   }
 
   const formatDate = (dateStr: string) => {
@@ -327,12 +338,12 @@ export default function IngestPage() {
                       dragging ? 'border-brand-600 bg-brand-50' : 'border-gray-300 hover:border-brand-600'
                     }`}
                   >
-                    <input ref={inputRef} type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".pdf,.docx,.doc,.txt,.md,.csv,.pptx,.ppt,.xlsx,.xls,.xlsm,.json,.geojson,.gjson" className="hidden" />
+                    <input ref={inputRef} type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} accept=".pdf,.docx,.doc,.txt,.md,.csv,.pptx,.ppt,.xlsx,.xls,.xlsm,.json,.geojson,.gjson" className="hidden" />
                     <Upload className="w-5 h-5 mx-auto mb-2 text-gray-400" />
-                    <span className="text-xs">{file ? file.name : 'Click or drop file'}</span>
+                    <span className="text-xs">{files.length === 0 ? 'Click or drop files' : files.length === 1 ? files[0].name : `${files.length} files selected`}</span>
                   </div>
-                  <button onClick={handleIngestFile} disabled={loading || !file} className="btn-primary w-full text-sm">
-                    {loading ? 'Uploading…' : 'Upload'}
+                  <button onClick={handleIngestFile} disabled={loading || files.length === 0} className="btn-primary w-full text-sm">
+                    {loading ? 'Uploading…' : files.length > 1 ? `Upload ${files.length} Files` : 'Upload'}
                   </button>
                 </div>
               )}
@@ -370,12 +381,12 @@ export default function IngestPage() {
                   <div>
                     <p className="text-xs text-gray-600 mb-2 font-medium">Upload File</p>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 mb-2 cursor-pointer hover:border-brand-600 transition-colors" onClick={() => audioInputRef.current?.click()}>
-                      <input ref={audioInputRef} type="file" onChange={(e) => setAudioFile(e.target.files?.[0] || null)} accept=".mp3,.wav,.m4a,.aac,.flac,.ogg" className="hidden" />
+                      <input ref={audioInputRef} type="file" multiple onChange={(e) => setAudioFiles(Array.from(e.target.files || []))} accept=".mp3,.wav,.m4a,.aac,.flac,.ogg" className="hidden" />
                       <Upload className="w-4 h-4 mx-auto mb-1 text-gray-400" />
-                      <span className="text-xs">{audioFile ? audioFile.name : 'Click to select'}</span>
+                      <span className="text-xs">{audioFiles.length === 0 ? 'Click to select' : audioFiles.length === 1 ? audioFiles[0].name : `${audioFiles.length} files selected`}</span>
                     </div>
-                    <button onClick={handleIngestAudioFile} disabled={loading || !audioFile} className="btn-primary w-full text-sm">
-                      {loading ? 'Uploading…' : 'Upload Audio'}
+                    <button onClick={handleIngestAudioFile} disabled={loading || audioFiles.length === 0} className="btn-primary w-full text-sm">
+                      {loading ? 'Uploading…' : audioFiles.length > 1 ? `Upload ${audioFiles.length} Audio Files` : 'Upload Audio'}
                     </button>
                   </div>
                   <div className="border-t pt-3">
@@ -393,12 +404,12 @@ export default function IngestPage() {
                   <div>
                     <p className="text-xs text-gray-600 mb-2 font-medium">Upload File</p>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 mb-2 cursor-pointer hover:border-brand-600 transition-colors" onClick={() => videoInputRef.current?.click()}>
-                      <input ref={videoInputRef} type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} accept=".mp4,.webm,.avi,.mov,.mkv,.flv,.m4v,.3gp" className="hidden" />
+                      <input ref={videoInputRef} type="file" multiple onChange={(e) => setVideoFiles(Array.from(e.target.files || []))} accept=".mp4,.webm,.avi,.mov,.mkv,.flv,.m4v,.3gp" className="hidden" />
                       <Upload className="w-4 h-4 mx-auto mb-1 text-gray-400" />
-                      <span className="text-xs">{videoFile ? videoFile.name : 'Click to select'}</span>
+                      <span className="text-xs">{videoFiles.length === 0 ? 'Click to select' : videoFiles.length === 1 ? videoFiles[0].name : `${videoFiles.length} files selected`}</span>
                     </div>
-                    <button onClick={handleIngestVideoFile} disabled={loading || !videoFile} className="btn-primary w-full text-sm">
-                      {loading ? 'Uploading…' : 'Upload Video'}
+                    <button onClick={handleIngestVideoFile} disabled={loading || videoFiles.length === 0} className="btn-primary w-full text-sm">
+                      {loading ? 'Uploading…' : videoFiles.length > 1 ? `Upload ${videoFiles.length} Videos` : 'Upload Video'}
                     </button>
                   </div>
                   <div className="border-t pt-3">
@@ -420,21 +431,22 @@ export default function IngestPage() {
                     <input
                       ref={imageInputRef}
                       type="file"
-                      onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                      multiple
+                      onChange={(e) => setImageFiles(Array.from(e.target.files || []))}
                       accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
                       className="hidden"
                     />
                     <Image className="w-6 h-6 mx-auto mb-2 text-gray-400" />
-                    <span className="text-xs text-gray-600 block">{imageFile ? imageFile.name : 'Click to select image'}</span>
+                    <span className="text-xs text-gray-600 block">{imageFiles.length === 0 ? 'Click to select images' : imageFiles.length === 1 ? imageFiles[0].name : `${imageFiles.length} images selected`}</span>
                     <span className="text-xs text-gray-400 mt-1 block">PNG, JPG, GIF, WebP, BMP, TIFF</span>
                   </div>
-                  {imageFile && (
+                  {imageFiles.length > 0 && (
                     <p className="text-xs text-gray-500 bg-blue-50 border border-blue-200 rounded p-2">
-                      Claude Vision will extract all text and describe any diagrams or flowcharts in this image.
+                      Claude Vision will extract all text and describe any diagrams or flowcharts in {imageFiles.length === 1 ? 'this image' : 'these images'}.
                     </p>
                   )}
-                  <button onClick={handleIngestImage} disabled={loading || !imageFile} className="btn-primary w-full text-sm">
-                    {loading ? 'Extracting…' : 'Extract & Ingest'}
+                  <button onClick={handleIngestImage} disabled={loading || imageFiles.length === 0} className="btn-primary w-full text-sm">
+                    {loading ? 'Extracting…' : imageFiles.length > 1 ? `Extract & Ingest ${imageFiles.length} Images` : 'Extract & Ingest'}
                   </button>
                 </div>
               )}
