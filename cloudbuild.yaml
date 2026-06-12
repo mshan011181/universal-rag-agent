@@ -162,6 +162,7 @@ steps:
       - --concurrency=80
       - --memory=4Gi
       - --cpu=2
+      - --timeout=3600
     waitFor: [push-api]
 
   # ── Stage 11: Deploy Frontend (Next.js) to Cloud Run ─────────────────────────
