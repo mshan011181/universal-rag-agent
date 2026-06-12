@@ -9,7 +9,7 @@ import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, Ch
 type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube' | 'images'
 
 const TAB_CONFIG: Record<TabType, { label: string; icon: React.ElementType; description: string }> = {
-  documents: { label: 'Documents', icon: FileText, description: 'PDF, DOCX, TXT, MD, CSV, PPT, XLS, JSON, GeoJSON' },
+  documents: { label: 'Documents', icon: FileText, description: 'PDF, DOCX, TXT, MD, CSV, PPT, PPTX, XLS, XLSX, JSON, GeoJSON' },
   text: { label: 'Text', icon: FileText, description: 'Plain text paste' },
   audio: { label: 'Audio', icon: Music, description: 'MP3, WAV, M4A URLs' },
   video: { label: 'Video', icon: Video, description: 'MP4, WebM, MOV, AVI, MKV' },
