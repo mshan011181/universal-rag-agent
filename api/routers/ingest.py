@@ -247,11 +247,18 @@ async def ingest_youtube_endpoint(
                 raise ValueError("Could not extract video ID from URL")
             video_id = vid_match.group(1)
 
+            import os as _os
             import yt_dlp as _yt_dlp
             import imageio_ffmpeg as _ffmpeg
             from groq import Groq as _Groq
 
             ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
+
+            # Residential proxy for YouTube — datacenter IPs (GCP/AWS) are
+            # blocked by YouTube's anti-bot checks. Format: http://user:pass@host:port
+            yt_proxy = _os.getenv("YOUTUBE_PROXY", "").strip()
+            if yt_proxy:
+                logger.info("youtube_proxy_enabled", video_id=video_id)
 
             # ── Step 2: Metadata — description + comments ────────────────────
             description_text = ""
@@ -263,6 +270,8 @@ async def ingest_youtube_endpoint(
                     "getcomments": True,
                     "extractor_args": {"youtube": {"max_comments": ["20", "all", "0", "0"]}},
                 }
+                if yt_proxy:
+                    info_opts["proxy"] = yt_proxy
                 with _yt_dlp.YoutubeDL(info_opts) as ydl:
                     info = ydl.extract_info(body.url, download=False)
 
@@ -303,6 +312,8 @@ async def ingest_youtube_endpoint(
                     "quiet": True,
                     "no_warnings": True,
                 }
+                if yt_proxy:
+                    ydl_opts["proxy"] = yt_proxy
                 logger.info("youtube_audio_download_start", video_id=video_id)
                 with _yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([body.url])
@@ -329,7 +340,13 @@ async def ingest_youtube_endpoint(
             caption_text = ""
             try:
                 from youtube_transcript_api import YouTubeTranscriptApi
-                ytt = YouTubeTranscriptApi()
+                if yt_proxy:
+                    from youtube_transcript_api.proxies import GenericProxyConfig
+                    ytt = YouTubeTranscriptApi(
+                        proxy_config=GenericProxyConfig(http_url=yt_proxy, https_url=yt_proxy)
+                    )
+                else:
+                    ytt = YouTubeTranscriptApi()
                 transcript_list = ytt.fetch(video_id)
                 caption_text = " ".join(seg.text for seg in transcript_list).strip()
                 logger.info("youtube_captions_fetched", chars=len(caption_text), video_id=video_id)
@@ -353,6 +370,8 @@ async def ingest_youtube_endpoint(
                     "quiet": True,
                     "no_warnings": True,
                 }
+                if yt_proxy:
+                    vid_opts["proxy"] = yt_proxy
                 logger.info("youtube_video_download_start", video_id=video_id)
                 with _yt_dlp.YoutubeDL(vid_opts) as ydl:
                     ydl.download([body.url])

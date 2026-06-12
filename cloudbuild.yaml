@@ -154,7 +154,7 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production
-      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest
+      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest
       - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
       - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
       - --min-instances=1
