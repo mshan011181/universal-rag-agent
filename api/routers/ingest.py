@@ -896,11 +896,11 @@ def _queue_media_file(
             logger.info("media_file_processing", filename=filename, media_type=media_type,
                         user_id=user_id, ingest_id=ingest_id, size_mb=round(len(content)/1024/1024, 1))
 
+            ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
             audio_path = save_path  # default: use file directly (works for mp3/wav/m4a etc.)
 
             # For video files — extract audio track with ffmpeg first
             if media_type == "video" or ext in {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv", ".m4v", ".3gp"}:
-                ffmpeg_exe = _ffmpeg.get_ffmpeg_exe()
                 extracted_audio = _pathlib.Path(tmp_dir) / "extracted_audio.mp3"
                 cmd = [
                     ffmpeg_exe, "-y",
@@ -918,39 +918,99 @@ def _queue_media_file(
                 logger.info("media_audio_extracted", ingest_id=ingest_id,
                             audio_size_mb=round(audio_path.stat().st_size/1024/1024, 1))
 
-            # Transcribe with Groq Whisper
+            # Transcribe with Groq Whisper (tolerate failure — silent videos
+            # can still be indexed from visual frame analysis below)
             groq_client = _Groq()
-            audio_size_mb = audio_path.stat().st_size / 1024 / 1024
+            transcript = ""
+            try:
+                audio_size_mb = audio_path.stat().st_size / 1024 / 1024
+                # Groq Whisper limit is 25MB — warn but attempt anyway
+                if audio_size_mb > 25:
+                    logger.warning("media_file_large_for_whisper", size_mb=round(audio_size_mb, 1), ingest_id=ingest_id)
 
-            # Groq Whisper limit is 25MB — warn but attempt anyway
-            if audio_size_mb > 25:
-                logger.warning("media_file_large_for_whisper", size_mb=round(audio_size_mb, 1), ingest_id=ingest_id)
+                with open(audio_path, "rb") as af:
+                    transcription = groq_client.audio.transcriptions.create(
+                        model="whisper-large-v3",
+                        file=af,
+                        response_format="text",
+                    )
+                transcript = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+                logger.info("media_whisper_done", ingest_id=ingest_id, chars=len(transcript))
+            except Exception as whisper_err:
+                logger.warning("media_whisper_failed", error=str(whisper_err), ingest_id=ingest_id)
 
-            with open(audio_path, "rb") as af:
-                transcription = groq_client.audio.transcriptions.create(
-                    model="whisper-large-v3",
-                    file=af,
-                    response_format="text",
-                )
+            # Visual frame analysis for videos — same approach as the YouTube
+            # pipeline. Critical for silent videos (screen recordings, demos).
+            frames_text = ""
+            if media_type == "video":
+                try:
+                    import base64 as _base64
 
-            transcript = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+                    frames_dir = _pathlib.Path(tmp_dir) / "frames"
+                    frames_dir.mkdir(exist_ok=True)
+                    # 1 frame every 30s, max 12 frames, scaled to 640px wide
+                    frame_pattern = str(frames_dir / "frame_%03d.jpg")
+                    cmd = [
+                        ffmpeg_exe, "-y", "-i", str(save_path),
+                        "-vf", "fps=1/30,scale=640:-1",
+                        "-frames:v", "12",
+                        "-q:v", "5",
+                        frame_pattern,
+                    ]
+                    _subprocess.run(cmd, capture_output=True, timeout=300)
 
-            if not transcript:
-                raise ValueError("Whisper returned empty transcript")
+                    frame_files = sorted(frames_dir.glob("frame_*.jpg"))
+                    frame_descriptions = []
+                    for i, fp in enumerate(frame_files[:12]):
+                        try:
+                            b64 = _base64.standard_b64encode(fp.read_bytes()).decode()
+                            data_url = f"data:image/jpeg;base64,{b64}"
+                            resp = groq_client.chat.completions.create(
+                                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                                max_tokens=512,
+                                messages=[{"role": "user", "content": [
+                                    {"type": "image_url", "image_url": {"url": data_url}},
+                                    {"type": "text", "text": (
+                                        f"Frame {i + 1} from video '{filename}'. "
+                                        "Describe: any on-screen text, UI screens, slides, "
+                                        "diagrams, charts, demonstrations, or notable visual "
+                                        "content. Be concise."
+                                    )},
+                                ]}],
+                            )
+                            desc = resp.choices[0].message.content.strip()
+                            if desc:
+                                frame_descriptions.append(f"Frame {i + 1} (~{i * 30}s): {desc}")
+                        except Exception as fe:
+                            logger.warning("media_frame_vision_failed", frame=i + 1,
+                                           error=str(fe), ingest_id=ingest_id)
 
-            logger.info("media_whisper_done", ingest_id=ingest_id, chars=len(transcript))
+                    if frame_descriptions:
+                        frames_text = "\n\n".join(frame_descriptions)
+                        logger.info("media_frames_done", frames=len(frame_descriptions),
+                                    ingest_id=ingest_id)
+                except Exception as frame_err:
+                    logger.warning("media_frames_failed", error=str(frame_err), ingest_id=ingest_id)
 
-            # Build document and ingest into Pinecone
-            doc_text = (
-                f"[{media_type.capitalize()} File] {filename}\n\n"
-                f"## Audio Transcript (Whisper — high accuracy)\n\n"
-                f"{transcript}"
-            )
+            if not transcript and not frames_text:
+                raise ValueError("No speech transcript and no visual content could be extracted")
+
+            # Build combined document and ingest into Pinecone
+            sections = [f"[{media_type.capitalize()} File] {filename}"]
+            if transcript:
+                sections.append("## Audio Transcript (Whisper — high accuracy)")
+                sections.append(transcript)
+            if frames_text:
+                sections.append("## Visual Content (Frame Analysis)")
+                sections.append(frames_text)
+            doc_text = "\n\n".join(sections)
+
             chunks = ingest_text(doc_text, source=f"{media_type}:{filename}", namespace=org_id)
             _set_status("done", chunks)
 
             logger.info("media_file_done", ingest_id=ingest_id, filename=filename,
-                        chunks=chunks, chars=len(transcript))
+                        chunks=chunks, transcript_chars=len(transcript),
+                        frame_chars=len(frames_text))
 
         except Exception as e:
             logger.error("media_file_processing_failed", filename=filename,
