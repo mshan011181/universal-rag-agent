@@ -355,6 +355,28 @@ export async function ingestImage(file: File): Promise<IngestResponse> {
   return request('/api/ingest/image', { method: 'POST', body: form })
 }
 
+/** Convert a table photo/screenshot to .xlsx and trigger a browser download. */
+export async function convertImageToExcel(file: File): Promise<void> {
+  const form = new FormData()
+  form.append('file', file)
+  const headers: Record<string, string> = {}
+  if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`
+  const res = await fetch(`${BASE}/api/ingest/image-to-excel`, { method: 'POST', headers, body: form })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(typeof body.detail === 'string' ? body.detail : 'Conversion failed')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name.replace(/\.[^.]+$/, '') + '.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export interface UserQueryItem {

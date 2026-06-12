@@ -816,6 +816,104 @@ async def ingest_image_endpoint(
     }
 
 
+@router.post("/image-to-excel")
+async def image_to_excel(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("user")),
+):
+    """Convert a table photo/screenshot into a downloadable .xlsx file.
+
+    Groq Vision reads the table structure as strict JSON; openpyxl writes it.
+    Synchronous (no background task) — the user is waiting for the download.
+    """
+    import base64
+    import io
+    import re as _re
+    from groq import Groq as _Groq
+    from fastapi.responses import StreamingResponse
+    from openpyxl import Workbook
+
+    filename = _safe_filename(file.filename or "table")
+    ext = Path(filename).suffix.lower()
+    if ext not in IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not allowed. Allowed: {sorted(IMAGE_EXTENSIONS)}",
+        )
+
+    content = await file.read()
+    if len(content) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"Image too large. Max {MAX_IMAGE_SIZE_MB}MB")
+
+    mime = IMAGE_MIME_MAP.get(ext, "image/jpeg")
+    data_url = f"data:{mime};base64,{base64.standard_b64encode(content).decode()}"
+
+    prompt = (
+        "Extract every table from this image.\n"
+        "Return STRICT JSON only — no markdown, no commentary — in this shape:\n"
+        '{"tables": [{"name": "Sheet1", "rows": [["cell", "cell"], ["cell", "cell"]]}]}\n'
+        "Rules:\n"
+        "- Every row is an array of cell strings, in left-to-right column order.\n"
+        "- The first row must be the header row if the table has one.\n"
+        "- Reproduce values EXACTLY as shown (numbers, dates, currency symbols).\n"
+        "- Use an empty string for blank/merged cells.\n"
+        "- One entry per distinct table; name them Sheet1, Sheet2, ..."
+    )
+
+    try:
+        resp = _Groq().chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            max_tokens=8000,
+            temperature=0,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": prompt},
+            ]}],
+        )
+        raw = resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error("image_to_excel_vision_failed", error=str(e), filename=filename)
+        raise HTTPException(status_code=502, detail="Vision model failed to read the image")
+
+    # Strip code fences if the model added them despite instructions
+    raw = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+    try:
+        data = _json.loads(raw)
+        tables = data.get("tables") or []
+        assert tables and all(t.get("rows") for t in tables)
+    except Exception:
+        logger.error("image_to_excel_parse_failed", filename=filename, raw_head=raw[:200])
+        raise HTTPException(status_code=422, detail="No table could be recognised in this image")
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    for t_idx, table in enumerate(tables, start=1):
+        sheet_name = str(table.get("name") or f"Sheet{t_idx}")[:31]
+        ws = wb.create_sheet(title=sheet_name)
+        for row in table["rows"]:
+            cells = []
+            for cell in row:
+                cell = str(cell).strip()
+                # Preserve numbers as numbers so Excel formulas work on them
+                try:
+                    cells.append(float(cell) if "." in cell else int(cell))
+                except ValueError:
+                    cells.append(cell)
+            ws.append(cells)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    out_name = Path(filename).stem + ".xlsx"
+    logger.info("image_to_excel_done", filename=filename, tables=len(tables), user_id=user["user_id"])
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
+    )
+
+
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".mp4"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv", ".flv", ".m4v", ".3gp"}
 MAX_MEDIA_SIZE_MB = 500

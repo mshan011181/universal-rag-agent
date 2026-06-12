@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, getIngestHistory, deleteIngest, retryIngest } from '@/lib/api'
+import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, convertImageToExcel, getIngestHistory, deleteIngest, retryIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
 import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image, RotateCcw } from 'lucide-react'
 
@@ -215,6 +215,24 @@ export default function IngestPage() {
       setTimeout(() => loadHistory(true), 1500)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const [converting, setConverting] = useState(false)
+
+  const handleConvertToExcel = async () => {
+    if (imageFiles.length !== 1) {
+      showMessage('error', 'Select exactly one image to convert to Excel')
+      return
+    }
+    setConverting(true)
+    try {
+      await convertImageToExcel(imageFiles[0])
+      showMessage('success', 'Excel file downloaded.')
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Conversion failed')
+    } finally {
+      setConverting(false)
     }
   }
 
@@ -447,6 +465,14 @@ export default function IngestPage() {
                   )}
                   <button onClick={handleIngestImage} disabled={loading || imageFiles.length === 0} className="btn-primary w-full text-sm">
                     {loading ? 'Extracting…' : imageFiles.length > 1 ? `Extract & Ingest ${imageFiles.length} Images` : 'Extract & Ingest'}
+                  </button>
+                  <button
+                    onClick={handleConvertToExcel}
+                    disabled={converting || imageFiles.length !== 1}
+                    title={imageFiles.length > 1 ? 'Select a single image to convert' : 'Convert a table photo/screenshot to a downloadable .xlsx'}
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    {converting ? 'Converting…' : 'Convert Table to Excel (.xlsx)'}
                   </button>
                 </div>
               )}
