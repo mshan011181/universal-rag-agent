@@ -847,6 +847,19 @@ async def ingest_media_file_endpoint(
     if len(content) > MAX_MEDIA_SIZE_BYTES:
         raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_MEDIA_SIZE_MB}MB")
 
+    return _queue_media_file(background_tasks, content, filename, media_type, user)
+
+
+def _queue_media_file(
+    background_tasks: BackgroundTasks,
+    content: bytes,
+    filename: str,
+    media_type: str,
+    user: dict,
+):
+    """Save media bytes, record the ingest, and queue Whisper processing."""
+    ext = Path(filename).suffix.lower()
+
     # Deduplicate by content hash
     content_hash = hashlib.sha256(content).hexdigest()[:16]
     save_name = f"{user['user_id']}_{content_hash}{ext}"
@@ -957,6 +970,107 @@ async def ingest_media_file_endpoint(
         "size_bytes": len(content),
         "message": f"{media_type.capitalize()} queued — extracting audio and transcribing with Whisper. This may take 1–2 minutes.",
     }
+
+
+# ── Direct-to-GCS uploads (bypass Cloud Run's 32 MiB request limit) ───────────
+# Flow: browser asks for a signed PUT URL → uploads the file straight to GCS →
+# calls /media-file-gcs to pull the object server-side into the normal pipeline.
+# Returns 501 when MEDIA_BUCKET is unset (local dev) so the client falls back
+# to the direct multipart upload.
+
+class MediaUploadUrlRequest(BaseModel):
+    filename: str
+    media_type: str = "video"
+    content_type: str = "application/octet-stream"
+
+
+class MediaFileGcsRequest(BaseModel):
+    gcs_object: str
+    filename: str
+    media_type: str = "video"
+
+
+def _validate_media_ext(filename: str, media_type: str) -> str:
+    if media_type not in ["audio", "video"]:
+        raise HTTPException(status_code=400, detail="media_type must be 'audio' or 'video'")
+    ext = Path(filename).suffix.lower()
+    allowed = AUDIO_EXTENSIONS if media_type == "audio" else VIDEO_EXTENSIONS
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"{media_type.capitalize()} type '{ext}' not allowed. Allowed: {allowed}")
+    return ext
+
+
+@router.post("/media-upload-url")
+async def media_upload_url(
+    body: MediaUploadUrlRequest,
+    user: dict = Depends(require_role("user")),
+):
+    """Issue a short-lived signed URL for uploading a media file directly to GCS."""
+    import os
+    bucket_name = os.getenv("MEDIA_BUCKET", "").strip()
+    if not bucket_name:
+        raise HTTPException(status_code=501, detail="Direct-to-storage uploads not configured")
+
+    filename = _safe_filename(body.filename or "upload")
+    ext = _validate_media_ext(filename, body.media_type)
+
+    from datetime import timedelta
+    import google.auth
+    from google.auth.transport import requests as ga_requests
+    from google.cloud import storage
+
+    object_name = f"uploads/{user['user_id']}/{uuid.uuid4()}{ext}"
+    try:
+        credentials, _ = google.auth.default()
+        credentials.refresh(ga_requests.Request())
+        blob = storage.Client().bucket(bucket_name).blob(object_name)
+        upload_url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=30),
+            method="PUT",
+            content_type=body.content_type,
+            service_account_email=credentials.service_account_email,
+            access_token=credentials.token,
+        )
+    except Exception as e:
+        logger.error("media_upload_url_failed", error=str(e), user_id=user["user_id"])
+        raise HTTPException(status_code=500, detail="Could not create upload URL")
+
+    return {"upload_url": upload_url, "gcs_object": object_name, "content_type": body.content_type}
+
+
+@router.post("/media-file-gcs")
+async def ingest_media_file_gcs(
+    background_tasks: BackgroundTasks,
+    body: MediaFileGcsRequest,
+    user: dict = Depends(require_role("user")),
+):
+    """Ingest a media file previously uploaded to GCS via a signed URL."""
+    import os
+    bucket_name = os.getenv("MEDIA_BUCKET", "").strip()
+    if not bucket_name:
+        raise HTTPException(status_code=501, detail="Direct-to-storage uploads not configured")
+
+    filename = _safe_filename(body.filename or "upload")
+    _validate_media_ext(filename, body.media_type)
+
+    # Users may only ingest objects they themselves uploaded
+    if not body.gcs_object.startswith(f"uploads/{user['user_id']}/"):
+        raise HTTPException(status_code=403, detail="Not your upload")
+
+    from google.cloud import storage
+
+    blob = storage.Client().bucket(bucket_name).blob(body.gcs_object)
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="Uploaded file not found in storage")
+
+    content = blob.download_as_bytes()
+    blob.delete()  # one-shot staging object — pipeline keeps its own copy
+
+    if len(content) > MAX_MEDIA_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large. Max {MAX_MEDIA_SIZE_MB}MB")
+
+    return _queue_media_file(background_tasks, content, filename, body.media_type, user)
 
 
 @router.get("/list")

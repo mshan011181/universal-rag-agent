@@ -302,18 +302,51 @@ export async function retryIngest(ingestId: string): Promise<{ status: string; i
   return request(`/api/ingest/${ingestId}/retry`, { method: 'POST' })
 }
 
-export async function ingestAudioFile(file: File): Promise<IngestResponse> {
+// Cloud Run rejects request bodies over 32 MiB, so large files go directly
+// to GCS via a signed URL. Falls back to multipart upload when the backend
+// has no bucket configured (local dev returns 501).
+const DIRECT_UPLOAD_LIMIT = 30 * 1024 * 1024
+
+async function uploadMediaFile(file: File, mediaType: 'audio' | 'video'): Promise<IngestResponse> {
+  if (file.size > DIRECT_UPLOAD_LIMIT) {
+    try {
+      const { upload_url, gcs_object, content_type } = await request<{
+        upload_url: string; gcs_object: string; content_type: string
+      }>('/api/ingest/media-upload-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: file.name,
+          media_type: mediaType,
+          content_type: file.type || 'application/octet-stream',
+        }),
+      })
+      const put = await fetch(upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': content_type },
+        body: file,
+      })
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status})`)
+      return await request('/api/ingest/media-file-gcs', {
+        method: 'POST',
+        body: JSON.stringify({ gcs_object, filename: file.name, media_type: mediaType }),
+      })
+    } catch (e) {
+      // 501 = backend has no GCS bucket (local dev) — fall through to direct upload
+      if ((e as { status?: number }).status !== 501) throw e
+    }
+  }
   const form = new FormData()
   form.append('file', file)
-  form.append('media_type', 'audio')
+  form.append('media_type', mediaType)
   return request('/api/ingest/media-file', { method: 'POST', body: form })
 }
 
+export async function ingestAudioFile(file: File): Promise<IngestResponse> {
+  return uploadMediaFile(file, 'audio')
+}
+
 export async function ingestVideoFile(file: File): Promise<IngestResponse> {
-  const form = new FormData()
-  form.append('file', file)
-  form.append('media_type', 'video')
-  return request('/api/ingest/media-file', { method: 'POST', body: form })
+  return uploadMediaFile(file, 'video')
 }
 
 export async function ingestImage(file: File): Promise<IngestResponse> {
