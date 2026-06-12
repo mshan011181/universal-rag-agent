@@ -297,6 +297,17 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return _get_embedder().encode(texts, show_progress_bar=False).tolist()
 
 
+# Pinecone rejects upserts of more than 1000 vectors per request
+# (and recommends a few hundred for payload-size headroom).
+UPSERT_BATCH_SIZE = 200
+
+
+def _batched_upsert(vectors: list[dict], namespace: str) -> None:
+    index = _get_index()
+    for start in range(0, len(vectors), UPSERT_BATCH_SIZE):
+        index.upsert(vectors=vectors[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
+
+
 def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "") -> str:
     """Send raw image bytes to Groq Vision and return a description.
 
@@ -1030,7 +1041,7 @@ def ingest_file(
             }
             for i, (chunk, emb) in enumerate(zip(text_chunks, embeddings))
         ]
-        _get_index().upsert(vectors=vectors, namespace=namespace)
+        _batched_upsert(vectors, namespace)
         return len(vectors)
 
     # LangChain Document path (TXT / MD / CSV)
@@ -1061,7 +1072,7 @@ def ingest_file(
         }
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
     ]
-    _get_index().upsert(vectors=vectors, namespace=namespace)
+    _batched_upsert(vectors, namespace)
     return len(vectors)
 
 
@@ -1081,7 +1092,7 @@ def ingest_text(text: str, source: str = "manual", namespace: str = "default") -
         }
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
     ]
-    _get_index().upsert(vectors=vectors, namespace=namespace)
+    _batched_upsert(vectors, namespace)
     return len(vectors)
 
 
