@@ -382,7 +382,8 @@ def _extract_text_from_pptx(path: Path) -> str:
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
-    import tempfile, subprocess
+    import tempfile
+    import subprocess
 
     # Convert legacy .ppt to .pptx using LibreOffice
     if path.suffix.lower() == ".ppt":

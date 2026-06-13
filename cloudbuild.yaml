@@ -148,14 +148,31 @@ steps:
     args:
       - -c
       - |
-        # Patch max-instances on BOTH services before deploying so quota check passes
-        # Total: 8Gi×40 + 1Gi×10 = 330Gi < 400Gi regional quota
-        gcloud run services update rag-frontend \
-          --region=${_REGION} --project=${_PROJECT} \
-          --max-instances=10 --quiet || true
-        gcloud run services update rag-api \
-          --region=${_REGION} --project=${_PROJECT} \
-          --max-instances=40 --quiet || true
+        # Patch max-instances via REST API before deploying so quota check passes
+        # Total after patch: 8Gi×40 + 1Gi×10 = 330Gi < 400Gi regional quota
+        TOKEN=$(gcloud auth print-access-token)
+        BASE="https://run.googleapis.com/v1/namespaces/${_PROJECT}/services"
+        # Patch frontend to max-instances=10
+        FRONTEND=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/rag-frontend")
+        FRONTEND_PATCHED=$(echo "$FRONTEND" | python3 -c "
+import sys, json
+s = json.load(sys.stdin)
+s['spec']['template']['metadata']['annotations']['autoscaling.knative.dev/maxScale'] = '10'
+print(json.dumps(s))")
+        curl -sf -X PUT -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$FRONTEND_PATCHED" "$BASE/rag-frontend" > /dev/null
+        # Patch API to max-instances=40
+        API=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/rag-api")
+        API_PATCHED=$(echo "$API" | python3 -c "
+import sys, json
+s = json.load(sys.stdin)
+s['spec']['template']['metadata']['annotations']['autoscaling.knative.dev/maxScale'] = '40'
+print(json.dumps(s))")
+        curl -sf -X PUT -H "Authorization: Bearer $TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$API_PATCHED" "$BASE/rag-api" > /dev/null
+        sleep 10
         gcloud run deploy rag-api \
           --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA \
           --region=${_REGION} \
