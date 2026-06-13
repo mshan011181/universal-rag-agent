@@ -646,6 +646,72 @@ def _extract_columns_from_page(plumb_page, excluded_bboxes: list) -> str:
     return _column_sort_words(words, page_width=plumb_page.width or 600)
 
 
+_STEM_SYMBOLS = _re.compile(
+    r'[∫∑∏√∂∇∆≈≠≤≥±∞∈∉⊆⊇∩∪∀∃∄→←↔⇒⇔∧∨¬α-ωΑ-Ω]'
+    r'|\\(?:frac|sqrt|int|sum|prod|lim|partial|nabla|Delta|alpha|beta|gamma|theta|lambda|sigma|pi|mu|epsilon)\b'
+)
+_STEM_SYMBOL_THRESHOLD = 0.003  # 0.3% of chars are math symbols → STEM doc
+_STEM_MIN_PAGES = 3             # only bother on multi-page docs
+
+
+def _is_stem_pdf(path: Path) -> bool:
+    """Heuristically detect STEM / formula-heavy PDFs.
+
+    Samples up to 10 pages, counts math-symbol characters relative to total
+    characters. Returns True if the document looks like a scientific paper
+    or textbook with heavy mathematical notation.
+    """
+    try:
+        import pdfplumber
+        with pdfplumber.open(str(path)) as pdf:
+            if len(pdf.pages) < _STEM_MIN_PAGES:
+                return False
+            sample = pdf.pages[:10]
+            total_chars = 0
+            symbol_chars = 0
+            for page in sample:
+                text = page.extract_text() or ""
+                total_chars += len(text)
+                symbol_chars += len(_STEM_SYMBOLS.findall(text))
+            if total_chars < 200:
+                return False
+            ratio = symbol_chars / total_chars
+            return ratio >= _STEM_SYMBOL_THRESHOLD
+    except Exception:
+        return False
+
+
+def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
+    """Use the Marker library to extract text from a STEM PDF.
+
+    Marker outputs clean Markdown with LaTeX math blocks ($$...$$) preserved,
+    which chunking can handle much better than flattened symbol text.
+
+    Returns None if Marker is not installed or fails, so callers can fall back
+    to the standard pdfplumber pipeline.
+    """
+    try:
+        from marker.converters.pdf import PdfConverter
+        from marker.models import create_model_dict
+        from marker.output import text_from_rendered
+    except ImportError:
+        return None
+
+    if on_progress:
+        on_progress(10, "Running Marker (STEM PDF detected)")
+
+    try:
+        models = create_model_dict()
+        converter = PdfConverter(artifact_dict=models)
+        rendered = converter(str(path))
+        markdown_text, _, _ = text_from_rendered(rendered)
+        if on_progress:
+            on_progress(75, "Marker extraction complete")
+        return markdown_text if markdown_text and len(markdown_text.strip()) > 100 else None
+    except Exception:
+        return None
+
+
 def _extract_text_from_pdf(path: Path, on_progress=None) -> str:
     """Extract text, tables, and embedded images from a PDF.
 
@@ -982,7 +1048,14 @@ def ingest_file(
     doc_type = "narrative"
 
     if suffix == ".pdf":
-        raw_text = _extract_text_from_pdf(path, on_progress=_prog)
+        if _is_stem_pdf(path):
+            _prog(8, "STEM PDF detected — trying Marker parser")
+            raw_text = _extract_text_with_marker(path, on_progress=_prog)
+            if raw_text is None:
+                _prog(10, "Marker unavailable — using standard PDF parser")
+                raw_text = _extract_text_from_pdf(path, on_progress=_prog)
+        else:
+            raw_text = _extract_text_from_pdf(path, on_progress=_prog)
     elif suffix in (".txt", ".md"):
         loader = TextLoader(str(path), encoding="utf-8")
     elif suffix == ".csv":
