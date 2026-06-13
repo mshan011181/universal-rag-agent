@@ -1098,9 +1098,20 @@ def ingest_file(
         text_chunks = _table_aware_split(raw_text, _chunk_size, _chunk_overlap)
         if not text_chunks:
             return 0
-        _prog(85, f"Generating embeddings for {len(text_chunks)} chunks")
-        embeddings = _embed(text_chunks)
-        _prog(94, "Uploading to index")
+
+        # Embed in batches with per-batch progress (78% → 92%)
+        EMBED_BATCH = 64
+        embeddings: list[list[float]] = []
+        total_chunks = len(text_chunks)
+        for batch_start in range(0, total_chunks, EMBED_BATCH):
+            batch = text_chunks[batch_start:batch_start + EMBED_BATCH]
+            embeddings.extend(_embed(batch))
+            done = min(batch_start + EMBED_BATCH, total_chunks)
+            pct = 78 + int((done / total_chunks) * 14)  # 78→92
+            _prog(pct, f"Embedding chunk {done}/{total_chunks}")
+
+        # Upsert in batches with per-batch progress (92% → 99%)
+        index = _get_index()
         vectors = [
             {
                 "id": f"{id_prefix}_{i}",
@@ -1114,7 +1125,13 @@ def ingest_file(
             }
             for i, (chunk, emb) in enumerate(zip(text_chunks, embeddings))
         ]
-        _batched_upsert(vectors, namespace)
+        total_vectors = len(vectors)
+        for start in range(0, total_vectors, UPSERT_BATCH_SIZE):
+            index.upsert(vectors=vectors[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
+            done = min(start + UPSERT_BATCH_SIZE, total_vectors)
+            pct = 92 + int((done / total_vectors) * 7)  # 92→99
+            _prog(pct, f"Uploading batch {done}/{total_vectors} vectors")
+
         return len(vectors)
 
     # LangChain Document path (TXT / MD / CSV)
