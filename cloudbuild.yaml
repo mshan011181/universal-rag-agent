@@ -148,8 +148,11 @@ steps:
     args:
       - -c
       - |
-        # Patch max-instances to 40 BEFORE deploying so quota check passes
-        # (quota is checked against existing service config, not the new deploy args)
+        # Patch max-instances on BOTH services before deploying so quota check passes
+        # Total: 8Gi×40 + 1Gi×10 = 330Gi < 400Gi regional quota
+        gcloud run services update rag-frontend \
+          --region=${_REGION} --project=${_PROJECT} \
+          --max-instances=10 --quiet || true
         gcloud run services update rag-api \
           --region=${_REGION} --project=${_PROJECT} \
           --max-instances=40 --quiet || true
