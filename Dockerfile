@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
+# marker-pdf installed after main deps with relaxed resolver to avoid ResolutionTooDeep
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver marker-pdf || true
+
 COPY . .
 
 RUN mkdir -p /app/data/uploads && \
