@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 \
     # ffmpeg — audio/video ingestion
     ffmpeg \
+    # LibreOffice — convert legacy .ppt/.doc/.xls to modern formats
+    libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-api.txt .

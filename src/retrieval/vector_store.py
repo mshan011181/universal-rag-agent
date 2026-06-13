@@ -362,7 +362,9 @@ def _describe_image_bytes(image_bytes: bytes, ext: str = "png", context: str = "
 
 
 def _extract_text_from_pptx(path: Path) -> str:
-    """Extract text, tables, images, and charts from a PowerPoint file (.pptx).
+    """Extract text, tables, images, and charts from a PowerPoint file (.pptx/.ppt).
+
+    Legacy .ppt files are converted to .pptx via LibreOffice before processing.
 
     Shapes are processed in top-left → bottom-right reading order (by top then
     left position) so multi-column slide layouts are read correctly.
@@ -380,6 +382,23 @@ def _extract_text_from_pptx(path: Path) -> str:
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
+    import tempfile, subprocess
+
+    # Convert legacy .ppt to .pptx using LibreOffice
+    if path.suffix.lower() == ".ppt":
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "pptx",
+                 "--outdir", tmp_dir, str(path)],
+                check=True, timeout=120,
+                capture_output=True,
+            )
+            converted = Path(tmp_dir) / (path.stem + ".pptx")
+            if converted.exists():
+                path = converted
+        except Exception:
+            pass  # fall through — python-pptx may still handle some .ppt files
 
     prs = Presentation(str(path))
     lines = []
