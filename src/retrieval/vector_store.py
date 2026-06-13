@@ -1068,7 +1068,14 @@ def ingest_file(
     doc_type = "narrative"
 
     if suffix == ".pdf":
-        if _is_stem_pdf(path):
+        # Marker (STEM PDF parser) loads ~2GB of ML models and needs an 8Gi
+        # instance. It is gated behind ENABLE_MARKER so it stays OFF on the
+        # default 4Gi instance (would OOM-kill the worker). Turn it on only
+        # after the Cloud Run memory quota is raised and the service is
+        # redeployed at 8Gi: set ENABLE_MARKER=true.
+        import os as _os
+        _marker_on = _os.getenv("ENABLE_MARKER", "false").lower() in ("1", "true", "yes")
+        if _marker_on and _is_stem_pdf(path):
             _prog(8, "STEM PDF detected — trying Marker parser")
             raw_text = _extract_text_with_marker(path, on_progress=_prog)
             if raw_text is None:

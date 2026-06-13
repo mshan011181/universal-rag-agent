@@ -142,52 +142,32 @@ steps:
     waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
+  # NOTE: memory is 4Gi because the region's MemAllocPerProjectRegion quota
+  # caps per-instance memory at 4Gi (quota = memory × 100 ≤ 400Gi, and the
+  # check ignores --max-instances). To enable Marker STEM-PDF parsing, first
+  # request a MemAllocPerProjectRegion increase, then bump --memory=8Gi and
+  # add ENABLE_MARKER=true to --set-env-vars below.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-api
-    entrypoint: bash
+    entrypoint: gcloud
     args:
-      - -c
-      - |
-        # Patch max-instances via REST API before deploying so quota check passes
-        # Total after patch: 8Gi×40 + 1Gi×10 = 330Gi < 400Gi regional quota
-        TOKEN=$(gcloud auth print-access-token)
-        BASE="https://run.googleapis.com/v1/namespaces/${_PROJECT}/services"
-        # Patch frontend to max-instances=10
-        FRONTEND=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/rag-frontend")
-        FRONTEND_PATCHED=$(echo "$FRONTEND" | python3 -c "
-import sys, json
-s = json.load(sys.stdin)
-s['spec']['template']['metadata']['annotations']['autoscaling.knative.dev/maxScale'] = '10'
-print(json.dumps(s))")
-        curl -sf -X PUT -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "$FRONTEND_PATCHED" "$BASE/rag-frontend" > /dev/null
-        # Patch API to max-instances=40
-        API=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE/rag-api")
-        API_PATCHED=$(echo "$API" | python3 -c "
-import sys, json
-s = json.load(sys.stdin)
-s['spec']['template']['metadata']['annotations']['autoscaling.knative.dev/maxScale'] = '40'
-print(json.dumps(s))")
-        curl -sf -X PUT -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "$API_PATCHED" "$BASE/rag-api" > /dev/null
-        sleep 10
-        gcloud run deploy rag-api \
-          --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads \
-          --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest \
-          --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres \
-          --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com \
-          --min-instances=1 \
-          --max-instances=40 \
-          --concurrency=80 \
-          --memory=8Gi \
-          --cpu=2 \
-          --timeout=3600
+      - run
+      - deploy
+      - rag-api
+      - --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads
+      - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest
+      - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
+      - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
+      - --min-instances=1
+      - --max-instances=100
+      - --concurrency=80
+      - --memory=4Gi
+      - --cpu=2
+      - --timeout=3600
     waitFor: [push-api]
 
   # ── Stage 11: Deploy Frontend (Next.js) to Cloud Run ─────────────────────────
