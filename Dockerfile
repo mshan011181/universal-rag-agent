@@ -22,8 +22,20 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-# marker-pdf installed after main deps with relaxed resolver to avoid ResolutionTooDeep
-RUN pip install --no-cache-dir --use-deprecated=legacy-resolver marker-pdf || true
+# marker-pdf: install core runtime deps first, then marker itself with --no-deps
+# This avoids ResolutionTooDeep caused by marker pulling in pre-commit/virtualenv chains
+RUN pip install --no-cache-dir \
+    transformers>=4.45.2 \
+    surya-ocr>=0.17.1 \
+    pdftext>=0.6.3 \
+    pypdfium2>=4.30.0 \
+    opencv-python-headless>=4.11.0 \
+    ftfy>=6.3.1 \
+    markdown2>=2.5.0 \
+    markdownify>=1.2.0 \
+    einops>=0.8.0 \
+    regex>=2024.0.0
+RUN pip install --no-cache-dir --no-deps marker-pdf
 
 COPY . .
 
