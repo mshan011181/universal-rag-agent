@@ -1048,14 +1048,7 @@ def ingest_file(
     doc_type = "narrative"
 
     if suffix == ".pdf":
-        if _is_stem_pdf(path):
-            _prog(8, "STEM PDF detected — trying Marker parser")
-            raw_text = _extract_text_with_marker(path, on_progress=_prog)
-            if raw_text is None:
-                _prog(10, "Marker unavailable — using standard PDF parser")
-                raw_text = _extract_text_from_pdf(path, on_progress=_prog)
-        else:
-            raw_text = _extract_text_from_pdf(path, on_progress=_prog)
+        raw_text = _extract_text_from_pdf(path, on_progress=_prog)
     elif suffix in (".txt", ".md"):
         loader = TextLoader(str(path), encoding="utf-8")
     elif suffix == ".csv":
