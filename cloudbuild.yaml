@@ -158,9 +158,9 @@ steps:
       - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
       - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
       - --min-instances=1
-      - --max-instances=100
+      - --max-instances=40
       - --concurrency=80
-      - --memory=4Gi
+      - --memory=8Gi
       - --cpu=2
       - --timeout=3600
     waitFor: [push-api]
@@ -182,7 +182,7 @@ steps:
           --set-env-vars="NEXT_PUBLIC_API_URL=$$API_URL,ENVIRONMENT=production" \
           --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com \
           --min-instances=1 \
-          --max-instances=100 \
+          --max-instances=10 \
           --concurrency=80 \
           --memory=1Gi \
           --cpu=1
