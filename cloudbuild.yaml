@@ -187,7 +187,7 @@ steps:
           --region=${_REGION} --project=${_PROJECT} \
           --command=python --args=jobs/marker_ingest.py \
           --gpu=1 --gpu-type=nvidia-l4 --no-gpu-zonal-redundancy \
-          --memory=16Gi --cpu=4 --task-timeout=10800 --max-retries=0 \
+          --memory=16Gi --cpu=4 --task-timeout=3600 --max-retries=0 \
           --set-env-vars=ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,PYTHONPATH=/app,LLM_PROVIDER=anthropic,PINECONE_INDEX_NAME=universal-rag,RECOGNITION_BATCH_SIZE=32,DETECTOR_BATCH_SIZE=12,LAYOUT_BATCH_SIZE=12,TABLE_REC_BATCH_SIZE=12,OCR_ERROR_BATCH_SIZE=12,ORDER_BATCH_SIZE=12,TORCH_DEVICE=cuda \
           --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,GROQ_API_KEY=groq-api-key:latest \
           --set-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres \
