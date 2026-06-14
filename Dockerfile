@@ -36,7 +36,11 @@ COPY . .
 
 RUN mkdir -p /app/data/uploads && \
     useradd -m appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    # Marker/surya write a `static` dir + fonts under site-packages at runtime;
+    # the non-root appuser needs write access there or conversion fails with
+    # PermissionError: '/usr/local/lib/python3.12/site-packages/static'.
+    chown -R appuser:appuser /usr/local/lib/python3.12/site-packages
 
 USER appuser
 
