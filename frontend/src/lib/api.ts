@@ -255,10 +255,11 @@ export async function submitQueryFromImage(
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
-export async function ingestFile(file: File, namespace = 'default'): Promise<IngestResponse> {
+export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {
   const form = new FormData()
   form.append('file', file)
   form.append('namespace', namespace)
+  if (useMarker) form.append('use_marker', 'true')
   return request('/api/ingest/file', { method: 'POST', body: form })
 }
 

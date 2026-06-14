@@ -90,9 +90,14 @@ def _safe_filename(filename: str) -> str:
 async def ingest_file_endpoint(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    use_marker: bool = Form(False),
     user: dict = Depends(require_role("user")),
 ):
-    """Ingest a document file (PDF, DOCX, TXT, MD, CSV)."""
+    """Ingest a document file (PDF, DOCX, TXT, MD, CSV).
+
+    use_marker: when True, force PDFs through the Marker STEM parser
+    (LaTeX-aware OCR) instead of the standard pdfplumber path.
+    """
     filename = _safe_filename(file.filename or "upload")
     ext = Path(filename).suffix.lower()
 
@@ -135,7 +140,7 @@ async def ingest_file_endpoint(
             logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
             def _on_progress(pct: int, label: str):
                 set_ingest_progress(ingest_id, pct, label)
-            n = ingest_file(str(save_path), namespace=org_id, source_name=filename, on_progress=_on_progress)
+            n = ingest_file(str(save_path), namespace=org_id, source_name=filename, on_progress=_on_progress, force_marker=use_marker)
             set_ingest_progress(ingest_id, 100, "Done")
             _set_status("done", n)
             logger.info("ingest_complete", filename=filename, chunks=n, user_id=user_id, ingest_id=ingest_id)

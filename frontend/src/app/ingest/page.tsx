@@ -27,6 +27,7 @@ export default function IngestPage() {
 
   // Form fields (multi-select: each holds the list of files picked)
   const [files, setFiles] = useState<File[]>([])
+  const [useMarker, setUseMarker] = useState(false)
   const [audioFiles, setAudioFiles] = useState<File[]>([])
   const [videoFiles, setVideoFiles] = useState<File[]>([])
   const [imageFiles, setImageFiles] = useState<File[]>([])
@@ -94,10 +95,11 @@ export default function IngestPage() {
     }
     setLoading(true)
     try {
-      const failed = await uploadAll(files, (f) => ingestFile(f))
+      const failed = await uploadAll(files, (f) => ingestFile(f, 'default', useMarker))
       if (failed.length) showMessage('error', `Failed: ${failed.join(', ')}`)
       else showMessage('success', `${files.length} file(s) queued for ingestion. Will appear in the list shortly.`)
       setFiles([])
+      setUseMarker(false)
       loadHistory(true)
       setTimeout(() => loadHistory(true), 1000)
     } finally {
@@ -360,6 +362,15 @@ export default function IngestPage() {
                     <Upload className="w-5 h-5 mx-auto mb-2 text-gray-400" />
                     <span className="text-xs">{files.length === 0 ? 'Click or drop files' : files.length === 1 ? files[0].name : `${files.length} files selected`}</span>
                   </div>
+                  <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
+                    <input type="checkbox" checked={useMarker} onChange={(e) => setUseMarker(e.target.checked)} className="mt-0.5" />
+                    <span className="text-xs text-gray-600">
+                      Process as STEM document (Marker)
+                      <span className="block text-[11px] text-gray-400">
+                        For scientific PDFs with formulas/equations. Slower (~2–5 min) but preserves math as LaTeX.
+                      </span>
+                    </span>
+                  </label>
                   <button onClick={handleIngestFile} disabled={loading || files.length === 0} className="btn-primary w-full text-sm">
                     {loading ? 'Uploading…' : files.length > 1 ? `Upload ${files.length} Files` : 'Upload'}
                   </button>

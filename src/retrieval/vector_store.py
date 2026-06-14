@@ -1056,6 +1056,7 @@ def ingest_file(
     namespace: str = "default",
     source_name: str | None = None,
     on_progress=None,
+    force_marker: bool = False,
 ) -> int:
     """Ingest a document file into Pinecone.
 
@@ -1083,18 +1084,23 @@ def ingest_file(
 
     if suffix == ".pdf":
         # Marker (STEM PDF parser) loads ~2GB of ML models and needs an 8Gi
-        # instance. It is gated behind ENABLE_MARKER so it stays OFF on the
-        # default 4Gi instance (would OOM-kill the worker). Turn it on only
-        # after the Cloud Run memory quota is raised and the service is
-        # redeployed at 8Gi: set ENABLE_MARKER=true.
+        # instance. Gated behind ENABLE_MARKER (off on the default 4Gi instance
+        # to avoid OOM). Marker runs when the caller forces it (manual "STEM"
+        # toggle) OR auto-detection flags the PDF as STEM/scanned.
         import os as _os
         _marker_on = _os.getenv("ENABLE_MARKER", "false").lower() in ("1", "true", "yes")
-        if _marker_on and _is_stem_pdf(path):
+        _auto_stem = _is_stem_pdf(path) if _marker_on else False
+        print(f"[ingest] pdf={source_name or path.name} marker_enabled={_marker_on} "
+              f"force_marker={force_marker} auto_stem={_auto_stem}", flush=True)
+        if _marker_on and (force_marker or _auto_stem):
             _prog(8, "STEM PDF detected — trying Marker parser")
             raw_text = _extract_text_with_marker(path, on_progress=_prog)
             if raw_text is None:
+                print("[ingest] Marker returned no text — falling back to pdfplumber", flush=True)
                 _prog(10, "Marker unavailable — using standard PDF parser")
                 raw_text = _extract_text_from_pdf(path, on_progress=_prog)
+            else:
+                print(f"[ingest] Marker OK — {len(raw_text)} chars extracted", flush=True)
         else:
             raw_text = _extract_text_from_pdf(path, on_progress=_prog)
     elif suffix in (".txt", ".md"):
