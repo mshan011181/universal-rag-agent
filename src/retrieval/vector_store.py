@@ -672,19 +672,27 @@ _STEM_SYMBOLS = _re.compile(
 )
 _STEM_SYMBOL_THRESHOLD = 0.003  # 0.3% of chars are math symbols → STEM doc
 _STEM_MIN_PAGES = 3             # only bother on multi-page docs
+_SCANNED_CHARS_PER_PAGE = 100   # avg extractable chars/page below this ⇒ scanned
 
 
 def _is_stem_pdf(path: Path) -> bool:
-    """Heuristically detect STEM / formula-heavy PDFs.
+    """Heuristically decide whether to route a PDF through Marker.
 
-    Samples up to 10 pages, counts math-symbol characters relative to total
-    characters. Returns True if the document looks like a scientific paper
-    or textbook with heavy mathematical notation.
+    Two triggers (Marker handles both — it OCRs and recovers LaTeX math):
+
+    1. Born-digital STEM: the text layer has a high density of math symbols
+       (∫, ∑, Greek, LaTeX commands) — a scientific paper or textbook.
+    2. Scanned / image-based multi-page PDF: very little extractable text per
+       page means equations and body text are images. pdfplumber would only
+       get garbled OCR fragments, whereas Marker's layout+OCR pipeline
+       reconstructs the math. (Option A — catches scanned textbook chapters
+       like NCERT/CBSE physics that have no real text layer.)
     """
     try:
         import pdfplumber
         with pdfplumber.open(str(path)) as pdf:
-            if len(pdf.pages) < _STEM_MIN_PAGES:
+            num_pages = len(pdf.pages)
+            if num_pages < _STEM_MIN_PAGES:
                 return False
             sample = pdf.pages[:10]
             total_chars = 0
@@ -693,10 +701,16 @@ def _is_stem_pdf(path: Path) -> bool:
                 text = page.extract_text() or ""
                 total_chars += len(text)
                 symbol_chars += len(_STEM_SYMBOLS.findall(text))
+
+            # Trigger 2: scanned/image PDF (sparse text layer across pages)
+            avg_chars_per_page = total_chars / len(sample)
+            if avg_chars_per_page < _SCANNED_CHARS_PER_PAGE:
+                return True
+
+            # Trigger 1: dense math symbols in a real text layer
             if total_chars < 200:
                 return False
-            ratio = symbol_chars / total_chars
-            return ratio >= _STEM_SYMBOL_THRESHOLD
+            return (symbol_chars / total_chars) >= _STEM_SYMBOL_THRESHOLD
     except Exception:
         return False
 
