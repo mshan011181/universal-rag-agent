@@ -186,8 +186,8 @@ steps:
           --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA \
           --region=${_REGION} --project=${_PROJECT} \
           --command=python --args=jobs/marker_ingest.py \
-          --memory=16Gi --cpu=4 --task-timeout=3600 --max-retries=1 \
-          --set-env-vars=ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,PYTHONPATH=/app,LLM_PROVIDER=anthropic,PINECONE_INDEX_NAME=universal-rag,RECOGNITION_BATCH_SIZE=2,DETECTOR_BATCH_SIZE=2,LAYOUT_BATCH_SIZE=2,TABLE_REC_BATCH_SIZE=2,OCR_ERROR_BATCH_SIZE=2,ORDER_BATCH_SIZE=2,TORCH_DEVICE=cpu \
+          --memory=16Gi --cpu=4 --task-timeout=10800 --max-retries=1 \
+          --set-env-vars=ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,PYTHONPATH=/app,LLM_PROVIDER=anthropic,PINECONE_INDEX_NAME=universal-rag,RECOGNITION_BATCH_SIZE=24,DETECTOR_BATCH_SIZE=6,LAYOUT_BATCH_SIZE=6,TABLE_REC_BATCH_SIZE=6,OCR_ERROR_BATCH_SIZE=6,ORDER_BATCH_SIZE=6,TORCH_DEVICE=cpu \
           --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,GROQ_API_KEY=groq-api-key:latest \
           --set-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres \
           --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
