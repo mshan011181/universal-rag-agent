@@ -166,6 +166,10 @@ steps:
       - --memory=8Gi
       - --cpu=2
       - --timeout=3600
+      # CPU always allocated — required so FastAPI BackgroundTasks (ingestion)
+      # keep running at full speed after the upload response returns. Without
+      # this, Cloud Run throttles CPU when idle and background ingests stall.
+      - --no-cpu-throttling
     waitFor: [push-api]
 
   # ── Stage 11: Deploy Frontend (Next.js) to Cloud Run ─────────────────────────
