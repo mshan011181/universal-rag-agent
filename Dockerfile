@@ -24,20 +24,13 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-# marker-pdf: install runtime deps then marker with --no-deps to bypass
-# pre-commit/virtualenv resolver depth issue (ResolutionTooDeep)
-RUN pip install --no-cache-dir \
-    transformers>=4.45.2 \
-    surya-ocr>=0.17.1 \
-    pdftext>=0.6.3 \
-    pypdfium2>=4.30.0 \
-    opencv-python-headless>=4.11.0 \
-    ftfy>=6.3.1 \
-    markdown2>=2.5.0 \
-    markdownify>=1.2.0 \
-    einops>=0.8.0 \
-    regex>=2024.0.0
-RUN pip install --no-cache-dir --no-deps marker-pdf
+# marker-pdf (STEM PDF parser). Install WITH its full dependency tree using
+# the legacy resolver. The legacy resolver does not backtrack, so it avoids
+# the ResolutionTooDeep error the new resolver hits on marker's pre-commit→
+# virtualenv chain — while still pulling every runtime dep (pydantic-settings,
+# click, surya-ocr, pdftext, google-genai, etc.). --no-deps previously left
+# import-time deps missing, so `import marker` failed silently.
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver marker-pdf
 
 COPY . .
 

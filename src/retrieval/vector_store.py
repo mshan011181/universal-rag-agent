@@ -728,13 +728,17 @@ def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
         from marker.converters.pdf import PdfConverter
         from marker.models import create_model_dict
         from marker.output import text_from_rendered
-    except ImportError:
+    except Exception as e:
+        # Log the real import error (missing transitive dep, etc.) instead of
+        # silently returning None — this is what hid the broken --no-deps install.
+        print(f"[ingest] Marker import failed: {type(e).__name__}: {e}", flush=True)
         return None
 
     if on_progress:
-        on_progress(10, "Running Marker (STEM PDF detected)")
+        on_progress(10, "Running Marker (loading models)")
 
     try:
+        print("[ingest] Marker: loading models + converting…", flush=True)
         models = create_model_dict()
         converter = PdfConverter(artifact_dict=models)
         rendered = converter(str(path))
@@ -742,7 +746,8 @@ def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
         if on_progress:
             on_progress(75, "Marker extraction complete")
         return markdown_text if markdown_text and len(markdown_text.strip()) > 100 else None
-    except Exception:
+    except Exception as e:
+        print(f"[ingest] Marker conversion failed: {type(e).__name__}: {e}", flush=True)
         return None
 
 
