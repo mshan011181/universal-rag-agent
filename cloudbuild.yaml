@@ -142,9 +142,9 @@ steps:
     waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
-  # memory=8Gi enables Marker STEM-PDF parsing (loads ~2GB of ML models).
-  # Requires the MemAllocPerProjectRegion quota to be >= 800Gi in this region
-  # (8Gi × 100 default max-instances). ENABLE_MARKER=true activates the parser.
+  # API stays at 4Gi/2CPU — Marker (STEM) is offloaded to the scale-to-zero
+  # marker-ingest Job (Stage 10b), so the always-on API doesn't need 8Gi.
+  # MARKER_JOB tells the API which Job to trigger for "Process as STEM" uploads.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-api
     entrypoint: gcloud
@@ -156,23 +156,41 @@ steps:
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-      # Marker/surya batch sizes capped low so peak RAM stays under 8Gi
-      # (default sizes OOM'd at 8242/8192 MiB on CPU). TORCH_DEVICE=cpu pins
-      # inference to CPU (no GPU on Cloud Run).
-      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,RECOGNITION_BATCH_SIZE=2,DETECTOR_BATCH_SIZE=2,LAYOUT_BATCH_SIZE=2,TABLE_REC_BATCH_SIZE=2,OCR_ERROR_BATCH_SIZE=2,ORDER_BATCH_SIZE=2,TORCH_DEVICE=cpu
+      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,PYTHONUNBUFFERED=1,MARKER_JOB=marker-ingest,MARKER_JOB_REGION=${_REGION}
       - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest
       - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
       - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
       - --min-instances=1
       - --max-instances=100
       - --concurrency=80
-      - --memory=8Gi
+      - --memory=4Gi
       - --cpu=2
       - --timeout=3600
-      # CPU always allocated — required so FastAPI BackgroundTasks (ingestion)
-      # keep running at full speed after the upload response returns. Without
-      # this, Cloud Run throttles CPU when idle and background ingests stall.
+      # CPU always allocated — required so FastAPI BackgroundTasks (non-STEM
+      # ingestion) keep running after the upload response returns.
       - --no-cpu-throttling
+    waitFor: [push-api]
+
+  # ── Stage 10b: Deploy Marker STEM Job (scale-to-zero) ─────────────────────────
+  # Runs Marker at 16Gi/4CPU only while processing a STEM PDF (triggered by the
+  # API). Scale-to-zero ⇒ no idle cost. Same image as the API; only the command
+  # and resources differ. Jobs are billed per-execution and (unlike services)
+  # do not reserve memory×100, so 16Gi/4CPU fits the current regional quota.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-marker-job
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud run jobs deploy marker-ingest \
+          --image=${_REGION}-docker.pkg.dev/${_PROJECT}/${_REPO}/rag-api:$COMMIT_SHA \
+          --region=${_REGION} --project=${_PROJECT} \
+          --command=python --args=jobs/marker_ingest.py \
+          --memory=16Gi --cpu=4 --task-timeout=3600 --max-retries=1 \
+          --set-env-vars=ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,PYTHONPATH=/app,LLM_PROVIDER=anthropic,PINECONE_INDEX_NAME=universal-rag,RECOGNITION_BATCH_SIZE=2,DETECTOR_BATCH_SIZE=2,LAYOUT_BATCH_SIZE=2,TABLE_REC_BATCH_SIZE=2,OCR_ERROR_BATCH_SIZE=2,ORDER_BATCH_SIZE=2,TORCH_DEVICE=cpu \
+          --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,GROQ_API_KEY=groq-api-key:latest \
+          --set-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres \
+          --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
     waitFor: [push-api]
 
   # ── Stage 11: Deploy Frontend (Next.js) to Cloud Run ─────────────────────────

@@ -86,6 +86,53 @@ def _safe_filename(filename: str) -> str:
     return Path(filename).name.replace("..", "").replace("/", "").replace("\\", "")
 
 
+def _metadata_get(path: str) -> str:
+    """Fetch a value from the GCE metadata server (Cloud Run runtime)."""
+    req = urllib.request.Request(
+        f"http://metadata.google.internal/computeMetadata/v1/{path}",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    with urllib.request.urlopen(req, timeout=5) as r:  # nosec B310
+        return r.read().decode().strip()
+
+
+def _trigger_marker_job(job_name: str, ingest_id: str, gcs_object: str,
+                        namespace: str, source_name: str) -> None:
+    """Execute the scale-to-zero Marker Cloud Run Job with per-run env overrides.
+
+    Uses the runtime service-account token from the metadata server to call the
+    Cloud Run Admin API (jobs:run). The job's base env/secrets are kept; we only
+    add the per-execution inputs as container env overrides.
+    """
+    import os
+    project = (os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT")
+               or _metadata_get("project/project-id"))
+    region = os.getenv("MARKER_JOB_REGION", "us-central1")
+    token = _metadata_get("instance/service-accounts/default/token")
+    token = _json.loads(token)["access_token"] if token.startswith("{") else token
+
+    url = (f"https://run.googleapis.com/v2/projects/{project}/locations/{region}"
+           f"/jobs/{job_name}:run")
+    body = {
+        "overrides": {
+            "containerOverrides": [{
+                "env": [
+                    {"name": "INGEST_ID", "value": ingest_id},
+                    {"name": "GCS_OBJECT", "value": gcs_object},
+                    {"name": "NAMESPACE", "value": namespace},
+                    {"name": "SOURCE_NAME", "value": source_name},
+                ],
+            }],
+        },
+    }
+    req = urllib.request.Request(
+        url, data=_json.dumps(body).encode(), method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:  # nosec B310
+        r.read()
+
+
 @router.post("/file")
 async def ingest_file_endpoint(
     background_tasks: BackgroundTasks,
@@ -125,6 +172,34 @@ async def ingest_file_endpoint(
     # Store the actual saved file path in source_url so BI RAG can locate it later
     write_ingest(ingest_id, user_id, "document", filename, source_url=str(save_path), file_size=len(content), chunks=0)
     logger.info("ingest_written_to_db", ingest_id=ingest_id, user_id=user_id)
+
+    # ── STEM / Marker path: offload to a scale-to-zero Cloud Run Job ──────────
+    # Marker needs ~16Gi/4CPU which the always-on API can't afford. When a Job
+    # is configured (MARKER_JOB) we stage the file to GCS and trigger the Job,
+    # returning immediately. Falls back to the inline path if anything fails.
+    import os as _os
+    marker_job = _os.getenv("MARKER_JOB", "").strip()
+    media_bucket = _os.getenv("MEDIA_BUCKET", "").strip()
+    if use_marker and marker_job and media_bucket:
+        try:
+            gcs_object = f"marker-ingest/{ingest_id}{ext}"
+            from google.cloud import storage
+            storage.Client().bucket(media_bucket).blob(gcs_object).upload_from_string(content)
+            _trigger_marker_job(marker_job, ingest_id=ingest_id, gcs_object=gcs_object,
+                                namespace=org_id, source_name=filename)
+            set_ingest_progress(ingest_id, 2, "Queued for STEM (Marker) processing")
+            logger.info("marker_job_triggered", ingest_id=ingest_id, job=marker_job)
+            return {
+                "ingest_id": ingest_id,
+                "status": "processing",
+                "filename": filename,
+                "ingest_type": "document",
+                "size_bytes": len(content),
+                "message": "Queued for STEM (Marker) processing.",
+            }
+        except Exception as e:
+            logger.error("marker_job_trigger_failed", error=str(e), ingest_id=ingest_id, exc_info=True)
+            # fall through to the inline background path below
 
     # Process file and update status + chunks count in background
     def do_ingest():
