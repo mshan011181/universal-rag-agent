@@ -22,7 +22,9 @@ COPY requirements-api.txt .
 # CUDA torch — the marker-ingest Job runs on an L4 GPU (TORCH_DEVICE=cuda) for
 # ~10x faster STEM conversion. The same image is used by the CPU-only API,
 # where CUDA torch runs fine on CPU (no GPU present → falls back automatically).
-RUN pip install --no-cache-dir torch
+# Pinned to the cu121 build: Cloud Run L4 GPUs ship a CUDA 12.2 driver, and the
+# default (cu124+) torch needs a newer driver ("NVIDIA driver too old" error).
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
