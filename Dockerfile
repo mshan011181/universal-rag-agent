@@ -32,6 +32,14 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 # import-time deps missing, so `import marker` failed silently.
 RUN pip install --no-cache-dir --use-deprecated=legacy-resolver marker-pdf
 
+# Bake the embedding model into the image so it never downloads at runtime.
+# The scale-to-zero Marker Job starts on a fresh instance with no HF cache; a
+# runtime download of all-MiniLM-L6-v2 failed there with a connection error.
+# Pre-caching also speeds API cold starts. Both API and Job read from this path
+# via SENTENCE_TRANSFORMERS_HOME (ENV persists into every container).
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 COPY . .
 
 RUN mkdir -p /app/data/uploads && \
