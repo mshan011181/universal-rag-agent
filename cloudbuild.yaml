@@ -156,7 +156,10 @@ steps:
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1
+      # Marker/surya batch sizes capped low so peak RAM stays under 8Gi
+      # (default sizes OOM'd at 8242/8192 MiB on CPU). TORCH_DEVICE=cpu pins
+      # inference to CPU (no GPU on Cloud Run).
+      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true,PYTHONUNBUFFERED=1,RECOGNITION_BATCH_SIZE=2,DETECTOR_BATCH_SIZE=2,LAYOUT_BATCH_SIZE=2,TABLE_REC_BATCH_SIZE=2,OCR_ERROR_BATCH_SIZE=2,ORDER_BATCH_SIZE=2,TORCH_DEVICE=cpu
       - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest
       - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
       - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
