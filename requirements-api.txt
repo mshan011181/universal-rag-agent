@@ -45,7 +45,11 @@ rank-bm25>=0.2.2
 networkx>=3.4.2
 
 # API server
-fastapi>=0.115.12
+# Pinned: a newer Starlette release broke FastAPI's TestClient routing
+# (AttributeError: '_IncludedRouter' object has no attribute 'path').
+# Pin both to the known-good combo so fresh CI installs stay reproducible.
+fastapi==0.115.12
+starlette==0.41.3
 uvicorn[standard]>=0.34.2
 python-multipart>=0.0.20
 
