@@ -19,8 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements-api.txt .
 
-# CPU-only torch (smaller image; no GPU on Cloud Run)
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# CUDA torch — the marker-ingest Job runs on an L4 GPU (TORCH_DEVICE=cuda) for
+# ~10x faster STEM conversion. The same image is used by the CPU-only API,
+# where CUDA torch runs fine on CPU (no GPU present → falls back automatically).
+RUN pip install --no-cache-dir torch
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
