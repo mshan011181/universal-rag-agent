@@ -142,11 +142,9 @@ steps:
     waitFor: [build-frontend]
 
   # ── Stage 10: Deploy API (FastAPI) to Cloud Run ───────────────────────────────
-  # NOTE: memory is 4Gi because the region's MemAllocPerProjectRegion quota
-  # caps per-instance memory at 4Gi (quota = memory × 100 ≤ 400Gi, and the
-  # check ignores --max-instances). To enable Marker STEM-PDF parsing, first
-  # request a MemAllocPerProjectRegion increase, then bump --memory=8Gi and
-  # add ENABLE_MARKER=true to --set-env-vars below.
+  # memory=8Gi enables Marker STEM-PDF parsing (loads ~2GB of ML models).
+  # Requires the MemAllocPerProjectRegion quota to be >= 800Gi in this region
+  # (8Gi × 100 default max-instances). ENABLE_MARKER=true activates the parser.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy-api
     entrypoint: gcloud
@@ -158,14 +156,14 @@ steps:
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads
+      - --set-env-vars=LLM_PROVIDER=anthropic,ANTHROPIC_MODEL=claude-sonnet-4-5,LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=universal-rag-enterprise,LANGCHAIN_ENDPOINT=https://api.smith.langchain.com,PINECONE_INDEX_NAME=universal-rag,ENVIRONMENT=production,MEDIA_BUCKET=shan-project2-media-uploads,ENABLE_MARKER=true
       - --set-secrets=PINECONE_API_KEY=pinecone-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,LANGCHAIN_API_KEY=langsmith-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GROQ_API_KEY=groq-api-key:latest,TAVILY_API_KEY=tavily-api-key:latest,COHERE_API_KEY=cohere-api-key:latest,RESEND_API_KEY=resend-api-key:latest,YOUTUBE_PROXY=youtube-proxy:latest
       - --add-cloudsql-instances=${_PROJECT}:${_REGION}:rag-postgres
       - --service-account=rag-cloudrun-sa@${_PROJECT}.iam.gserviceaccount.com
       - --min-instances=1
       - --max-instances=100
       - --concurrency=80
-      - --memory=4Gi
+      - --memory=8Gi
       - --cpu=2
       - --timeout=3600
     waitFor: [push-api]
