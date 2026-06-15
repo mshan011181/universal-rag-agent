@@ -19,12 +19,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements-api.txt .
 
-# CUDA torch — the marker-ingest Job runs on an L4 GPU (TORCH_DEVICE=cuda) for
-# ~10x faster STEM conversion. The same image is used by the CPU-only API,
-# where CUDA torch runs fine on CPU (no GPU present → falls back automatically).
-# Pinned to the cu121 build: Cloud Run L4 GPUs ship a CUDA 12.2 driver, and the
-# default (cu124+) torch needs a newer driver ("NVIDIA driver too old" error).
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121
+# CUDA torch for the L4 GPU Marker Job (TORCH_DEVICE=cuda). Same image as the
+# CPU API, where it runs fine on CPU.
+# Build matrix constraint: marker-pdf needs torch>=2.7, and Cloud Run L4 ships
+# only a CUDA 12.2 driver. torch 2.7 has NO cu121/cu124 wheels (dropped after
+# 2.5) — only cu118, cu126, cu128. cu126/cu128 need a 12.6+ driver (fails on
+# 12.2). cu118 (CUDA 11.8) is backward-compatible with the 12.2 driver AND has
+# torch 2.7, so it satisfies marker without the "driver too old" error.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu118
 
 RUN pip install --no-cache-dir -r requirements-api.txt
 
