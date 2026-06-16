@@ -46,9 +46,13 @@ def test_retrieve_respects_namespace(mock_pinecone):
 
 def test_retrieve_respects_k(mock_pinecone):
     from src.retrieval.vector_store import retrieve
-    retrieve("query", k=3)
+    # retrieve over-fetches candidates (for section/formula re-ranking) then
+    # trims to k, so the index is queried with top_k >= k and the returned
+    # result count never exceeds k.
+    results = retrieve("query", k=3)
     call_kwargs = mock_pinecone.query.call_args.kwargs
-    assert call_kwargs["top_k"] == 3
+    assert call_kwargs["top_k"] >= 3
+    assert len(results) <= 3
 
 
 def test_ingest_text_calls_upsert(mock_pinecone):
