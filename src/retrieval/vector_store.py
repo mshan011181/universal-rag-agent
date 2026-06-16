@@ -1056,6 +1056,48 @@ def delete_by_source(source_name: str, namespace: str = "default") -> int:
     return total
 
 
+# Markdown heading (Marker output uses these). Tracks which section a chunk
+# belongs to so retrieval can prefer the asked section and avoid pulling
+# neighbouring-section content (e.g. dipole text bleeding into a "forces
+# between multiple charges" answer).
+_MD_HEADING = _re.compile(r'^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$', _re.MULTILINE)
+
+# LaTeX / math markers — chunks carrying real formulas get a small retrieval
+# boost so equation-bearing chunks (e.g. the general n-charge formula) surface.
+_FORMULA_RE = _re.compile(
+    r'\$\$|\\frac|\\sum|\\int|\\sqrt|\\hat|\\vec|\\partial|\\nabla|\\prod|\\lim'
+    r'|[∫∑∏√∂∇≈≠≤≥±∞]'
+)
+
+
+def _split_with_sections(text: str, chunk_size: int, chunk_overlap: int) -> list[tuple[str, str]]:
+    """Split text into chunks, tagging each with its nearest preceding Markdown
+    heading. Returns [(chunk_text, section_heading), ...].
+
+    For text without headings (pdfplumber output, plain docs) every chunk gets
+    an empty section, so behaviour is unchanged. For Marker Markdown, each chunk
+    inherits its section title — enabling section-aware retrieval.
+    """
+    headings = list(_MD_HEADING.finditer(text))
+    if not headings:
+        return [(c, "") for c in _table_aware_split(text, chunk_size, chunk_overlap)]
+
+    # Block boundaries: preamble (if any) + one block per heading
+    bounds: list[tuple[int, int, str]] = []
+    if headings[0].start() > 0:
+        bounds.append((0, headings[0].start(), ""))
+    for i, m in enumerate(headings):
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+        bounds.append((m.start(), end, m.group(2).strip()))
+
+    pairs: list[tuple[str, str]] = []
+    for start, end, heading in bounds:
+        block = text[start:end]
+        for chunk in _table_aware_split(block, chunk_size, chunk_overlap):
+            pairs.append((chunk, heading))
+    return pairs
+
+
 def ingest_file(
     file_path: str,
     namespace: str = "default",
@@ -1147,9 +1189,11 @@ def ingest_file(
     if raw_text is not None:
         _prog(78, "Chunking text")
         raw_text = _clean_text(raw_text)
-        text_chunks = _table_aware_split(raw_text, _chunk_size, _chunk_overlap)
-        if not text_chunks:
+        chunk_pairs = _split_with_sections(raw_text, _chunk_size, _chunk_overlap)
+        if not chunk_pairs:
             return 0
+        text_chunks = [c for c, _ in chunk_pairs]
+        chunk_sections = [s for _, s in chunk_pairs]
 
         # Embed in batches with per-batch progress (78% → 92%)
         EMBED_BATCH = 64
@@ -1173,6 +1217,8 @@ def ingest_file(
                     "source": display_source,
                     "doc_type": doc_type,
                     "chunk_idx": i,
+                    "section": chunk_sections[i] or "",
+                    "has_formula": bool(_FORMULA_RE.search(chunk)),
                 },
             }
             for i, (chunk, emb) in enumerate(zip(text_chunks, embeddings))
@@ -1283,24 +1329,58 @@ def retrieve_by_source(filename: str, namespace: str = "default", k: int = 20) -
 
 def retrieve(query: str, k: int = TOP_K, namespace: str = "default",
              min_score: float = 0.35) -> list[dict]:
-    """Retrieve top-k chunks by semantic similarity.
+    """Retrieve top-k chunks by semantic similarity with section-aware re-ranking.
+
+    Over-fetches candidates, then nudges ranking toward the section most
+    represented in the top hits (keeps the answer focused on the asked topic
+    instead of bleeding in neighbouring-section content) and gives equation-
+    bearing chunks a small boost (so general formulas surface). Boosts are
+    additive and gentle — they never demote a strong semantic match below the
+    floor, so non-STEM/heading-less corpora behave as before.
 
     Args:
-        min_score: Cosine similarity floor. Chunks below this score are
-                   discarded before returning — prevents loosely-related
-                   documents from contaminating the context.
+        min_score: Cosine similarity floor applied to the raw semantic score.
     """
+    from collections import Counter
+
     emb = _embed([query])[0]
-    results = _get_index().query(vector=emb, top_k=k, namespace=namespace, include_metadata=True)
-    chunks = []
+    # Over-fetch so re-ranking has candidates to work with.
+    fetch_k = max(k * 3, k + 5)
+    results = _get_index().query(vector=emb, top_k=fetch_k, namespace=namespace,
+                                 include_metadata=True)
+
+    cands = []
     for match in results.get("matches", []):
         score = round(match.get("score", 0.0), 4)
         if score < min_score:
             continue
         meta = dict(match.get("metadata", {}))
         content = meta.pop("content", "")
-        chunks.append({"content": content, "metadata": meta, "score": score})
-    return chunks
+        cands.append({"content": content, "metadata": meta, "score": score})
+
+    if not cands:
+        return []
+
+    # Dominant section among the strongest raw matches (top-k by score).
+    top_by_score = sorted(cands, key=lambda c: c["score"], reverse=True)[:k]
+    sect_counts = Counter(
+        c["metadata"].get("section", "") for c in top_by_score
+        if c["metadata"].get("section")
+    )
+    modal_section = sect_counts.most_common(1)[0][0] if sect_counts else None
+
+    SECTION_BOOST = 0.05
+    FORMULA_BOOST = 0.03
+    for c in cands:
+        boost = 0.0
+        if modal_section and c["metadata"].get("section") == modal_section:
+            boost += SECTION_BOOST
+        if c["metadata"].get("has_formula"):
+            boost += FORMULA_BOOST
+        c["score_reranked"] = round(c["score"] + boost, 4)
+
+    cands.sort(key=lambda c: c["score_reranked"], reverse=True)
+    return cands[:k]
 
 
 def collection_count(namespace: str = "default") -> int:
