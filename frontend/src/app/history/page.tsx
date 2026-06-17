@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { latexToReadable } from '@/lib/latex'
 
 const PAGE_SIZE = 20
 
@@ -22,7 +23,7 @@ function formatDate(ts: string) {
 }
 
 function itemToText(item: UserQueryItem): string {
-  return `Q: ${item.query}\nDate: ${formatDate(item.timestamp)}\n\nA: ${item.answer}\n`
+  return `Q: ${item.query}\nDate: ${formatDate(item.timestamp)}\n\nA: ${latexToReadable(item.answer)}\n`
 }
 
 function downloadText(content: string, filename: string) {

@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { latexToReadable } from '@/lib/latex'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
@@ -265,7 +266,7 @@ export default function QueryPage() {
   function copyImageQA() {
     if (!imageResult) return
     const text = imageResult.results
-      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${r.answer}`)
+      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${latexToReadable(r.answer)}`)
       .join('\n\n---\n\n')
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
@@ -276,7 +277,7 @@ export default function QueryPage() {
   function downloadImageQA() {
     if (!imageResult) return
     const text = imageResult.results
-      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${r.answer}`)
+      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${latexToReadable(r.answer)}`)
       .join('\n\n---\n\n')
     const blob = new Blob([text], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
@@ -289,7 +290,7 @@ export default function QueryPage() {
 
   function copyQA() {
     if (!result) return
-    const text = `Q: ${query}\n\nA: ${result.answer}`
+    const text = `Q: ${query}\n\nA: ${latexToReadable(result.answer)}`
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -298,7 +299,7 @@ export default function QueryPage() {
 
   function downloadQA() {
     if (!result) return
-    const text = `Q: ${query}\n\nA: ${result.answer}`
+    const text = `Q: ${query}\n\nA: ${latexToReadable(result.answer)}`
     const blob = new Blob([text], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
