@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* KaTeX renders each formula twice in the DOM: a hidden MathML copy (for
+   screen readers) and the visual copy. A native text selection grabs BOTH,
+   so copy/paste into Word/text duplicated every equation (F1=...F1=...).
+   Exclude the hidden MathML from selection so copy yields a single copy. */
+.katex-mathml {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
 @layer base {
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
