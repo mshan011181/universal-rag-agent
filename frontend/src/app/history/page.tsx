@@ -10,7 +10,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { latexToReadable } from '@/lib/latex'
+import { latexToReadable, answerToClipboard } from '@/lib/latex'
 
 const PAGE_SIZE = 20
 
@@ -44,8 +44,18 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [emailError, setEmailError] = useState('')
 
-  function handleCopy() {
-    navigator.clipboard.writeText(itemToText(item))
+  async function handleCopy() {
+    const { plain, html } = answerToClipboard(item.query, item.answer)
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ])
+    } catch {
+      await navigator.clipboard.writeText(plain)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { latexToReadable } from '@/lib/latex'
+import { latexToReadable, answerToClipboard } from '@/lib/latex'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
@@ -263,15 +263,24 @@ export default function QueryPage() {
     })
   }
 
-  function copyImageQA() {
+  async function copyImageQA() {
     if (!imageResult) return
-    const text = imageResult.results
-      .map((r, i) => `Q${i + 1}: ${r.question}\n\nA${i + 1}: ${latexToReadable(r.answer)}`)
-      .join('\n\n---\n\n')
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    const parts = imageResult.results.map((r, i) =>
+      answerToClipboard(`Q${i + 1}: ${r.question}`, r.answer))
+    const plain = parts.map((p) => p.plain).join('\n\n---\n\n')
+    const html = parts.map((p) => p.html).join('\n<hr/>\n')
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ])
+    } catch {
+      await navigator.clipboard.writeText(plain)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   function downloadImageQA() {
@@ -288,13 +297,23 @@ export default function QueryPage() {
     URL.revokeObjectURL(url)
   }
 
-  function copyQA() {
+  async function copyQA() {
     if (!result) return
-    const text = `Q: ${query}\n\nA: ${latexToReadable(result.answer)}`
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    const { plain, html } = answerToClipboard(query, result.answer)
+    try {
+      // Rich copy: Word uses the HTML (formatted + Unicode math), text editors
+      // use the plain Unicode version. Falls back to plain text if unsupported.
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ])
+    } catch {
+      await navigator.clipboard.writeText(plain)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   function downloadQA() {

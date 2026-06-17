@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+
 // Convert LaTeX math in an answer to readable Unicode for copy/download, so
 // pasted/saved text matches what's shown on screen (ε₀, Σ, √, …, subscripts)
 // instead of raw $$\frac{1}{4\pi\varepsilon_0}...$$. On-screen rendering uses
@@ -139,4 +141,19 @@ export function latexToReadable(md: string): string {
     .replace(/\\\[([\s\S]*?)\\\]/g, (_m, expr) => convert(expr))
     .replace(/\$([^$\n]+?)\$/g, (_m, expr) => convert(expr))
     .replace(/\\\(([^\n]*?)\\\)/g, (_m, expr) => convert(expr))
+}
+
+// Build both clipboard representations for an answer:
+//  - plain: readable Unicode markdown (good for text files / plain paste)
+//  - html: formatted HTML (headings, tables, lists) with Unicode math, so
+//          pasting into Word renders structure correctly and formulas read
+//          cleanly (no raw LaTeX, no duplication).
+export function answerToClipboard(question: string, answerMd: string): { plain: string; html: string } {
+  const readable = latexToReadable(answerMd)
+  const plain = `Q: ${question}\n\nA: ${readable}`
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const body = marked.parse(readable, { gfm: true, async: false }) as string
+  const html = `<p><strong>Q:</strong> ${esc(question)}</p>\n${body}`
+  return { plain, html }
 }
