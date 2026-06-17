@@ -238,6 +238,11 @@ def synthesize(context: str, query: str, language: str = "English", model_overri
         "- Use numbered lists for sequential steps\n"
         "- Use bullet lists for non-sequential items\n"
         "- Use `code blocks` for commands, scripts, or code\n"
+        "- MATH: When the context contains formulas or equations (LaTeX such as "
+        "$$...$$, \\frac, \\sum, \\vec, \\hat, or symbols like ∫ ∑ √), reproduce them "
+        "VERBATIM in your answer — do not paraphrase a formula into words. If the "
+        "context gives a general/summation form of an equation (e.g. a sum over n "
+        "terms), state that general formula explicitly, not just a worded description.\n"
         f"Only say the context is insufficient when no relevant data exists at all.{lang_instruction}"
     )
     human = f"Context:\n{context}\n\nQuestion: {query}"
@@ -280,7 +285,10 @@ def synthesize_cross(
         "6. Format using Markdown: bold headings, tables for side-by-side comparisons, "
         "bullet lists for attributes.\n"
         "7. Answer ONLY from the provided context — do not use prior knowledge.\n"
-        f"8. If a document has no relevant content for the query, say so.{lang_instruction}"
+        "8. MATH: reproduce any formulas/equations (LaTeX $$...$$, \\frac, \\sum, "
+        "\\vec, or symbols ∫ ∑ √) VERBATIM; never paraphrase a formula into words, "
+        "and state general/summation forms explicitly when the context provides them.\n"
+        f"9. If a document has no relevant content for the query, say so.{lang_instruction}"
     )
 
     human = f"Context:\n{context}\n\nQuestion: {query}"
