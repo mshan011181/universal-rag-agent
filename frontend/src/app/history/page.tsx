@@ -7,6 +7,9 @@ import type { UserQueryItem } from '@/lib/api'
 import { Search, ChevronDown, ChevronUp, Clock, MessageSquare, X, Copy, Download, Check, Archive, RotateCcw, AlertTriangle, Mail } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 const PAGE_SIZE = 20
 
@@ -150,7 +153,7 @@ function HistoryItem({ item }: { item: UserQueryItem }) {
             prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-200
             prose-tr:even:bg-gray-50
           ">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{item.answer}</ReactMarkdown>
           </div>
         </div>
       )}

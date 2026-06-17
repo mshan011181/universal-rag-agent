@@ -11,6 +11,9 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import clsx from 'clsx'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -419,7 +422,7 @@ export default function BIPage() {
                               prose-th:font-semibold prose-th:text-gray-700
                               prose-td:border prose-td:border-gray-200 prose-td:px-3 prose-td:py-2
                               prose-td:text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.answer}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{result.answer}</ReactMarkdown>
               </div>
             </div>
           </div>

@@ -8,6 +8,9 @@ import type { QueryResponse, IngestedItem } from '@/types'
 import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, ImagePlus, Keyboard, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import clsx from 'clsx'
 import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
@@ -709,7 +712,7 @@ export default function QueryPage() {
                         prose-ul:text-gray-800 prose-ol:text-gray-800
                         prose-code:bg-gray-100 prose-code:text-brand-700 prose-code:px-1 prose-code:rounded prose-code:text-xs
                       ">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.answer}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{item.answer}</ReactMarkdown>
                       </div>
                       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
                         <span>{item.latency_ms}ms</span>
@@ -859,7 +862,7 @@ export default function QueryPage() {
                   prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-200 prose-td:text-gray-700
                   prose-tr:even:bg-gray-50
                 ">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                     {result.answer}
                   </ReactMarkdown>
                 </div>
