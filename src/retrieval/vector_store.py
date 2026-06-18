@@ -1268,11 +1268,21 @@ def ingest_file(
             return 0
         text_chunks = [c for c, _ in chunk_pairs]
         chunk_sections = [s for _, s in chunk_pairs]
-        # Per-chunk figure objects: match ![](filename) refs in the chunk text.
-        chunk_figures: list[list[str]] = []
-        for c in text_chunks:
-            figs = [figure_map[fn] for fn in _MD_IMAGE.findall(c) if fn in figure_map]
-            chunk_figures.append(figs)
+        # Associate figures at the SECTION level: Marker places each ![](img)
+        # ref at the figure's location, which is often a different chunk than
+        # the text discussing it. Tagging every chunk in a section with that
+        # section's figures ensures figures surface whenever the relevant
+        # section is retrieved (capped per chunk to bound metadata size).
+        FIGS_PER_CHUNK_CAP = 6
+        section_figs: dict[str, list[str]] = {}
+        for c, sec in zip(text_chunks, chunk_sections):
+            bucket = section_figs.setdefault(sec, [])
+            for fn in _MD_IMAGE.findall(c):
+                obj = figure_map.get(fn)
+                if obj and obj not in bucket:
+                    bucket.append(obj)
+        chunk_figures = [list(section_figs.get(sec, []))[:FIGS_PER_CHUNK_CAP]
+                         for sec in chunk_sections]
 
         # Embed in batches with per-batch progress (78% → 92%)
         EMBED_BATCH = 64
