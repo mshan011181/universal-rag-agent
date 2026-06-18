@@ -1154,16 +1154,30 @@ def sign_figure_urls(objects: list[str], expiry_minutes: int = 60) -> list[str]:
     seen: set = set()
     ordered = [o for o in objects if not (o in seen or seen.add(o))]
     try:
+        # On Cloud Run there is no private key, so v4 signing must use the IAM
+        # SignBlob API: pass the SA email + a fresh access token (same method
+        # the media upload-url endpoint uses). Plain generate_signed_url() throws.
+        import google.auth
+        from google.auth.transport import requests as ga_requests
         from google.cloud import storage
+        credentials, _ = google.auth.default()
+        credentials.refresh(ga_requests.Request())
         bucket = storage.Client().bucket(bucket_name)
-    except Exception:
+    except Exception as e:
+        print(f"[query] figure signing init failed: {type(e).__name__}: {e}", flush=True)
         return []
     urls: list[str] = []
     for obj in ordered:
         try:
             urls.append(bucket.blob(obj).generate_signed_url(
-                version="v4", expiration=timedelta(minutes=expiry_minutes), method="GET"))
-        except Exception:
+                version="v4",
+                expiration=timedelta(minutes=expiry_minutes),
+                method="GET",
+                service_account_email=credentials.service_account_email,
+                access_token=credentials.token,
+            ))
+        except Exception as e:
+            print(f"[query] figure sign failed for {obj}: {type(e).__name__}: {e}", flush=True)
             continue
     return urls
 
