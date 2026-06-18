@@ -225,10 +225,13 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
             # Pattern failure → continue with what we have
             pass
 
-    # Hybrid rerank: combines dense (semantic) + BM25 (keyword) scores.
-    # Falls back to dense-only when rank-bm25 is not installed.
+    # Two-stage always-on re-ranking for quality at scale (1000s of docs):
+    #  1. hybrid (dense + BM25) over the candidate set → recall, keyword precision
+    #  2. Cohere cross-encoder → precision ordering (no-op if COHERE_API_KEY unset)
+    # Both degrade gracefully, so behaviour is unchanged without the deps/key.
     if state["chunks"]:
         reranked = hybrid_rerank(query, state["chunks"], top_n=15, alpha=0.7)
+        reranked = rerank(query, reranked, top_n=15)
 
         # ── Relevance threshold filter ───────────────────────────────────
         MIN_SCORE = 0.45
