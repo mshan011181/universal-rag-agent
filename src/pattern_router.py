@@ -15,7 +15,7 @@ from src.patterns.speculative_rag import SpeculativeRAG
 from src.patterns.graph_rag import GraphRAG
 from src.patterns.multimodal_rag import MultiModalRAG
 from src.generation.llm import synthesize, synthesize_cross, grade, generate_followups
-from src.retrieval.reranker import rerank, hybrid_rerank, compress_chunk
+from src.retrieval.reranker import rerank, hybrid_rerank
 from src.retrieval.vector_store import retrieve_by_source, sign_figure_urls
 from src.models import RAGAgentResponse
 from src.memory.sqlite_store import (
@@ -268,10 +268,11 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     # sentences before sending to the LLM (reduces noise and token cost).
     # Tabular chunks (spreadsheet rows) are not compressed to preserve data integrity.
     def _ctx_content(c: dict) -> str:
-        doc_type = c.get("metadata", {}).get("doc_type", "narrative")
-        if doc_type == "tabular":
-            return c["content"]
-        return compress_chunk(query, c["content"], max_sentences=4)
+        # No trimming for ANY document: send the full retrieved chunk to the LLM.
+        # Sentence compression was dropping solution steps, results, and detail
+        # (worst on STEM/worked examples, but it reduced fidelity everywhere).
+        # Reranking + the per-source/total chunk caps already bound context size.
+        return c["content"]
 
     context = "\n\n".join([
         f"[Source: {c['metadata'].get('source','?')}]\n{_ctx_content(c)}"
