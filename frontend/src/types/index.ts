@@ -48,6 +48,7 @@ export interface QueryResponse {
   fallback_used: boolean
   verified_knowledge_hit: boolean
   suggested_followups: string[]
+  figures?: string[]
   model_used?: string
   token_usage?: TokenUsage
 }

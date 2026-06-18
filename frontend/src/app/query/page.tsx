@@ -887,6 +887,24 @@ export default function QueryPage() {
                   </ReactMarkdown>
                 </div>
 
+                {/* Figures extracted from the source documents (STEM/Marker) */}
+                {(result.figures ?? []).length > 0 && (
+                  <div className="mb-4">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">
+                      Figures from source ({result.figures!.length})
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {result.figures!.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                           className="block border border-gray-200 rounded-lg overflow-hidden hover:border-brand-400 transition-colors">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt={`Figure ${i + 1}`} className="w-full h-auto object-contain bg-white" loading="lazy" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Token usage bar */}
                 {result.token_usage && result.token_usage.total_tokens > 0 && (
                   <div className="flex flex-wrap items-center gap-3 py-2.5 px-3 mb-3 rounded-lg bg-gray-50 border border-gray-100 text-xs text-gray-500">

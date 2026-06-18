@@ -715,14 +715,15 @@ def _is_stem_pdf(path: Path) -> bool:
         return False
 
 
-def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
-    """Use the Marker library to extract text from a STEM PDF.
+def _extract_text_with_marker(path: Path, on_progress=None) -> tuple[str | None, dict]:
+    """Use the Marker library to extract text + figures from a STEM PDF.
 
-    Marker outputs clean Markdown with LaTeX math blocks ($$...$$) preserved,
-    which chunking can handle much better than flattened symbol text.
+    Marker outputs clean Markdown with LaTeX math blocks ($$...$$) preserved
+    and extracts embedded figures as images. Returns (markdown, images) where
+    images is {filename: PIL.Image} (the markdown contains ![](filename) refs).
 
-    Returns None if Marker is not installed or fails, so callers can fall back
-    to the standard pdfplumber pipeline.
+    Returns (None, {}) if Marker is not installed or fails, so callers can fall
+    back to the standard pdfplumber pipeline.
     """
     try:
         from marker.converters.pdf import PdfConverter
@@ -732,7 +733,7 @@ def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
         # Log the real import error (missing transitive dep, etc.) instead of
         # silently returning None — this is what hid the broken --no-deps install.
         print(f"[ingest] Marker import failed: {type(e).__name__}: {e}", flush=True)
-        return None
+        return None, {}
 
     if on_progress:
         on_progress(10, "Running Marker (loading models)")
@@ -742,13 +743,16 @@ def _extract_text_with_marker(path: Path, on_progress=None) -> str | None:
         models = create_model_dict()
         converter = PdfConverter(artifact_dict=models)
         rendered = converter(str(path))
-        markdown_text, _, _ = text_from_rendered(rendered)
+        markdown_text, _, images = text_from_rendered(rendered)
+        images = images or {}
         if on_progress:
-            on_progress(75, "Marker extraction complete")
-        return markdown_text if markdown_text and len(markdown_text.strip()) > 100 else None
+            on_progress(75, f"Marker extraction complete ({len(images)} figures)")
+        if markdown_text and len(markdown_text.strip()) > 100:
+            return markdown_text, images
+        return None, {}
     except Exception as e:
         print(f"[ingest] Marker conversion failed: {type(e).__name__}: {e}", flush=True)
-        return None
+        return None, {}
 
 
 def _extract_text_from_pdf(path: Path, on_progress=None) -> str:
@@ -1098,6 +1102,72 @@ def _split_with_sections(text: str, chunk_size: int, chunk_overlap: int) -> list
     return pairs
 
 
+# Markdown image reference: ![alt](filename)
+_MD_IMAGE = _re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+
+
+def _upload_marker_figures(images: dict, id_prefix: str) -> dict:
+    """Upload Marker-extracted figures to GCS; return {filename: gcs_object}.
+
+    Stored under figures/<id_prefix>/<filename> in MEDIA_BUCKET (private). The
+    query path generates time-limited signed URLs for display. No-op (returns
+    {}) when MEDIA_BUCKET is unset (local dev) or upload fails.
+    """
+    import os as _os
+    import io as _io
+    bucket_name = _os.getenv("MEDIA_BUCKET", "").strip()
+    if not bucket_name or not images:
+        return {}
+    try:
+        from google.cloud import storage
+        bucket = storage.Client().bucket(bucket_name)
+    except Exception as e:
+        print(f"[ingest] figure upload skipped: {type(e).__name__}: {e}", flush=True)
+        return {}
+
+    mapping: dict = {}
+    for fname, img in images.items():
+        try:
+            buf = _io.BytesIO()
+            img.save(buf, format="PNG")
+            obj = f"figures/{id_prefix}/{fname}"
+            bucket.blob(obj).upload_from_string(buf.getvalue(), content_type="image/png")
+            mapping[fname] = obj
+        except Exception:
+            continue
+    print(f"[ingest] uploaded {len(mapping)} figures for {id_prefix}", flush=True)
+    return mapping
+
+
+def sign_figure_urls(objects: list[str], expiry_minutes: int = 60) -> list[str]:
+    """Generate time-limited signed URLs for figure GCS objects (private bucket).
+
+    Used by the query path to display figures from retrieved chunks without
+    making the bucket public. Returns [] if MEDIA_BUCKET is unset or signing
+    fails. De-duplicates while preserving order.
+    """
+    import os as _os
+    from datetime import timedelta
+    bucket_name = _os.getenv("MEDIA_BUCKET", "").strip()
+    if not bucket_name or not objects:
+        return []
+    seen: set = set()
+    ordered = [o for o in objects if not (o in seen or seen.add(o))]
+    try:
+        from google.cloud import storage
+        bucket = storage.Client().bucket(bucket_name)
+    except Exception:
+        return []
+    urls: list[str] = []
+    for obj in ordered:
+        try:
+            urls.append(bucket.blob(obj).generate_signed_url(
+                version="v4", expiration=timedelta(minutes=expiry_minutes), method="GET"))
+        except Exception:
+            continue
+    return urls
+
+
 def ingest_file(
     file_path: str,
     namespace: str = "default",
@@ -1128,6 +1198,7 @@ def ingest_file(
 
     raw_text: str | None = None
     doc_type = "narrative"
+    marker_images: dict = {}  # {filename: PIL.Image} from Marker, for figure display
 
     if suffix == ".pdf":
         # Marker (STEM PDF parser) loads ~2GB of ML models and needs an 8Gi
@@ -1141,7 +1212,7 @@ def ingest_file(
               f"force_marker={force_marker} auto_stem={_auto_stem}", flush=True)
         if _marker_on and (force_marker or _auto_stem):
             _prog(8, "STEM PDF detected — trying Marker parser")
-            raw_text = _extract_text_with_marker(path, on_progress=_prog)
+            raw_text, marker_images = _extract_text_with_marker(path, on_progress=_prog)
             if raw_text is None:
                 print("[ingest] Marker returned no text — falling back to pdfplumber", flush=True)
                 _prog(10, "Marker unavailable — using standard PDF parser")
@@ -1188,12 +1259,20 @@ def ingest_file(
 
     if raw_text is not None:
         _prog(78, "Chunking text")
+        # Upload Marker figures to GCS and map filename → gcs_object so each
+        # chunk can carry the figures that appear in it (shown in answers).
+        figure_map = _upload_marker_figures(marker_images, id_prefix) if marker_images else {}
         raw_text = _clean_text(raw_text)
         chunk_pairs = _split_with_sections(raw_text, _chunk_size, _chunk_overlap)
         if not chunk_pairs:
             return 0
         text_chunks = [c for c, _ in chunk_pairs]
         chunk_sections = [s for _, s in chunk_pairs]
+        # Per-chunk figure objects: match ![](filename) refs in the chunk text.
+        chunk_figures: list[list[str]] = []
+        for c in text_chunks:
+            figs = [figure_map[fn] for fn in _MD_IMAGE.findall(c) if fn in figure_map]
+            chunk_figures.append(figs)
 
         # Embed in batches with per-batch progress (78% → 92%)
         EMBED_BATCH = 64
@@ -1219,6 +1298,8 @@ def ingest_file(
                     "chunk_idx": i,
                     "section": chunk_sections[i] or "",
                     "has_formula": bool(_FORMULA_RE.search(chunk)),
+                    # Pinecone rejects empty lists, so only set when present.
+                    **({"figures": chunk_figures[i]} if chunk_figures[i] else {}),
                 },
             }
             for i, (chunk, emb) in enumerate(zip(text_chunks, embeddings))

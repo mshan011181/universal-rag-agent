@@ -43,6 +43,7 @@ class QueryResponse(BaseModel):
     verified_knowledge_hit: bool
     suggested_followups: list[str]
     citation_map: dict
+    figures: list[str] = []
     session_id: str
     model_used: Optional[str] = None
     token_usage: Optional[TokenUsage] = None
@@ -182,6 +183,7 @@ async def query_endpoint(
         verified_knowledge_hit=response.verified_knowledge_hit,
         suggested_followups=response.suggested_followups,
         citation_map=response.citation_map,
+        figures=getattr(response, "figures", []),
         session_id=body.session_id,
         model_used=body.model,
         token_usage=TokenUsage(**tu) if tu else None,

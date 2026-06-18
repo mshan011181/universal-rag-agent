@@ -26,6 +26,9 @@ class RAGAgentResponse:
     # Continuation
     suggested_followups: list = field(default_factory=list)
 
+    # Figures (signed URLs) extracted from the retrieved chunks' source docs
+    figures: list = field(default_factory=list)
+
     # Token usage for this query (input, output, cost)
     token_usage: dict = field(default_factory=dict)
 

@@ -16,7 +16,7 @@ from src.patterns.graph_rag import GraphRAG
 from src.patterns.multimodal_rag import MultiModalRAG
 from src.generation.llm import synthesize, synthesize_cross, grade, generate_followups
 from src.retrieval.reranker import rerank, hybrid_rerank, compress_chunk
-from src.retrieval.vector_store import retrieve_by_source
+from src.retrieval.vector_store import retrieve_by_source, sign_figure_urls
 from src.models import RAGAgentResponse
 from src.memory.sqlite_store import (
     write_turn, write_performance, write_verified_knowledge,
@@ -124,6 +124,10 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 str(i): {"source": c["metadata"].get("source", "?"), "score": c.get("score", 0)}
                 for i, c in enumerate(state_chunks[:6])
             }
+            _sf_figs: list[str] = []
+            for c in state_chunks[:6]:
+                _sf_figs.extend(c.get("metadata", {}).get("figures", []) or [])
+            sf_figure_urls = sign_figure_urls(_sf_figs) if _sf_figs else []
             latency_ms = int((time.time() - start_time) * 1000)
             write_turn(session_id, analysis["turn"], query, query, answer)
             write_performance(["source_filter"], analysis.get("query_class", "general"), quality, latency_ms, 0)
@@ -138,6 +142,7 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
                 fallback_used=False,
                 verified_knowledge_hit=False,
                 suggested_followups=followups,
+                figures=sf_figure_urls,
                 memory_write={"session_id": session_id, "turn": analysis["turn"]},
             )
 
@@ -318,6 +323,13 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
 
     latency_ms = int((time.time() - start_time) * 1000)
 
+    # Collect figures from the retrieved chunks (Marker-extracted) and sign them
+    # for display. Empty unless STEM docs with figures are in the answer context.
+    _figure_objs: list[str] = []
+    for c in state["chunks"]:
+        _figure_objs.extend(c.get("metadata", {}).get("figures", []) or [])
+    figure_urls = sign_figure_urls(_figure_objs) if _figure_objs else []
+
     # Write memory
     write_turn(session_id, analysis["turn"], query, state["query"], state["answer"])
     write_performance(patterns, analysis.get("query_class", "general"), quality, latency_ms, 0)
@@ -343,5 +355,6 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         fallback_used=state["fallback_used"],
         verified_knowledge_hit=False,
         suggested_followups=followups,
+        figures=figure_urls,
         memory_write={"session_id": session_id, "turn": analysis["turn"]},
     )
