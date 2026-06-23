@@ -239,9 +239,19 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
         reranked = rerank(query, reranked, top_n=15)
 
         # ── Relevance threshold filter ───────────────────────────────────
+        # Cohere reranker scores are in [0,1]: a strong topical match scores
+        # high, an unrelated chunk scores near zero. Prefer strong matches;
+        # when none exist, keep only chunks that clear an abstain floor. If
+        # NOTHING clears it, feed no context so the model grounds out with
+        # "no relevant content" instead of answering a maths question from a
+        # physics document (cross-topic mixing).
         MIN_SCORE = 0.45
+        ABSTAIN_FLOOR = 0.25
         above = [c for c in reranked if c.get("score", 0) >= MIN_SCORE]
-        filtered = above if above else reranked[:3]
+        if above:
+            filtered = above
+        else:
+            filtered = [c for c in reranked if c.get("score", 0) >= ABSTAIN_FLOOR][:3]
 
         # ── Per-source chunk cap ─────────────────────────────────────────
         # If all retrieved chunks come from a single source (e.g. one large
