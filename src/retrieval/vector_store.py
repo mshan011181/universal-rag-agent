@@ -1106,12 +1106,26 @@ def _split_with_sections(text: str, chunk_size: int, chunk_overlap: int) -> list
 _MD_IMAGE = _re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
 
 
-def _upload_marker_figures(images: dict, id_prefix: str) -> dict:
+def figure_prefix_for_source(source_name: str) -> str:
+    """GCS folder (no trailing slash) holding one source's figures.
+
+    Single source of truth used by BOTH ingest (upload) and delete (cleanup) so
+    the two can never diverge. Per-document and derived from the source name —
+    nothing is hardcoded, and it applies to any modality (a source with no
+    figures simply maps to an empty folder).
+    """
+    # strip any modality prefix (image:/video:/audio:/weblink:) then take the stem
+    base = _re.sub(r'^(?:image|video|audio|weblink):', '', source_name.strip())
+    return f"figures/{Path(base).stem}"
+
+
+def _upload_marker_figures(images: dict, source_name: str) -> dict:
     """Upload Marker-extracted figures to GCS; return {filename: gcs_object}.
 
-    Stored under figures/<id_prefix>/<filename> in MEDIA_BUCKET (private). The
-    query path generates time-limited signed URLs for display. No-op (returns
-    {}) when MEDIA_BUCKET is unset (local dev) or upload fails.
+    Stored under figure_prefix_for_source(source_name)/<filename> in
+    MEDIA_BUCKET (private). The query path generates time-limited signed URLs
+    for display. No-op (returns {}) when MEDIA_BUCKET is unset (local dev) or
+    upload fails.
     """
     import os as _os
     import io as _io
@@ -1125,18 +1139,45 @@ def _upload_marker_figures(images: dict, id_prefix: str) -> dict:
         print(f"[ingest] figure upload skipped: {type(e).__name__}: {e}", flush=True)
         return {}
 
+    prefix = figure_prefix_for_source(source_name)
     mapping: dict = {}
     for fname, img in images.items():
         try:
             buf = _io.BytesIO()
             img.save(buf, format="PNG")
-            obj = f"figures/{id_prefix}/{fname}"
+            obj = f"{prefix}/{fname}"
             bucket.blob(obj).upload_from_string(buf.getvalue(), content_type="image/png")
             mapping[fname] = obj
         except Exception:
             continue
-    print(f"[ingest] uploaded {len(mapping)} figures for {id_prefix}", flush=True)
+    print(f"[ingest] uploaded {len(mapping)} figures under {prefix}", flush=True)
     return mapping
+
+
+def delete_figures_by_source(source_name: str) -> int:
+    """Delete all GCS figure objects for a source (its figure folder).
+
+    Global lifecycle counterpart to _upload_marker_figures: whenever a document
+    of ANY modality is deleted, its figures folder is removed too. No-op when
+    MEDIA_BUCKET is unset or the source has no figures. Returns count deleted.
+    """
+    import os as _os
+    bucket_name = _os.getenv("MEDIA_BUCKET", "").strip()
+    if not bucket_name:
+        return 0
+    prefix = figure_prefix_for_source(source_name) + "/"
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blobs = list(client.list_blobs(bucket_name, prefix=prefix))
+        for b in blobs:
+            b.delete()
+        if blobs:
+            print(f"[delete] removed {len(blobs)} figure(s) under {prefix}", flush=True)
+        return len(blobs)
+    except Exception as e:
+        print(f"[delete] figure cleanup failed for {prefix}: {type(e).__name__}: {e}", flush=True)
+        return 0
 
 
 def sign_figure_urls(objects: list[str], expiry_minutes: int = 60) -> list[str]:
@@ -1169,7 +1210,13 @@ def sign_figure_urls(objects: list[str], expiry_minutes: int = 60) -> list[str]:
     urls: list[str] = []
     for obj in ordered:
         try:
-            urls.append(bucket.blob(obj).generate_signed_url(
+            blob = bucket.blob(obj)
+            # Skip objects that no longer exist (e.g. stale chunk refs to a
+            # deleted document) so they don't render as broken images.
+            if not blob.exists():
+                print(f"[query] figure missing, skipped: {obj}", flush=True)
+                continue
+            urls.append(blob.generate_signed_url(
                 version="v4",
                 expiration=timedelta(minutes=expiry_minutes),
                 method="GET",
@@ -1275,7 +1322,7 @@ def ingest_file(
         _prog(78, "Chunking text")
         # Upload Marker figures to GCS and map filename → gcs_object so each
         # chunk can carry the figures that appear in it (shown in answers).
-        figure_map = _upload_marker_figures(marker_images, id_prefix) if marker_images else {}
+        figure_map = _upload_marker_figures(marker_images, display_source) if marker_images else {}
         raw_text = _clean_text(raw_text)
         chunk_pairs = _split_with_sections(raw_text, _chunk_size, _chunk_overlap)
         if not chunk_pairs:

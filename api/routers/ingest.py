@@ -65,7 +65,7 @@ def _youtube_title(url: str) -> str:
 import urllib.parse
 
 from api.auth_utils import require_role
-from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source
+from src.retrieval.vector_store import ingest_file, ingest_text, delete_by_source, delete_figures_by_source
 from src.memory.sqlite_store import write_ingest, get_ingest_history, delete_ingest, delete_cache_by_source, get_conn, write_audit, set_ingest_progress
 from src.config import UPLOADS_DIR
 
@@ -1606,12 +1606,16 @@ async def delete_ingest_endpoint(
     # Purge any verified-knowledge cache entries that referenced this source
     cache_deleted = delete_cache_by_source(source_name)
 
+    # Remove the source's figures/diagrams from GCS (any modality; no-op if none)
+    figures_deleted = delete_figures_by_source(source_name)
+
     logger.info(
         "ingest_deleted",
         ingest_id=ingest_id,
         source=source_name,
         vectors_deleted=vectors_deleted,
         cache_entries_deleted=cache_deleted,
+        figures_deleted=figures_deleted,
         user_id=user["user_id"],
     )
     return {
@@ -1620,4 +1624,5 @@ async def delete_ingest_endpoint(
         "source": source_name,
         "vectors_deleted": vectors_deleted,
         "cache_entries_deleted": cache_deleted,
+        "figures_deleted": figures_deleted,
     }
