@@ -11,10 +11,11 @@ import {
 import type { AdminStats, AdminUser, AdminQuery, AdminDocument } from '@/types'
 import {
   BarChart2, Users, FileText, MessageSquare, Zap, AlertCircle,
-  HardDrive, Trash2, UserPlus, Infinity, X, ChevronRight,
+  HardDrive, Trash2, UserPlus, Infinity, X, ChevronRight, Info,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { getUserRole } from '@/lib/auth'
+import { PATTERNS_INFO } from '@/lib/models'
 
 const DEFAULT_QUOTA = 500 * 1024 * 1024
 const UNLIMITED = -1
@@ -507,6 +508,35 @@ export default function AdminPage() {
               </table>
             </div>
           )}
+        </div>
+
+        {/* Models & Patterns reference */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Info className="w-4 h-4 text-brand-600" />
+            <h2 className="text-sm font-semibold text-gray-700">Models &amp; Patterns</h2>
+          </div>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">RAG Patterns</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {Object.entries(PATTERNS_INFO).map(([key, info]) => (
+              <div key={key} className="bg-gray-50 rounded p-2 text-xs">
+                <div className="font-medium text-gray-900">{info.name}</div>
+                <p className="text-gray-600 text-xs mt-0.5">{info.description}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-gray-500">{info.useCase}</span>
+                  <span
+                    className={clsx(
+                      'px-1.5 py-0.5 rounded text-white text-xs font-medium',
+                      info.complexity === 'simple' ? 'bg-green-600' :
+                      info.complexity === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
+                    )}
+                  >
+                    {info.complexity}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* RAG Pattern Usage */}

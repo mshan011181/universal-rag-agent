@@ -5,7 +5,7 @@ import AppShell from '@/components/layout/AppShell'
 import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2 } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -13,7 +13,6 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { latexToReadable, answerToClipboard } from '@/lib/latex'
 import clsx from 'clsx'
-import { MODELS_BY_ENVIRONMENT, PATTERNS_INFO } from '@/lib/models'
 import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 import { useVoiceInput } from '@/hooks/useVoiceInput'
 
@@ -105,7 +104,6 @@ export default function QueryPage() {
   const [imageLoading, setImageLoading] = useState(false)
   const [imageError, setImageError] = useState('')
   const [expandedAnswers, setExpandedAnswers] = useState<Set<number>>(new Set())
-  const [showModelsInfo, setShowModelsInfo] = useState(true)
   const [expandedEnv, setExpandedEnv] = useState<string | null>(null)
   const tts = useTextToSpeech()
 
@@ -324,9 +322,9 @@ export default function QueryPage() {
 
   return (
     <AppShell>
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
-        {/* Main content — 3 columns */}
-        <div className="lg:col-span-3">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Main content — full width */}
+        <div>
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">💬 Ask Your Data</h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -580,16 +578,16 @@ export default function QueryPage() {
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 capitalize">
                             {TYPE_ICON[type] || '📁'} {type === 'weblinks' ? 'Web Links' : type === 'documents' ? 'Documents' : type}
                           </p>
-                          <div className="space-y-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
                             {files.map(f => (
-                              <label key={f.name} className="flex items-center gap-2.5 cursor-pointer group">
+                              <label key={f.name} className="flex items-center gap-2.5 cursor-pointer group min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={selectedSources.includes(f.name)}
                                   onChange={() => toggleSource(f.name)}
-                                  className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                  className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0"
                                 />
-                                <span className="text-sm text-gray-700 group-hover:text-brand-700 truncate max-w-xs" title={f.name}>
+                                <span className="text-sm text-gray-700 group-hover:text-brand-700 truncate" title={f.name}>
                                   {f.name}
                                 </span>
                                 <span className="text-xs text-gray-400 shrink-0">{f.chunks} chunks</span>
@@ -1094,8 +1092,8 @@ export default function QueryPage() {
           )}
         </div>
 
-        {/* Right sidebar — 1 column */}
-        <div className="lg:col-span-1 space-y-4 flex flex-col" style={{ minHeight: 'calc(100vh - 6rem)' }}>
+        {/* Telemetry + Memory — full width, below the form */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Query Telemetry */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -1226,47 +1224,6 @@ export default function QueryPage() {
                   </div>
                 )}
               </>
-            )}
-          </div>
-
-          {/* Models Info */}
-          <div className="card p-4 flex flex-col flex-1">
-            <button
-              onClick={() => setShowModelsInfo(!showModelsInfo)}
-              className="flex items-center justify-between w-full"
-            >
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-brand-600" />
-                <h3 className="text-sm font-semibold text-gray-900">Models & Patterns</h3>
-              </div>
-              {showModelsInfo ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-
-            {showModelsInfo && (
-              <div className="mt-4 space-y-3 overflow-y-auto flex-1">
-                {/* Patterns */}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">RAG Patterns</p>
-                  {Object.entries(PATTERNS_INFO).map(([key, info]) => (
-                    <div key={key} className="bg-gray-50 rounded p-2 text-xs">
-                      <div className="font-medium text-gray-900">{info.name}</div>
-                      <p className="text-gray-600 text-xs mt-0.5">{info.description}</p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-gray-500">{info.useCase}</span>
-                        <span
-                          className={clsx(
-                            'px-1.5 py-0.5 rounded text-white text-xs font-medium',
-                            info.complexity === 'simple' ? 'bg-green-600' :
-                            info.complexity === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
-                          )}
-                        >
-                          {info.complexity}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
           </div>
         </div>
