@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, fetchUserStats, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
+import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, MessageSquare, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, ImagePlus, Keyboard, Loader2 } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, Info, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -80,15 +80,6 @@ interface QueryHistory {
 }
 
 export default function QueryPage() {
-  const [userStats, setUserStats] = useState<{
-    total_queries: number; total_documents: number; avg_quality_score: number;
-    storage_used_bytes: number; storage_quota_bytes: number;
-  } | null>(null)
-
-  useEffect(() => {
-    fetchUserStats().then(setUserStats).catch(() => {})
-  }, [])
-
   const [query, setQuery] = useState('')
   const [pattern, setPattern] = useState('auto')
   const [result, setResult] = useState<QueryResponse | null>(null)
@@ -189,8 +180,6 @@ export default function QueryPage() {
         model: selectedModel || undefined,
       })
       setResult(res)
-      // Refresh personal stats after query
-      fetchUserStats().then(setUserStats).catch(() => {})
       // Add to history
       setHistory([
         {
@@ -232,9 +221,14 @@ export default function QueryPage() {
     setImageResult(null)
     setImageError('')
     setExpandedAnswers(new Set())
-    const reader = new FileReader()
-    reader.onload = (ev) => setImagePreview(ev.target?.result as string)
-    reader.readAsDataURL(f)
+    // Only image files get a visual preview; other types show a filename chip.
+    if (f.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (ev) => setImagePreview(ev.target?.result as string)
+      reader.readAsDataURL(f)
+    } else {
+      setImagePreview(null)
+    }
   }
 
   async function handleImageSubmit(e: React.FormEvent) {
@@ -334,46 +328,11 @@ export default function QueryPage() {
         {/* Main content — 3 columns */}
         <div className="lg:col-span-3">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Query</h1>
+            <h1 className="text-2xl font-bold text-gray-900">💬 Ask Your Data</h1>
             <p className="text-sm text-gray-500 mt-1">
               Ask anything across your indexed documents. The system auto-selects the optimal RAG pattern.
             </p>
           </div>
-
-          {/* Personal usage stats bar */}
-          {userStats && (
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <div className="card p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
-                  <MessageSquare className="w-4 h-4 text-brand-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">My Queries</p>
-                  <p className="text-xl font-bold text-gray-900">{userStats.total_queries}</p>
-                </div>
-              </div>
-              <div className="card p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
-                  <FileText className="w-4 h-4 text-brand-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Docs Indexed</p>
-                  <p className="text-xl font-bold text-gray-900">{userStats.total_documents}</p>
-                </div>
-              </div>
-              <div className="card p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
-                  <Zap className="w-4 h-4 text-brand-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Avg Quality</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {(userStats.avg_quality_score * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Query form */}
           <div className="card p-5 mb-6">
@@ -400,8 +359,8 @@ export default function QueryPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <ImagePlus className="w-4 h-4" />
-                Image
+                <FileText className="w-4 h-4" />
+                Upload File
               </button>
             </div>
 
@@ -409,22 +368,28 @@ export default function QueryPage() {
             {inputMode === 'image' && (
               <form onSubmit={handleImageSubmit} className="space-y-4">
                 <div>
-                  <label className="label">Upload image</label>
+                  <label className="label">Upload a file with one or more questions</label>
                   <label className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                     imageFile ? 'border-brand-400 bg-brand-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
                   }`}>
                     {imagePreview ? (
                       <img src={imagePreview} alt="preview" className="h-full w-full object-contain rounded-lg p-1" />
+                    ) : imageFile ? (
+                      <div className="flex flex-col items-center gap-2 text-brand-600">
+                        <FileText className="w-8 h-8" />
+                        <span className="text-sm font-medium max-w-xs truncate" title={imageFile.name}>{imageFile.name}</span>
+                        <span className="text-xs text-gray-500">Click to choose a different file</span>
+                      </div>
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-gray-400">
-                        <ImagePlus className="w-8 h-8" />
+                        <FileText className="w-8 h-8" />
                         <span className="text-sm">Click to upload or drag & drop</span>
-                        <span className="text-xs">PNG, JPG, WebP — up to 10 MB</span>
+                        <span className="text-xs">Any file — PDF, DOCX, TXT, CSV, image — up to 10 MB</span>
                       </div>
                     )}
                     <input
                       type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp"
+                      accept=".pdf,.docx,.doc,.txt,.md,.csv,image/*"
                       className="hidden"
                       onChange={handleImageSelect}
                     />
@@ -676,7 +641,7 @@ export default function QueryPage() {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ImagePlus className="w-4 h-4 text-brand-600" />
+                  <FileText className="w-4 h-4 text-brand-600" />
                   <h2 className="text-base font-semibold text-gray-900">
                     {imageResult.questions_found} question{imageResult.questions_found !== 1 ? 's' : ''} answered
                   </h2>
@@ -762,7 +727,7 @@ export default function QueryPage() {
           {imageResult && imageResult.results.length === 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 mb-4 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              {imageResult.extraction_note || 'No questions were detected in the uploaded image.'}
+              {imageResult.extraction_note || 'No questions were detected in the uploaded file.'}
             </div>
           )}
 

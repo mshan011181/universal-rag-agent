@@ -9,7 +9,7 @@ import { logout } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
 
 const NAV = [
-  { href: '/query',   label: 'Home',           icon: Home },
+  { href: '/query',   label: 'Ask Your Data',  icon: Home },
   { href: '/history', label: 'My History',     icon: History },
   { href: '/bi',      label: 'BI / Analytics', icon: TableProperties },
   { href: '/ingest',  label: 'Ingest',         icon: Upload },
@@ -45,8 +45,8 @@ export default function Sidebar() {
         <div className="flex items-center gap-2">
           <Database className="w-6 h-6 text-brand-500" />
           <span className="text-white font-semibold text-sm leading-tight">
-            Universal RAG<br />
-            <span className="text-gray-400 font-normal text-xs">Enterprise</span>
+            MaximAI<br />
+            <span className="text-gray-400 font-normal text-xs">your data, distilled into answers</span>
           </span>
         </div>
       </div>

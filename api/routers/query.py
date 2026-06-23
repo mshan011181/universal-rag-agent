@@ -247,20 +247,77 @@ def _extract_questions_from_image(image_bytes: bytes, content_type: str) -> list
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vision extraction failed: {e}")
 
+    return _parse_question_lines(raw)
+
+
+def _parse_question_lines(raw: str) -> list[str]:
+    """Turn an LLM's numbered-list output into a clean list of questions."""
     if "NO_QUESTIONS_FOUND" in raw:
         return []
-
+    import re
     questions = []
     for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
         # Strip leading numbering like "1." "1)" "Q1."
-        import re
         cleaned = re.sub(r'^(?:Q?\d+[\.\)]\s*)', '', line).strip()
         if cleaned:
             questions.append(cleaned)
     return questions
+
+
+def _extract_text_from_upload(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """Extract plain text from any supported file (PDF, DOCX, TXT, MD, CSV)."""
+    ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    ctype = content_type or ""
+
+    if ext == ".pdf" or ctype == "application/pdf":
+        import io
+        import pypdf
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes), strict=False)
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+    if ext in {".docx", ".doc"} or "word" in ctype or "officedocument" in ctype:
+        import io
+        import docx
+        doc = docx.Document(io.BytesIO(file_bytes))
+        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    # Plain text / markdown / csv / anything else — decode as text
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return file_bytes.decode("latin-1", errors="replace")
+
+
+def _extract_questions_from_text(text: str) -> list[str]:
+    """Use a Groq text model to extract a numbered list of questions from text."""
+    text = text.strip()
+    if not text:
+        return []
+    snippet = text[:20000]  # keep the prompt bounded
+    prompt = (
+        "The following content contains one or more questions (e.g. a question paper, "
+        "exam sheet, worksheet, or form).\n"
+        "Extract every question exactly as written, one per line.\n"
+        "Output ONLY the questions, numbered 1. 2. 3. etc.\n"
+        "Do NOT include answers, instructions, or any other text.\n"
+        "If no questions are found, output: NO_QUESTIONS_FOUND\n\n"
+        f"CONTENT:\n{snippet}"
+    )
+    try:
+        from groq import Groq
+        client = Groq()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Question extraction failed: {e}")
+    return _parse_question_lines(raw)
 
 
 @router.post("/from-image", response_model=ImageQueryResponse)
@@ -271,16 +328,27 @@ async def query_from_image(
     session_id: str = Form(default="default"),
     user: dict = Depends(get_current_user_or_api_key),
 ):
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Use PNG, JPG, WebP, GIF, or BMP.")
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="File too large — maximum 10 MB.")
 
-    image_bytes = await file.read()
-    if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="Image too large — maximum 10 MB.")
+    ctype = file.content_type or ""
+    filename = file.filename or "upload"
 
-    questions = _extract_questions_from_image(image_bytes, file.content_type)
+    # Images → Groq Vision; any other file (PDF/DOCX/TXT/CSV/…) → text extraction.
+    if ctype in ALLOWED_IMAGE_TYPES or ctype.startswith("image/"):
+        questions = _extract_questions_from_image(file_bytes, ctype)
+        source_label = "image"
+    else:
+        try:
+            text = _extract_text_from_upload(file_bytes, filename, ctype)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not read file '{filename}': {e}")
+        questions = _extract_questions_from_text(text)
+        source_label = "file"
+
     if not questions:
-        return ImageQueryResponse(questions_found=0, results=[], extraction_note="No questions detected in the image.")
+        return ImageQueryResponse(questions_found=0, results=[], extraction_note=f"No questions detected in the uploaded {source_label}.")
 
     namespace = user.get("org_id") or "default"
     scoped_session = f"{user['user_id']}:{session_id}"
@@ -320,5 +388,5 @@ async def query_from_image(
     return ImageQueryResponse(
         questions_found=len(questions),
         results=results,
-        extraction_note=f"Extracted {len(questions)} question(s) from image.",
+        extraction_note=f"Extracted {len(questions)} question(s) from {source_label}.",
     )

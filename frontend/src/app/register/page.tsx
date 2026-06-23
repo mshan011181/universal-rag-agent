@@ -131,8 +131,8 @@ function RegisterForm() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-600 mb-4">
             <Database className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Universal RAG</h1>
-          <p className="text-sm text-gray-500 mt-1">Enterprise Platform</p>
+          <h1 className="text-2xl font-bold text-gray-900">MaximAI</h1>
+          <p className="text-sm text-gray-500 mt-1">your data, distilled into answers</p>
         </div>
 
         {/* Step indicator */}

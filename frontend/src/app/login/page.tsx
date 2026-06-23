@@ -151,9 +151,9 @@ function LoginForm() {
               ? <ShieldCheck className="w-6 h-6 text-white" />
               : <Database className="w-6 h-6 text-white" />}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Universal RAG</h1>
+          <h1 className="text-2xl font-bold text-gray-900">MaximAI</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {isAdminMode ? 'Administrator Access' : 'Enterprise Platform'}
+            {isAdminMode ? 'Administrator Access' : 'your data, distilled into answers'}
           </p>
         </div>
 
