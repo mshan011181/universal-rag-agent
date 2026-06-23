@@ -390,3 +390,217 @@ async def query_from_image(
         results=results,
         extraction_note=f"Extracted {len(questions)} question(s) from {source_label}.",
     )
+
+
+# ── Answer Evaluation ─────────────────────────────────────────────────────────
+# Upload a questions file + an answers file; for each question a reference answer
+# is generated from the ingested documents (RAG), the student's answer is graded
+# against it, scored out of 100, and a report with mistakes + corrections is
+# produced. Works with any file type (PDF/DOCX/TXT/CSV/image) for both uploads.
+
+_ANSWER_VISION_PROMPT = (
+    "This image contains a student's written ANSWERS (e.g. an answer sheet).\n"
+    "Extract each answer exactly as written, in order, one answer per line.\n"
+    "Output ONLY the answers, numbered 1. 2. 3. etc. matching the answer order.\n"
+    "Preserve the full text of each answer. If none are found, output: NO_QUESTIONS_FOUND"
+)
+_ANSWER_TEXT_PROMPT = (
+    "The following content contains a student's written ANSWERS (an answer sheet).\n"
+    "Extract each answer exactly as written, in order, one answer per line.\n"
+    "Output ONLY the answers, numbered 1. 2. 3. etc. matching the answer order.\n"
+    "Preserve the full text of each answer. If none are found, output: NO_QUESTIONS_FOUND"
+)
+
+
+def _extract_answers_from_text(text: str) -> list[str]:
+    """Extract a numbered list of a student's answers from plain text."""
+    text = text.strip()
+    if not text:
+        return []
+    try:
+        from groq import Groq
+        client = Groq()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": f"{_ANSWER_TEXT_PROMPT}\n\nCONTENT:\n{text[:24000]}"}],
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Answer extraction failed: {e}")
+    return _parse_question_lines(raw)
+
+
+def _extract_answers_from_image(image_bytes: bytes, content_type: str) -> list[str]:
+    """Extract a numbered list of a student's answers from an image (Groq Vision)."""
+    ext = content_type.split("/")[-1].replace("jpeg", "jpg")
+    mime_map = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp",
+                "gif": "image/gif", "bmp": "image/bmp"}
+    mime = mime_map.get(ext, "image/png")
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:{mime};base64,{b64}"
+    try:
+        from groq import Groq
+        client = Groq()
+        response = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": _ANSWER_VISION_PROMPT},
+            ]}],
+        )
+        raw = response.choices[0].message.content.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Answer vision extraction failed: {e}")
+    return _parse_question_lines(raw)
+
+
+def _extract_items_from_file(file_bytes: bytes, filename: str, content_type: str, kind: str) -> list[str]:
+    """Extract a numbered list of questions or answers from any uploaded file."""
+    ctype = content_type or ""
+    is_image = ctype in ALLOWED_IMAGE_TYPES or ctype.startswith("image/")
+    if kind == "answer":
+        if is_image:
+            return _extract_answers_from_image(file_bytes, ctype)
+        return _extract_answers_from_text(_extract_text_from_upload(file_bytes, filename, ctype))
+    # kind == "question"
+    if is_image:
+        return _extract_questions_from_image(file_bytes, ctype)
+    return _extract_questions_from_text(_extract_text_from_upload(file_bytes, filename, ctype))
+
+
+def _evaluate_answer(question: str, student_answer: str, reference_answer: str) -> dict:
+    """Grade a student's answer against a reference answer; return a structured report."""
+    import json
+    prompt = (
+        "You are a strict but fair examiner. Grade the STUDENT ANSWER against the "
+        "REFERENCE ANSWER (which is derived from the source material) for the given "
+        "QUESTION. Award marks out of 100 based on correctness, completeness, and "
+        "use of correct concepts/steps.\n\n"
+        f"QUESTION:\n{question}\n\n"
+        f"REFERENCE ANSWER (ground truth from the documents):\n{reference_answer}\n\n"
+        f"STUDENT ANSWER:\n{student_answer}\n\n"
+        "Return ONLY valid JSON with this exact shape:\n"
+        '{"score": <int 0-100>, "verdict": "<correct|partially correct|incorrect>", '
+        '"mistakes": ["<specific mistake>", ...], '
+        '"corrections": ["<the correction for each mistake>", ...], '
+        '"feedback": "<one-paragraph overall feedback>"}\n'
+        "If the student answer is missing or empty, score 0. Be specific in mistakes "
+        "and corrections; keep arrays empty if the answer is fully correct."
+    )
+    try:
+        from groq import Groq
+        client = Groq()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=2048,
+            temperature=0.0,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.choices[0].message.content.strip()
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        data = json.loads(raw[start:end])
+    except Exception as e:
+        return {"score": 0, "verdict": "error", "mistakes": [f"Evaluation failed: {e}"],
+                "corrections": [], "feedback": "Could not evaluate this answer."}
+    try:
+        data["score"] = max(0, min(100, int(round(float(data.get("score", 0))))))
+    except Exception:
+        data["score"] = 0
+    data.setdefault("verdict", "")
+    data.setdefault("mistakes", [])
+    data.setdefault("corrections", [])
+    data.setdefault("feedback", "")
+    return data
+
+
+class EvalItem(BaseModel):
+    question: str
+    student_answer: str
+    reference_answer: str
+    score: int
+    verdict: str
+    mistakes: list[str]
+    corrections: list[str]
+    feedback: str
+
+
+class EvalResponse(BaseModel):
+    overall_score: int
+    total_questions: int
+    results: list[EvalItem]
+    note: str = ""
+
+
+@router.post("/evaluate", response_model=EvalResponse)
+async def evaluate_answers(
+    request: Request,
+    questions_file: UploadFile = File(...),
+    answers_file: UploadFile = File(...),
+    language: str = Form(default="American English"),
+    session_id: str = Form(default="default"),
+    source_filters: str = Form(default=""),
+    user: dict = Depends(get_current_user_or_api_key),
+):
+    q_bytes = await questions_file.read()
+    a_bytes = await answers_file.read()
+    if len(q_bytes) > MAX_IMAGE_BYTES or len(a_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="File too large — maximum 10 MB each.")
+
+    # source_filters arrives as a JSON array string; scope retrieval to those
+    # ingested files so evaluation only checks against the chosen documents.
+    filters: list[str] = []
+    if source_filters.strip():
+        import json as _json
+        try:
+            parsed = _json.loads(source_filters)
+            if isinstance(parsed, list):
+                filters = [str(s) for s in parsed if str(s).strip()]
+        except Exception:
+            filters = [s.strip() for s in source_filters.split(",") if s.strip()]
+
+    questions = _extract_items_from_file(
+        q_bytes, questions_file.filename or "questions", questions_file.content_type or "", "question")
+    answers = _extract_items_from_file(
+        a_bytes, answers_file.filename or "answers", answers_file.content_type or "", "answer")
+
+    if not questions:
+        return EvalResponse(overall_score=0, total_questions=0, results=[],
+                            note="No questions detected in the questions file.")
+
+    namespace = user.get("org_id") or "default"
+    scoped_session = f"{user['user_id']}:{session_id}"
+
+    results: list[EvalItem] = []
+    for i, q in enumerate(questions):
+        student_answer = answers[i] if i < len(answers) else ""
+        # Reference answer from the ingested documents (RAG)
+        try:
+            ref_resp, _ = ask(q, scoped_session, namespace=namespace, language=language,
+                              source_filters=filters, user_id=user["user_id"])
+            reference = ref_resp.answer_text
+        except Exception as e:
+            reference = f"(Could not generate reference answer: {e})"
+        ev = _evaluate_answer(q, student_answer, reference)
+        results.append(EvalItem(
+            question=q,
+            student_answer=student_answer,
+            reference_answer=reference,
+            score=ev["score"],
+            verdict=ev["verdict"],
+            mistakes=ev["mistakes"],
+            corrections=ev["corrections"],
+            feedback=ev["feedback"],
+        ))
+
+    overall = round(sum(r.score for r in results) / len(results)) if results else 0
+    note = f"Evaluated {len(results)} answer(s)."
+    if len(answers) < len(questions):
+        note += f" {len(questions) - len(answers)} question(s) had no matching answer (scored 0)."
+    return EvalResponse(
+        overall_score=overall,
+        total_questions=len(questions),
+        results=results,
+        note=note,
+    )

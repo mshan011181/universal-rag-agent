@@ -253,6 +253,42 @@ export async function submitQueryFromImage(
   return request('/api/query/from-image', { method: 'POST', body: form })
 }
 
+// ── Answer Evaluation ───────────────────────────────────────────────────────────
+
+export interface EvalItem {
+  question: string
+  student_answer: string
+  reference_answer: string
+  score: number
+  verdict: string
+  mistakes: string[]
+  corrections: string[]
+  feedback: string
+}
+
+export interface EvalResponse {
+  overall_score: number
+  total_questions: number
+  results: EvalItem[]
+  note: string
+}
+
+export async function evaluateAnswers(
+  questionsFile: File,
+  answersFile: File,
+  language = 'American English',
+  sourceFilters: string[] = [],
+  sessionId = 'default',
+): Promise<EvalResponse> {
+  const form = new FormData()
+  form.append('questions_file', questionsFile)
+  form.append('answers_file', answersFile)
+  form.append('language', language)
+  form.append('session_id', sessionId)
+  if (sourceFilters.length > 0) form.append('source_filters', JSON.stringify(sourceFilters))
+  return request('/api/query/evaluate', { method: 'POST', body: form })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {
