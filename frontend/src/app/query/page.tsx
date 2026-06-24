@@ -5,7 +5,7 @@ import AppShell from '@/components/layout/AppShell'
 import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2 } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2, Music, Video, Globe, Youtube, Image as ImageIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -17,6 +17,17 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech'
 import { useVoiceInput } from '@/hooks/useVoiceInput'
 
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 1.75, 2]
+
+// Data types MaximAI can answer from — shown as chips under the page heading
+const DATA_TYPES = [
+  { label: 'Documents', icon: FileText },
+  { label: 'Text', icon: FileText },
+  { label: 'Audio', icon: Music },
+  { label: 'Video', icon: Video },
+  { label: 'Web Links', icon: Globe },
+  { label: 'YouTube', icon: Youtube },
+  { label: 'Images', icon: ImageIcon },
+]
 
 // All supported answer languages grouped by region
 const LANGUAGE_OPTIONS = [
@@ -328,8 +339,21 @@ export default function QueryPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">💬 Ask Your Data</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Ask anything across your indexed documents. The system auto-selects the optimal RAG pattern.
+              Ask anything across your indexed data. The system auto-selects the optimal RAG pattern.
             </p>
+            {/* Supported data types — informational (not clickable filters) */}
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Supported:</span>
+              {DATA_TYPES.map(({ label, icon: Icon }) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium"
+                >
+                  <Icon className="w-3.5 h-3.5 text-brand-600" />
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
 
           {/* Query form */}
