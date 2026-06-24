@@ -19,6 +19,7 @@ export interface QueryRequest {
   source_filters?: string[]
   force_bi?: boolean
   model?: string              // api_model_id — e.g. "claude-sonnet-4-6"
+  no_cache?: boolean          // force a fresh answer, bypassing the cache
 }
 
 export interface TokenUsage {

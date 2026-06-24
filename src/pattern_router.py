@@ -64,17 +64,21 @@ def route_and_execute(analysis: dict, session_id: str) -> RAGAgentResponse:
     language = analysis.get("language", "English")
     model_override: str | None = analysis.get("model_override")
 
-    # Always include language in fingerprint so each language has its own cache slot.
-    # Normalise English variants to "english" so American/British/Australian share one slot.
+    # Fingerprint includes language AND model so each (question, language, model)
+    # gets its own cache slot — selecting Claude won't return a cached Groq
+    # answer, and vice-versa. English variants share one language slot.
     import hashlib as _hashlib
     _fp_base = analysis["fingerprint"]
     _lang_key = language.lower().strip()
     _ENGLISH_VARIANTS = {"english", "american english", "british english", "australian english"}
     _lang_norm = "english" if _lang_key in _ENGLISH_VARIANTS else _lang_key
-    fingerprint = _hashlib.md5(f"{_fp_base}:{_lang_norm}".encode(), usedforsecurity=False).hexdigest()[:16]
+    _model_key = (model_override or "default").lower().strip()
+    fingerprint = _hashlib.md5(f"{_fp_base}:{_lang_norm}:{_model_key}".encode(), usedforsecurity=False).hexdigest()[:16]
 
-    # Check verified knowledge cache
-    cached = check_verified_knowledge(fingerprint)
+    # Check verified knowledge cache — skipped when the caller forces a fresh
+    # answer (no_cache), so the same question can be re-run on demand.
+    no_cache = bool(analysis.get("no_cache"))
+    cached = None if no_cache else check_verified_knowledge(fingerprint)
     if cached:
         try:
             cache_followups = generate_followups(query, cached, model_override=model_override)

@@ -171,17 +171,33 @@ export async function resetPasswordByToken(token: string, newPassword: string): 
 export async function refreshToken(): Promise<boolean> {
   const rt = sessionStorage.getItem('refresh_token')
   if (!rt) return false
-  try {
-    const data = await request<AuthTokens>('/api/auth/refresh', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${rt}` },
-    }, false)
-    setAccessToken(data.access_token)
-    sessionStorage.setItem('refresh_token', data.refresh_token)
-    return true
-  } catch {
-    return false
+  // Retry transient failures (e.g. Cloud Run cold start after scale-to-zero)
+  // so an idle return or F5 doesn't bounce to login. Only a genuine auth
+  // rejection (401/403 = invalid/expired refresh token) ends the session.
+  const MAX_ATTEMPTS = 4
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${rt}`, 'Content-Type': 'application/json' },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as AuthTokens
+        setAccessToken(data.access_token)
+        sessionStorage.setItem('refresh_token', data.refresh_token)
+        return true
+      }
+      // Real auth failure — token is invalid/expired; don't keep retrying.
+      if (res.status === 401 || res.status === 403) return false
+      // Otherwise (5xx / cold start) fall through to retry.
+    } catch {
+      // Network error (likely cold start) — fall through to retry.
+    }
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1))) // 1s, 2s, 3s backoff
+    }
   }
+  return false
 }
 
 export function logout() {

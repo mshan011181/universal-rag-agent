@@ -40,7 +40,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-56 min-h-screen bg-gray-900 flex flex-col">
+    <aside className="w-56 h-screen shrink-0 bg-gray-900 flex flex-col">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-700">
         <div className="flex items-center gap-2">
@@ -53,7 +53,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         {NAV.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}

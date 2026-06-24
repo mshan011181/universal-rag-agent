@@ -23,6 +23,7 @@ def ask(
     user_id: str = "",
     force_bi: bool = False,
     model_override: str | None = None,
+    no_cache: bool = False,
 ) -> RAGAgentResponse:
     _ensure_init()
     reset_token_usage()
@@ -30,6 +31,7 @@ def ask(
     analysis["namespace"] = namespace
     analysis["language"] = language
     analysis["user_id"] = user_id
+    analysis["no_cache"] = no_cache
     if source_filters:
         analysis["source_filters"] = source_filters
     if model_override:

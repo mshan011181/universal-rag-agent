@@ -21,6 +21,7 @@ class QueryRequest(BaseModel):
     source_filters: list[str] = Field(default_factory=list)
     force_bi: bool = False
     model: Optional[str] = Field(default=None, max_length=100)  # api_model_id from MODEL_REGISTRY
+    no_cache: bool = False  # force a fresh answer, bypassing the verified-knowledge cache
 
 
 class TokenUsage(BaseModel):
@@ -133,6 +134,7 @@ async def query_endpoint(
             user_id=user["user_id"],
             force_bi=body.force_bi,
             model_override=body.model or None,
+            no_cache=body.no_cache,
         )
     except Exception as e:
         err_str = str(e).lower()

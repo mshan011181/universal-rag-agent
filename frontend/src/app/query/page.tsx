@@ -97,6 +97,7 @@ export default function QueryPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showSources, setShowSources] = useState(false)
+  const [forceFresh, setForceFresh] = useState(false)  // bypass cache for this query
   const [history, setHistory] = useState<QueryHistory[]>([])
 
   // Persistent session: mirror the module-level store into local state so an
@@ -219,7 +220,18 @@ export default function QueryPage() {
       language,
       source_filters: selectedSources.length > 0 ? selectedSources : undefined,
       model: selectedModel || undefined,
+      no_cache: forceFresh,
     }))
+  }
+
+  // Start a fresh, blank session for the next query.
+  function newSession() {
+    queryStore.reset()
+    setQuery('')
+    setResult(null)
+    setError('')
+    setShowSources(false)
+    tts.stop()
   }
 
   // Calculate pattern performance from history
@@ -649,10 +661,30 @@ export default function QueryPage() {
                 </div>
               )}
 
-              <button type="submit" disabled={loading || !query.trim()} className="btn-primary flex items-center gap-2">
-                <Send className="w-4 h-4" />
-                {loading ? 'Thinking…' : 'Submit'}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="submit" disabled={loading || !query.trim()} className="btn-primary flex items-center gap-2">
+                  <Send className="w-4 h-4" />
+                  {loading ? 'Thinking…' : 'Submit'}
+                </button>
+                {(result || error) && (
+                  <button
+                    type="button"
+                    onClick={newSession}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <Sparkles className="w-4 h-4" /> New query
+                  </button>
+                )}
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer ml-auto" title="Re-run from scratch instead of returning a cached answer for the same question">
+                  <input
+                    type="checkbox"
+                    checked={forceFresh}
+                    onChange={(e) => setForceFresh(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  Force fresh answer (ignore cache)
+                </label>
+              </div>
             </form>
             )}
           </div>
