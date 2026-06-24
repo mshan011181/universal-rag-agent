@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { evaluateAnswers, getIngestHistory } from '@/lib/api'
+import { evalStore } from '@/lib/querySession'
 import type { EvalResponse } from '@/lib/api'
 import type { IngestedItem } from '@/types'
 import { ClipboardCheck, FileText, Send, Loader2, AlertCircle, CheckCircle2, XCircle, ChevronDown, ChevronUp, Filter, X } from 'lucide-react'
@@ -68,6 +69,15 @@ export default function EvaluatePage() {
   const [result, setResult] = useState<EvalResponse | null>(null)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
+  // Persistent session: mirror the store so an in-progress evaluation (or its
+  // result) survives navigating away and back.
+  const esess = evalStore.useSession()
+  useEffect(() => {
+    setLoading(esess.loading)
+    setResult(esess.result)
+    if (esess.error) setError(esess.error)
+  }, [esess])
+
   // Source filter (scope the reference answers to specific ingested files)
   const [showSourceFilter, setShowSourceFilter] = useState(false)
   const [selectedSources, setSelectedSources] = useState<string[]>([])
@@ -91,16 +101,12 @@ export default function EvaluatePage() {
   async function handleEvaluate(e: React.FormEvent) {
     e.preventDefault()
     if (!questionsFile || !answersFile) return
-    setError(''); setResult(null); setLoading(true)
-    try {
-      const res = await evaluateAnswers(questionsFile, answersFile, language, selectedSources)
-      setResult(res)
-      setExpanded(new Set())
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Evaluation failed')
-    } finally {
-      setLoading(false)
-    }
+    setError(''); setExpanded(new Set())
+    // Run via the persistent store so the evaluation + result survive navigation.
+    await evalStore.run(
+      questionsFile.name,
+      () => evaluateAnswers(questionsFile, answersFile, language, selectedSources),
+    )
   }
 
   function toggle(i: number) {

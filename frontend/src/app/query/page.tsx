@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
+import { queryStore } from '@/lib/querySession'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
 import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2, Music, Video, Globe, Youtube, Image as ImageIcon } from 'lucide-react'
@@ -97,6 +98,37 @@ export default function QueryPage() {
   const [error, setError] = useState('')
   const [showSources, setShowSources] = useState(false)
   const [history, setHistory] = useState<QueryHistory[]>([])
+
+  // Persistent session: mirror the module-level store into local state so an
+  // in-progress answer (or completed result) survives navigating away and back.
+  const qsess = queryStore.useSession()
+  const lastAppended = useRef<QueryResponse | null>(null)
+  const seeded = useRef(false)
+  useEffect(() => {
+    setLoading(qsess.loading)
+    setResult(qsess.result)
+    if (qsess.error) setError(qsess.error)
+    // Restore the question text only when the box is empty (e.g. after remount)
+    if (qsess.label && (qsess.loading || qsess.result)) setQuery(prev => prev || qsess.label)
+    // Seed on first run so a result that already existed at mount isn't re-added
+    if (!seeded.current) {
+      seeded.current = true
+      lastAppended.current = qsess.result
+      return
+    }
+    // Append a freshly-completed result to the in-session history once
+    if (qsess.result && qsess.result !== lastAppended.current) {
+      lastAppended.current = qsess.result
+      const res = qsess.result
+      setHistory(prev => [{
+        query: qsess.label,
+        answer: res.answer,
+        pattern: (res.patterns_used && res.patterns_used.length > 0) ? res.patterns_used.join(' → ') : (res.pattern_used || 'auto'),
+        latency: res.latency_ms || 0,
+        quality: res.quality_score ?? 0.5,
+      }, ...prev.slice(0, 9)])
+    }
+  }, [qsess])
   const [memoryTab, setMemoryTab] = useState<'history' | 'patterns'>('history')
   const [copied, setCopied] = useState(false)
 
@@ -176,35 +208,18 @@ export default function QueryPage() {
     e.preventDefault()
     if (!query.trim()) return
     setError('')
-    setResult(null)
     setShowSources(false)
-    setLoading(true)
     tts.stop()
-    try {
-      const res = await submitQuery({
-        query: query.trim(),
-        pattern: pattern === 'auto' ? undefined : pattern,
-        language,
-        source_filters: selectedSources.length > 0 ? selectedSources : undefined,
-        model: selectedModel || undefined,
-      })
-      setResult(res)
-      // Add to history
-      setHistory([
-        {
-          query: query.trim(),
-          answer: res.answer,
-          pattern: (res.patterns_used && res.patterns_used.length > 0) ? res.patterns_used.join(' → ') : (res.pattern_used || 'auto'),
-          latency: res.latency_ms || 0,
-          quality: res.quality_score ?? 0.5,
-        },
-        ...history.slice(0, 9), // Keep last 10 queries
-      ])
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Query failed')
-    } finally {
-      setLoading(false)
-    }
+    const q = query.trim()
+    // Run via the persistent store so the request + result survive navigation.
+    // Loading/result/error and history are mirrored back by the effect above.
+    await queryStore.run(q, () => submitQuery({
+      query: q,
+      pattern: pattern === 'auto' ? undefined : pattern,
+      language,
+      source_filters: selectedSources.length > 0 ? selectedSources : undefined,
+      model: selectedModel || undefined,
+    }))
   }
 
   // Calculate pattern performance from history
