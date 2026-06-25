@@ -180,6 +180,22 @@ async def ingest_file_endpoint(
     import os as _os
     marker_job = _os.getenv("MARKER_JOB", "").strip()
     media_bucket = _os.getenv("MEDIA_BUCKET", "").strip()
+
+    # Auto-route scanned / image-based / STEM PDFs to Marker even without the
+    # manual "Process as STEM" toggle. The standard pdfplumber+OCR path gives
+    # poor results on image-only/scanned PDFs; Marker's layout+OCR pipeline does
+    # not. (Restores the earlier auto-routing that was lost when Marker moved to
+    # the manual-only Job.) Cheap check — samples the text layer, no torch.
+    if not use_marker and ext == ".pdf" and marker_job and media_bucket:
+        try:
+            from src.retrieval.vector_store import _is_stem_pdf
+            if _is_stem_pdf(save_path):
+                use_marker = True
+                logger.info("auto_marker_route", ingest_id=ingest_id,
+                            reason="scanned_or_stem_pdf", filename=filename)
+        except Exception as e:
+            logger.warning("auto_marker_detect_failed", ingest_id=ingest_id, error=str(e))
+
     if use_marker and marker_job and media_bucket:
         try:
             gcs_object = f"marker-ingest/{ingest_id}{ext}"
