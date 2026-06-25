@@ -800,6 +800,18 @@ export default function QueryPage() {
             </div>
           )}
 
+          {/* Model fallback notice — selected model differed from the one used */}
+          {result && selectedModel && result.model_used && result.model_used !== selectedModel && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 mb-4">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                You selected <strong>{selectedModel}</strong>, but the answer was generated with{' '}
+                <strong>{result.model_used}</strong>. The selected model was unavailable — usually a
+                billing/quota issue on that provider (e.g. no Anthropic credit). Add credit to use it.
+              </span>
+            </div>
+          )}
+
           {/* Low-quality warning — shown when quality < 30% */}
           {result && (result.quality_score ?? 1) < 0.3 && (
             <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 mb-4">

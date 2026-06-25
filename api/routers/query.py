@@ -30,6 +30,7 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
     llm_calls: int = 0
     estimated_cost_usd: float = 0.0
+    model: str = ""  # model that actually produced the answer (reflects fallbacks)
 
 
 class QueryResponse(BaseModel):
@@ -187,7 +188,10 @@ async def query_endpoint(
         citation_map=response.citation_map,
         figures=getattr(response, "figures", []),
         session_id=body.session_id,
-        model_used=body.model,
+        # Report the model that ACTUALLY produced the answer (reflects fallbacks
+        # such as Claude -> Groq on an Anthropic billing error), not just the
+        # requested model — keeps the top badge consistent with token usage.
+        model_used=(tu.get("model") or body.model),
         token_usage=TokenUsage(**tu) if tu else None,
     )
 

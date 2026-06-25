@@ -116,12 +116,20 @@ def get_token_usage() -> dict:
         out_rate = meta.get("output_usd_per_mtok", 0.0)
         estimated_cost += (c["input_tokens"] * in_rate + c["output_tokens"] * out_rate) / 1_000_000
 
+    # The model that actually produced the answer = the one with the most output
+    # tokens. This reflects fallbacks (e.g. Claude -> Groq on a billing error),
+    # so the UI shows the model truly used, not just the one requested.
+    answer_model = ""
+    if calls:
+        answer_model = max(calls, key=lambda c: c.get("output_tokens", 0)).get("model", "")
+
     return {
         "input_tokens": total_input,
         "output_tokens": total_output,
         "total_tokens": total_tokens,
         "llm_calls": len(calls),
         "estimated_cost_usd": round(estimated_cost, 6),
+        "model": answer_model,
     }
 
 
