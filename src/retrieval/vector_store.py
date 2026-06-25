@@ -69,7 +69,10 @@ def _rows_to_text(rows: list[list[str]]) -> list[str]:
         else:
             result.append(" | ".join(cells))
     return result
-from sentence_transformers import SentenceTransformer
+# NOTE: sentence_transformers (which pulls in torch) is imported lazily inside
+# _get_embedder() — importing it at module load added tens of seconds to every
+# Cloud Run cold start, even for endpoints that never embed (history, dashboard,
+# health). Keeping it lazy makes those pages cold-start fast under min-instances=0.
 from pinecone import Pinecone, ServerlessSpec
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -83,7 +86,7 @@ _PINECONE_REGION = "us-east-1"
 
 _pc: Pinecone | None = None
 _index = None
-_embedder: SentenceTransformer | None = None
+_embedder = None  # lazy SentenceTransformer singleton (see note at imports)
 
 
 def _is_table_line(line: str) -> bool:
@@ -261,9 +264,10 @@ def _table_aware_split(text: str, chunk_size: int, chunk_overlap: int) -> list[s
     return [c for c in final_chunks if c.strip()]
 
 
-def _get_embedder() -> SentenceTransformer:
+def _get_embedder():
     global _embedder
     if _embedder is None:
+        from sentence_transformers import SentenceTransformer  # lazy: avoids torch import at cold start
         _embedder = SentenceTransformer(EMBEDDING_MODEL)
     return _embedder
 
