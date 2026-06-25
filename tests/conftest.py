@@ -71,11 +71,13 @@ def mock_pinecone():
     mock_embedder.encode.return_value = np.array([[0.1] * 384])
 
     import src.retrieval.vector_store as vs
-    with patch("src.retrieval.vector_store.Pinecone", return_value=mock_pc), \
-         patch("src.retrieval.vector_store.SentenceTransformer", return_value=mock_embedder):
+    # SentenceTransformer is now imported lazily inside _get_embedder() (to keep
+    # cold starts fast), so it's no longer a module attribute to patch. Inject
+    # the mock embedder directly so _get_embedder() returns it without loading.
+    with patch("src.retrieval.vector_store.Pinecone", return_value=mock_pc):
         vs._index = None
         vs._pc = None
-        vs._embedder = None
+        vs._embedder = mock_embedder
         yield mock_index
         vs._index = None
         vs._pc = None
