@@ -72,20 +72,49 @@ async function request<T>(
 
 export async function login(email: string, password: string): Promise<AuthTokens> {
   const form = new URLSearchParams({ username: email, password })
-  // retry=false: login 401s must not trigger auto-refresh (would reload page and wipe error state)
-  const data = await request<AuthTokens>('/api/auth/token', {
-    method: 'POST',
-    body: form.toString(),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  }, false)
-  setAccessToken(data.access_token)
-  sessionStorage.setItem('refresh_token', data.refresh_token)
-  // Decode role from JWT and persist so sidebar/guards survive page reload
-  try {
-    const payload = JSON.parse(atob(data.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-    if (payload?.role) sessionStorage.setItem('user_role', payload.role)
-  } catch {}
-  return data
+  // Retry transient/cold-start failures (network error or 5xx) so the FIRST
+  // login after a long idle (Cloud Run scale-to-zero) succeeds and opens the
+  // home page, instead of bouncing back to the login screen. Genuine auth
+  // errors (400/401/403 = bad credentials) are surfaced immediately, never retried.
+  const MAX_ATTEMPTS = 5
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/api/auth/token`, {
+        method: 'POST',
+        body: form.toString(),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as AuthTokens
+        setAccessToken(data.access_token)
+        sessionStorage.setItem('refresh_token', data.refresh_token)
+        // Decode role from JWT and persist so sidebar/guards survive page reload
+        try {
+          const payload = JSON.parse(atob(data.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+          if (payload?.role) sessionStorage.setItem('user_role', payload.role)
+        } catch {}
+        return data
+      }
+      // Bad credentials / client error — surface immediately (do not retry).
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        const body = await res.json().catch(() => ({ detail: 'Invalid credentials' }))
+        let detail = body.detail || 'Invalid credentials'
+        if (Array.isArray(detail)) detail = 'Invalid credentials'
+        throw Object.assign(new Error(String(detail)), { status: res.status, detail })
+      }
+      // Transient server/cold-start error (5xx) — retry.
+      lastErr = Object.assign(new Error('Server is starting up — retrying…'), { status: res.status })
+    } catch (e) {
+      const status = (e as { status?: number })?.status
+      if (status === 400 || status === 401 || status === 403) throw e // genuine auth failure
+      lastErr = e // network error (likely cold start) — retry
+    }
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))) // 1.5s, 3s, 4.5s, 6s backoff
+    }
+  }
+  throw lastErr ?? new Error('Login failed')
 }
 
 export async function sendOTP(email: string, purpose: 'register' | 'reset'): Promise<{ message: string; dev_otp?: string }> {

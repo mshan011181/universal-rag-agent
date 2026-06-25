@@ -232,9 +232,12 @@ def _extract_questions_from_image(image_bytes: bytes, content_type: str) -> list
 
     prompt = (
         "This image contains one or more questions (e.g. a question paper, exam sheet, or form).\n"
-        "Extract every question exactly as written, one per line.\n"
-        "Output ONLY the questions, numbered 1. 2. 3. etc.\n"
-        "Do NOT include answers, instructions, or any other text.\n"
+        "Extract every question exactly as written, one per numbered line (1. 2. 3. ...).\n"
+        "IMPORTANT: If a question has multiple-choice options (a), (b), (c), (d) / A B C D, "
+        "keep the question stem AND all its options together as ONE single numbered item "
+        "(put the options on the same line, separated by ' | '). Do NOT output the options "
+        "as separate questions.\n"
+        "Do NOT include the marked/correct answer, instructions, or any other text.\n"
         "If no questions are found, output: NO_QUESTIONS_FOUND"
     )
 
@@ -257,19 +260,37 @@ def _extract_questions_from_image(image_bytes: bytes, content_type: str) -> list
 
 
 def _parse_question_lines(raw: str) -> list[str]:
-    """Turn an LLM's numbered-list output into a clean list of questions."""
+    """Turn an LLM's numbered-list output into a clean list of questions.
+
+    Defensive (LLM-independent): even if the model splits a multiple-choice
+    question into separate lines, a standalone option line (e.g. "(a) ...",
+    "b) ...", "(ii) ...") is merged back into the preceding question instead of
+    becoming its own question. Answer-key lines ("Correct Answer: ...") are
+    dropped. Works for any question type, any subject — no hardcoding.
+    """
     if "NO_QUESTIONS_FOUND" in raw:
         return []
     import re
-    questions = []
+    # A line that is just a multiple-choice option (latin a-h or roman i/v/x).
+    OPTION_RE = re.compile(r'^\(?(?:[a-hA-H]|[ivxIVX]{1,4})[\)\.]\s+\S')
+    ANSWER_RE = re.compile(r'^\s*(?:correct\s+answer|answer|ans)\b\s*[:\-.]', re.IGNORECASE)
+    questions: list[str] = []
     for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
         # Strip leading numbering like "1." "1)" "Q1."
         cleaned = re.sub(r'^(?:Q?\d+[\.\)]\s*)', '', line).strip()
-        if cleaned:
-            questions.append(cleaned)
+        if not cleaned:
+            continue
+        # Drop standalone answer-key lines.
+        if ANSWER_RE.match(cleaned):
+            continue
+        # Merge a stray standalone option into the previous question.
+        if OPTION_RE.match(cleaned) and questions:
+            questions[-1] = f"{questions[-1]} | {cleaned}"
+            continue
+        questions.append(cleaned)
     return questions
 
 
@@ -306,9 +327,12 @@ def _extract_questions_from_text(text: str) -> list[str]:
     prompt = (
         "The following content contains one or more questions (e.g. a question paper, "
         "exam sheet, worksheet, or form).\n"
-        "Extract every question exactly as written, one per line.\n"
-        "Output ONLY the questions, numbered 1. 2. 3. etc.\n"
-        "Do NOT include answers, instructions, or any other text.\n"
+        "Extract every question exactly as written, one per numbered line (1. 2. 3. ...).\n"
+        "IMPORTANT: If a question has multiple-choice options (a), (b), (c), (d) / A B C D, "
+        "keep the question stem AND all its options together as ONE single numbered item "
+        "(put the options on the same line, separated by ' | '). Do NOT output the options "
+        "as separate questions.\n"
+        "Do NOT include the marked/correct answer, instructions, or any other text.\n"
         "If no questions are found, output: NO_QUESTIONS_FOUND\n\n"
         f"CONTENT:\n{snippet}"
     )
