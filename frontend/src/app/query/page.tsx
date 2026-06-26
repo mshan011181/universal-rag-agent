@@ -565,7 +565,7 @@ export default function QueryPage() {
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                   >
-                    <option value="">Default (Claude Sonnet 4.5)</option>
+                    <option value="">Default (Llama 3.3 70B — Free)</option>
                     {models.map((m) => (
                       <option key={m.model_id} value={m.model_id}>
                         {m.label} · {m.context_k}K ctx · {m.free ? 'Free' : `$${m.input_usd_per_mtok}/$${m.output_usd_per_mtok} per M tok`}
