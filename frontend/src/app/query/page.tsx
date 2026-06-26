@@ -214,14 +214,20 @@ export default function QueryPage() {
     const q = query.trim()
     // Run via the persistent store so the request + result survive navigation.
     // Loading/result/error and history are mirrored back by the effect above.
-    await queryStore.run(q, () => submitQuery({
+    await queryStore.run(q, (signal) => submitQuery({
       query: q,
       pattern: pattern === 'auto' ? undefined : pattern,
       language,
       source_filters: selectedSources.length > 0 ? selectedSources : undefined,
       model: selectedModel || undefined,
       no_cache: forceFresh,
-    }))
+    }, signal))
+  }
+
+  // Cancel an in-progress query.
+  function cancelQuery() {
+    queryStore.cancel()
+    tts.stop()
   }
 
   // Start a fresh, blank session for the next query.
@@ -666,7 +672,16 @@ export default function QueryPage() {
                   <Send className="w-4 h-4" />
                   {loading ? 'Thinking…' : 'Submit'}
                 </button>
-                {(result || error) && (
+                {loading && (
+                  <button
+                    type="button"
+                    onClick={cancelQuery}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-300 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Square className="w-3.5 h-3.5" /> Cancel
+                  </button>
+                )}
+                {!loading && (result || error) && (
                   <button
                     type="button"
                     onClick={newSession}

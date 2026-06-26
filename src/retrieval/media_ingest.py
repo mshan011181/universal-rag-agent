@@ -33,16 +33,43 @@ VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".3gp", ".ts"}
 
 
 def _transcribe_with_groq(file_path: str) -> str:
-    """Send an audio/video file to Groq Whisper and return transcript text."""
+    """Transcribe audio/video with Groq Whisper (multilingual, auto-detect).
+
+    Whisper large-v3 auto-detects the language and handles mixed-language
+    speech (e.g. Tamil + English code-switching), transcribing each part
+    verbatim. For non-English content we ALSO append an English translation so
+    the material is searchable and answerable in English regardless of the
+    spoken language. Pure-English audio skips the extra call.
+    """
     from groq import Groq
     client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+    # Verbose JSON gives us both the verbatim transcript and the detected language.
     with open(file_path, "rb") as f:
-        response = client.audio.transcriptions.create(
+        resp = client.audio.transcriptions.create(
             model="whisper-large-v3",
             file=f,
-            response_format="text",
+            response_format="verbose_json",
         )
-    return str(response).strip()
+    transcript = (getattr(resp, "text", "") or "").strip()
+    lang = (getattr(resp, "language", "") or "").lower()
+
+    # Bilingual / non-English (e.g. Tamil, or Tamil+English mix) → add English.
+    if lang and lang not in ("english", "en"):
+        try:
+            with open(file_path, "rb") as f:
+                tr = client.audio.translations.create(
+                    model="whisper-large-v3",
+                    file=f,
+                    response_format="text",
+                )
+            translation = str(tr).strip()
+            if translation and translation.lower() != transcript.lower():
+                transcript = f"{transcript}\n\n[English translation]\n{translation}"
+        except Exception as e:
+            print(f"[media] English translation skipped: {type(e).__name__}: {e}", flush=True)
+
+    return transcript
 
 
 def _extract_audio_from_video(video_path: str) -> str:

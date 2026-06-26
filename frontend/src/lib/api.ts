@@ -238,8 +238,8 @@ export function logout() {
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
-export async function submitQuery(payload: QueryRequest): Promise<QueryResponse> {
-  return request('/api/query/', { method: 'POST', body: JSON.stringify(payload) })
+export async function submitQuery(payload: QueryRequest, signal?: AbortSignal): Promise<QueryResponse> {
+  return request('/api/query/', { method: 'POST', body: JSON.stringify(payload), signal })
 }
 
 export interface ModelOption {

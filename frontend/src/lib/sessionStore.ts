@@ -21,6 +21,7 @@ export function createAsyncSessionStore<T>() {
   let state: AsyncSessionState<T> = { loading: false, result: null, error: '', label: '' }
   const listeners = new Set<() => void>()
   let runId = 0
+  let controller: AbortController | null = null
 
   const emit = () => listeners.forEach((l) => l())
 
@@ -30,22 +31,41 @@ export function createAsyncSessionStore<T>() {
   }
   function getSnapshot() { return state }
 
-  async function run(label: string, fetcher: () => Promise<T>) {
+  // fetcher receives an AbortSignal so the underlying request can be cancelled.
+  async function run(label: string, fetcher: (signal: AbortSignal) => Promise<T>) {
+    controller?.abort()
+    controller = new AbortController()
+    const signal = controller.signal
     const id = ++runId
     state = { loading: true, result: null, error: '', label }
     emit()
     try {
-      const res = await fetcher()
-      if (id !== runId) return // a newer run superseded this one
+      const res = await fetcher(signal)
+      if (id !== runId) return // a newer run / cancel superseded this one
       state = { loading: false, result: res, error: '', label }
     } catch (e) {
-      if (id !== runId) return
-      state = { loading: false, result: null, error: e instanceof Error ? e.message : 'Request failed', label }
+      if (id !== runId) return // cancelled or superseded — don't overwrite
+      if ((e as { name?: string })?.name === 'AbortError') {
+        state = { loading: false, result: null, error: '', label: '' }
+      } else {
+        state = { loading: false, result: null, error: e instanceof Error ? e.message : 'Request failed', label }
+      }
     }
     emit()
   }
 
+  // Cancel an in-flight run and clear the session.
+  function cancel() {
+    controller?.abort()
+    controller = null
+    runId++ // invalidate the in-flight run so its result can't land
+    state = { loading: false, result: null, error: '', label: '' }
+    emit()
+  }
+
   function reset() {
+    controller?.abort()
+    controller = null
     runId++ // cancel any in-flight run's result from landing
     state = { loading: false, result: null, error: '', label: '' }
     emit()
@@ -56,5 +76,5 @@ export function createAsyncSessionStore<T>() {
     return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   }
 
-  return { run, reset, getSnapshot, useSession }
+  return { run, reset, cancel, getSnapshot, useSession }
 }
