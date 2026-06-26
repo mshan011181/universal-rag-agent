@@ -33,7 +33,7 @@ const DATA_TYPES = [
 // All supported answer languages grouped by region
 const LANGUAGE_OPTIONS = [
   { group: 'English Variants', options: [
-    'American English', 'British English', 'Australian English',
+    'American English', 'British English', 'Australian English', 'Indian English',
   ]},
   { group: 'European', options: [
     'French', 'Spanish', 'German', 'Italian', 'Dutch', 'Portuguese',
@@ -559,7 +559,7 @@ export default function QueryPage() {
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                   >
-                    <option value="">Default (Llama 3.3 70B)</option>
+                    <option value="">Default (Claude Sonnet 4.5)</option>
                     {models.map((m) => (
                       <option key={m.model_id} value={m.model_id}>
                         {m.label} · {m.context_k}K ctx · {m.free ? 'Free' : `$${m.input_usd_per_mtok}/$${m.output_usd_per_mtok} per M tok`}
@@ -965,7 +965,7 @@ export default function QueryPage() {
                         ~${result.token_usage.estimated_cost_usd.toFixed(4)}
                       </span>
                     ) : (
-                      <span className="ml-auto font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">Free (Groq)</span>
+                      <span className="ml-auto font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">Free</span>
                     )}
                   </div>
                 )}

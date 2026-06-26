@@ -15,7 +15,7 @@ import 'katex/dist/katex.min.css'
 import clsx from 'clsx'
 
 const LANGUAGE_OPTIONS = [
-  { group: 'English Variants', options: ['American English', 'British English', 'Australian English'] },
+  { group: 'English Variants', options: ['American English', 'British English', 'Australian English', 'Indian English'] },
   { group: 'European', options: ['French', 'Spanish', 'German', 'Italian', 'Portuguese'] },
   { group: 'South Asian', options: ['Hindi', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Marathi', 'Bengali'] },
   { group: 'East Asian', options: ['Japanese', 'Chinese', 'Korean'] },

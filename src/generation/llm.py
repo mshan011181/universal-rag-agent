@@ -73,6 +73,7 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
 # Extended metadata: context window (tokens) and pricing (USD per million tokens)
 MODEL_METADATA: dict[str, dict] = {
     "claude-sonnet-4-6":           {"context_k": 200, "input_usd_per_mtok": 3.0,  "output_usd_per_mtok": 15.0, "free": False},
+    "claude-sonnet-4-5":           {"context_k": 200, "input_usd_per_mtok": 3.0,  "output_usd_per_mtok": 15.0, "free": False},
     "claude-haiku-4-5-20251001":   {"context_k": 200, "input_usd_per_mtok": 0.8,  "output_usd_per_mtok": 4.0,  "free": False},
     "llama-3.3-70b-versatile":     {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
     "llama-3.1-8b-instant":        {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
