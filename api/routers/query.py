@@ -13,6 +13,53 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
+# ── Free-trial limit enforcement ──────────────────────────────────────────────
+
+def _user_email(user_id: str) -> str:
+    """Look up a user's email (JWT only carries user_id, not email)."""
+    from src.memory.sqlite_store import get_conn
+    try:
+        with get_conn() as c:
+            row = c.execute("SELECT email FROM users WHERE user_id=?", (user_id,)).fetchone()
+        return (row[0] or "").lower() if row else ""
+    except Exception:
+        return ""
+
+
+def _user_question_count(user_id: str) -> int:
+    """Lifetime count of metered questions (audit_log 'query' events) for a user."""
+    from src.memory.sqlite_store import get_conn
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE event_type='query' AND user_id=?",
+                (user_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
+def _enforce_free_limit(user: dict) -> None:
+    """Block non-owner free users once they hit the lifetime question limit.
+
+    Owners (OWNER_EMAILS) and paid plans bypass. Raises HTTP 402 when exceeded.
+    """
+    from src.config import OWNER_EMAILS, FREE_QUESTION_LIMIT
+    email = _user_email(user["user_id"])
+    if email in OWNER_EMAILS:
+        return  # owner / co-owner → unlimited
+    if (user.get("plan") or "free").lower() != "free":
+        return  # paid plan → unlimited (when subscriptions are wired up)
+    used = _user_question_count(user["user_id"])
+    if used >= FREE_QUESTION_LIMIT:
+        raise HTTPException(
+            status_code=402,
+            detail=(f"Free trial limit reached — you've used all {FREE_QUESTION_LIMIT} "
+                    f"free questions. Please upgrade to continue."),
+        )
+
+
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=4000)
     session_id: Optional[str] = Field(default="default", max_length=64)
@@ -119,6 +166,9 @@ async def query_endpoint(
     query = body.query.strip()
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # Free-trial gate (owners/paid bypass)
+    _enforce_free_limit(user)
 
     # Scope session to user
     scoped_session = f"{user['user_id']}:{body.session_id}"
@@ -358,6 +408,7 @@ async def query_from_image(
     session_id: str = Form(default="default"),
     user: dict = Depends(get_current_user_or_api_key),
 ):
+    _enforce_free_limit(user)
     file_bytes = await file.read()
     if len(file_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="File too large — maximum 10 MB.")
@@ -414,6 +465,10 @@ async def query_from_image(
                 citation_map={},
                 suggested_followups=[],
             ))
+
+    # Count this as one metered question toward the free-trial limit.
+    write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
+                detail={"kind": "image_batch", "questions_found": len(questions)})
 
     return ImageQueryResponse(
         questions_found=len(questions),
@@ -573,6 +628,7 @@ async def evaluate_answers(
     source_filters: str = Form(default=""),
     user: dict = Depends(get_current_user_or_api_key),
 ):
+    _enforce_free_limit(user)
     q_bytes = await questions_file.read()
     a_bytes = await answers_file.read()
     if len(q_bytes) > MAX_IMAGE_BYTES or len(a_bytes) > MAX_IMAGE_BYTES:
@@ -628,6 +684,9 @@ async def evaluate_answers(
     note = f"Evaluated {len(results)} answer(s)."
     if len(answers) < len(questions):
         note += f" {len(questions) - len(answers)} question(s) had no matching answer (scored 0)."
+    # Count this evaluation run as one metered question toward the free-trial limit.
+    write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
+                detail={"kind": "answer_evaluation", "questions": len(questions)})
     return EvalResponse(
         overall_score=overall,
         total_questions=len(questions),

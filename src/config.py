@@ -50,6 +50,23 @@ RESEND_API_KEY  = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM      = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
 APP_BASE_URL    = os.getenv("APP_BASE_URL", "http://localhost:3000")
 
+# Free SMTP fallback (e.g. Gmail) — used when RESEND_API_KEY is not set.
+# Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_USER=<your gmail>,
+# SMTP_PASSWORD=<16-char App Password from Google account with 2FA enabled>.
+SMTP_HOST       = os.getenv("SMTP_HOST", "")
+SMTP_PORT       = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER       = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD   = os.getenv("SMTP_PASSWORD", "")
+
+# Subscription / free-trial limits.
+# OWNER_EMAILS: comma-separated owner accounts that always get unlimited access
+# (bypass the free-trial limit). FREE_QUESTION_LIMIT: lifetime free questions per
+# non-owner user before they must upgrade.
+OWNER_EMAILS = {
+    e.strip().lower() for e in os.getenv("OWNER_EMAILS", "").split(",") if e.strip()
+}
+FREE_QUESTION_LIMIT = int(os.getenv("FREE_QUESTION_LIMIT", "5"))
+
 # ── SSO / OIDC ─────────────────────────────────────────────────────────────────
 # Azure AD (Entra ID) — covers Active Directory / Microsoft 365
 # Register app at: https://portal.azure.com → App registrations
