@@ -384,6 +384,22 @@ export async function retryIngest(ingestId: string): Promise<{ status: string; i
   return request(`/api/ingest/${ingestId}/retry`, { method: 'POST' })
 }
 
+export async function cancelIngest(ingestId: string): Promise<{ status: string; ingest_id: string }> {
+  return request(`/api/ingest/${ingestId}/cancel`, { method: 'POST' })
+}
+
+/** Generate a downloadable MP3 (podcast) of the supplied text via server TTS. */
+export async function fetchAnswerAudio(text: string, language = 'American English'): Promise<Blob> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const tok = getAccessToken()
+  if (tok) headers['Authorization'] = `Bearer ${tok}`
+  const res = await fetch(`${BASE}/api/query/tts`, {
+    method: 'POST', headers, body: JSON.stringify({ text, language }),
+  })
+  if (!res.ok) throw new Error('Audio generation failed')
+  return res.blob()
+}
+
 // Cloud Run rejects request bodies over 32 MiB, so large files go directly
 // to GCS via a signed URL. Falls back to multipart upload when the backend
 // has no bucket configured (local dev returns 501).

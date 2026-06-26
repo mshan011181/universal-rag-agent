@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels } from '@/lib/api'
+import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels, fetchAnswerAudio } from '@/lib/api'
 import { queryStore } from '@/lib/querySession'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
@@ -228,6 +228,27 @@ export default function QueryPage() {
   function cancelQuery() {
     queryStore.cancel()
     tts.stop()
+  }
+
+  // Download the Q&A as an MP3 (podcast) via server-side TTS.
+  const [podcastLoading, setPodcastLoading] = useState(false)
+  async function downloadPodcast() {
+    if (!result) return
+    setPodcastLoading(true)
+    try {
+      const text = `Question: ${qsess.label || query}\n\nAnswer: ${latexToReadable(result.answer)}`
+      const blob = await fetchAnswerAudio(text, language)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `maximai-answer-${Date.now()}.mp3`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Could not generate the audio file. Please try again.')
+    } finally {
+      setPodcastLoading(false)
+    }
   }
 
   // Start a fresh, blank session for the next query.
@@ -989,6 +1010,17 @@ export default function QueryPage() {
                 {tts.supported && (
                   <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
                     <Volume2 className="w-4 h-4 text-gray-400 shrink-0" />
+
+                    {/* Download podcast (MP3) */}
+                    <button
+                      onClick={downloadPodcast}
+                      disabled={podcastLoading}
+                      title="Download this Q&A as an audio file (podcast)"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:border-brand-400 hover:text-brand-600 transition-colors disabled:opacity-60"
+                    >
+                      {podcastLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      {podcastLoading ? 'Generating…' : 'Download podcast'}
+                    </button>
 
                     {/* Play / Pause / Resume */}
                     {tts.state === 'idle' && (

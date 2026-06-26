@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef, DragEvent } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, convertImageToExcel, getIngestHistory, deleteIngest, retryIngest } from '@/lib/api'
+import { ingestFile, ingestText, ingestYouTube, ingestWebLink, ingestMedia, ingestAudioFile, ingestVideoFile, ingestImage, convertImageToExcel, getIngestHistory, deleteIngest, retryIngest, cancelIngest } from '@/lib/api'
 import type { IngestResponse, IngestHistory } from '@/types'
-import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image, RotateCcw } from 'lucide-react'
+import { FileText, Music, Video, Globe, Youtube, Trash2, Upload, AlertCircle, CheckCircle, Loader, RefreshCw, Image, RotateCcw, Ban } from 'lucide-react'
 
 type TabType = 'documents' | 'text' | 'audio' | 'video' | 'weblinks' | 'youtube' | 'images'
 
@@ -275,6 +275,17 @@ export default function IngestPage() {
       setTimeout(() => loadHistory(true), 3000)
     } catch (e) {
       showMessage('error', e instanceof Error ? e.message : 'Retry failed')
+    }
+  }
+
+  const handleCancel = async (ingestId: string, name: string) => {
+    try {
+      await cancelIngest(ingestId)
+      showMessage('success', `Cancelling "${name}"…`)
+      loadHistory(true)
+      setTimeout(() => loadHistory(true), 2000)
+    } catch (e) {
+      showMessage('error', e instanceof Error ? e.message : 'Cancel failed')
     }
   }
 
@@ -554,6 +565,15 @@ export default function IngestPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 ml-2 shrink-0">
+                            {isProcessing && (
+                              <button
+                                onClick={() => handleCancel(item.ingest_id, item.name)}
+                                className="p-1 text-orange-500 hover:text-orange-700 transition-colors"
+                                title="Cancel ingestion"
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )}
                             {(isFailed || (item.chunks === 0 && !isProcessing)) &&
                               ['documents', 'images', 'video', 'audio', 'weblinks'].includes(activeTab) && (
                               <button

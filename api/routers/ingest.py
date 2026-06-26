@@ -82,6 +82,22 @@ MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
+class _IngestCancelled(Exception):
+    """Raised inside a background ingest task when the user cancels it."""
+
+
+def _is_ingest_cancelled(ingest_id: str) -> bool:
+    """True if the ingest row has been marked 'cancelled' (cancel requested)."""
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT status FROM ingest_history WHERE ingest_id=?", (ingest_id,)
+            ).fetchone()
+        return bool(row) and (row[0] == "cancelled")
+    except Exception:
+        return False
+
+
 def _safe_filename(filename: str) -> str:
     return Path(filename).name.replace("..", "").replace("/", "").replace("\\", "")
 
@@ -230,6 +246,9 @@ async def ingest_file_endpoint(
         try:
             logger.info("ingest_processing_start", ingest_id=ingest_id, filename=filename)
             def _on_progress(pct: int, label: str):
+                # Abort if the user requested cancellation (checked at each step).
+                if _is_ingest_cancelled(ingest_id):
+                    raise _IngestCancelled()
                 set_ingest_progress(ingest_id, pct, label)
             n = ingest_file(str(save_path), namespace=org_id, source_name=filename, on_progress=_on_progress, force_marker=use_marker)
             set_ingest_progress(ingest_id, 100, "Done")
@@ -238,11 +257,19 @@ async def ingest_file_endpoint(
             write_audit("ingest", user_id=user_id, org_id=org_id,
                         detail={"source_name": filename, "ingest_type": "document",
                                 "chunks": n, "ingest_id": ingest_id})
+        except _IngestCancelled:
+            _set_status("cancelled", 0)
+            logger.info("ingest_cancelled", ingest_id=ingest_id, filename=filename)
         except Exception as e:
-            logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
-            _set_status("failed", 0)
-            write_audit("ingest", user_id=user_id, org_id=org_id, status="failure",
-                        detail={"source_name": filename, "error": str(e)[:200]})
+            # If cancellation landed mid-run, keep the cancelled status.
+            if _is_ingest_cancelled(ingest_id):
+                _set_status("cancelled", 0)
+                logger.info("ingest_cancelled", ingest_id=ingest_id, filename=filename)
+            else:
+                logger.error("ingest_failed", filename=filename, error=str(e), ingest_id=ingest_id, exc_info=True)
+                _set_status("failed", 0)
+                write_audit("ingest", user_id=user_id, org_id=org_id, status="failure",
+                            detail={"source_name": filename, "error": str(e)[:200]})
 
     background_tasks.add_task(do_ingest)
 
@@ -1602,6 +1629,33 @@ async def retry_ingest_endpoint(
         "ingest_id": ingest_id,
         "message": f"Retrying {ingest_type} ingestion for '{filename}'",
     }
+
+
+@router.post("/{ingest_id}/cancel")
+async def cancel_ingest_endpoint(
+    ingest_id: str,
+    user: dict = Depends(require_role("user")),
+):
+    """Cancel an in-progress ingestion. Marks it 'cancelled'; the inline
+    document pipeline aborts at its next checkpoint. (Media/Marker-Job ingests
+    are marked cancelled best-effort.)"""
+    with get_conn() as c:
+        row = c.execute(
+            "SELECT status FROM ingest_history WHERE ingest_id=? AND user_id=?",
+            (ingest_id, user["user_id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Ingest item not found")
+        status = row[0]
+        if status in ("done", "failed", "cancelled"):
+            return {"status": status, "ingest_id": ingest_id, "message": f"Already {status}"}
+        c.execute(
+            "UPDATE ingest_history SET status='cancelled' WHERE ingest_id=? AND user_id=?",
+            (ingest_id, user["user_id"]),
+        )
+        c.commit()
+    logger.info("ingest_cancel_requested", ingest_id=ingest_id, user_id=user["user_id"])
+    return {"status": "cancelled", "ingest_id": ingest_id}
 
 
 @router.delete("/{ingest_id}")

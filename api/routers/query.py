@@ -1,5 +1,5 @@
 import base64
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, UploadFile, File, Form, Response
 from pydantic import BaseModel, Field
 from typing import Optional
 import structlog
@@ -633,4 +633,97 @@ async def evaluate_answers(
         total_questions=len(questions),
         results=results,
         note=note,
+    )
+
+
+# ── Podcast audio (Text-to-Speech) ────────────────────────────────────────────
+# Generate a downloadable MP3 of the Q&A using Google Cloud Text-to-Speech via
+# REST (SA token — no extra dependency). The texttospeech API is already enabled.
+
+def _tts_voice_for_language(language: str) -> tuple[str, str]:
+    """Map an answer language to a (languageCode, voiceName) for Cloud TTS."""
+    lang = (language or "").lower()
+    if "tamil" in lang:
+        return ("ta-IN", "ta-IN-Standard-A")
+    if "indian" in lang:
+        return ("en-IN", "en-IN-Standard-A")
+    if "british" in lang:
+        return ("en-GB", "en-GB-Standard-A")
+    if "australian" in lang:
+        return ("en-AU", "en-AU-Standard-A")
+    if "hindi" in lang:
+        return ("hi-IN", "hi-IN-Standard-A")
+    return ("en-US", "en-US-Standard-C")
+
+
+def _chunk_text_for_tts(text: str, limit: int = 4500) -> list[str]:
+    """Split text into <=limit-char pieces on sentence boundaries (TTS caps at 5000 bytes)."""
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks: list[str] = []
+    cur = ""
+    for s in sentences:
+        if len(cur) + len(s) + 1 > limit:
+            if cur:
+                chunks.append(cur)
+            # a single very long sentence — hard-split it
+            while len(s) > limit:
+                chunks.append(s[:limit])
+                s = s[limit:]
+            cur = s
+        else:
+            cur = f"{cur} {s}".strip()
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def _synthesize_tts(text: str, language: str = "American English") -> bytes:
+    """Synthesize MP3 audio from text via Cloud TTS REST. Concatenates chunks."""
+    import json as _json
+    import urllib.request
+    import google.auth
+    from google.auth.transport import requests as ga_requests
+
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    creds.refresh(ga_requests.Request())
+    lang_code, voice = _tts_voice_for_language(language)
+
+    audio = b""
+    for chunk in _chunk_text_for_tts(text):
+        body = {
+            "input": {"text": chunk},
+            "voice": {"languageCode": lang_code, "name": voice},
+            "audioConfig": {"audioEncoding": "MP3"},
+        }
+        req = urllib.request.Request(
+            "https://texttospeech.googleapis.com/v1/text:synthesize",
+            data=_json.dumps(body).encode(), method="POST",
+            headers={"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:  # nosec B310
+            resp = _json.loads(r.read())
+        audio += base64.b64decode(resp["audioContent"])
+    return audio
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=20000)
+    language: str = Field(default="American English", max_length=50)
+
+
+@router.post("/tts")
+async def tts_endpoint(body: TTSRequest, user: dict = Depends(get_current_user_or_api_key)):
+    """Return a downloadable MP3 (podcast) of the supplied Q&A text."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="No text to synthesize.")
+    try:
+        audio = _synthesize_tts(text, body.language)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio generation failed: {e}")
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": 'attachment; filename="maximai-answer.mp3"'},
     )
