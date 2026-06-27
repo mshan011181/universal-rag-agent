@@ -2,10 +2,25 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { fetchUsage } from '@/lib/api'
+import { fetchUsage, createOrder, verifyPayment } from '@/lib/api'
 import type { UsageInfo } from '@/lib/api'
-import { CreditCard, Check, X, Crown, Sparkles } from 'lucide-react'
+import { CreditCard, Check, X, Crown, Sparkles, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
+
+declare global {
+  interface Window { Razorpay?: new (options: Record<string, unknown>) => { open: () => void } }
+}
+
+function loadRazorpay(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true)
+    const s = document.createElement('script')
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    s.onload = () => resolve(true)
+    s.onerror = () => resolve(false)
+    document.body.appendChild(s)
+  })
+}
 
 const PLANS = [
   {
@@ -14,18 +29,18 @@ const PLANS = [
     highlight: false,
   },
   {
-    id: 'monthly', name: 'Monthly', price: '₹299', period: '/month', badge: '',
+    id: 'monthly', name: 'Monthly', price: '$4.99', period: '/month', badge: '',
     features: [['Unlimited questions', true], ['All models incl. Claude', true], ['Media, podcast, evaluation', true]] as [string, boolean][],
     highlight: false,
   },
   {
-    id: 'quarterly', name: 'Quarterly', price: '₹799', period: '/3 months', badge: 'Save ~11%',
+    id: 'quarterly', name: 'Quarterly', price: '$12.99', period: '/3 months', badge: 'Save ~13%',
     features: [['Everything in Monthly', true], ['Lower effective rate', true]] as [string, boolean][],
     highlight: false,
   },
   {
-    id: 'yearly', name: 'Yearly', price: '₹2,499', period: '/year', badge: 'Save ~30%',
-    features: [['Everything in Monthly', true], ['2 months free', true], ['Priority processing', true]] as [string, boolean][],
+    id: 'yearly', name: 'Yearly', price: '$39.99', period: '/year', badge: 'Save ~33%',
+    features: [['Everything in Monthly', true], ['2+ months free', true], ['Priority processing', true]] as [string, boolean][],
     highlight: true,
   },
 ]
@@ -33,10 +48,55 @@ const PLANS = [
 export default function PlanPage() {
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [upgrading, setUpgrading] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
+  function refresh() {
+    fetchUsage().then(setUsage).catch(() => {})
+  }
   useEffect(() => {
     fetchUsage().then(setUsage).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  async function handleUpgrade(plan: string) {
+    setMessage(null)
+    setUpgrading(plan)
+    try {
+      const order = await createOrder(plan)
+      const ok = await loadRazorpay()
+      if (!ok || !window.Razorpay) throw new Error('Could not load the payment window.')
+      const rzp = new window.Razorpay({
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.order_id,
+        name: 'MaximAI',
+        description: `${plan} plan`,
+        handler: async (resp: Record<string, string>) => {
+          try {
+            await verifyPayment({
+              razorpay_order_id: resp.razorpay_order_id,
+              razorpay_payment_id: resp.razorpay_payment_id,
+              razorpay_signature: resp.razorpay_signature,
+              plan,
+            })
+            setMessage({ kind: 'ok', text: `Upgraded to ${plan}. Enjoy unlimited access!` })
+            refresh()
+          } catch {
+            setMessage({ kind: 'err', text: 'Payment succeeded but verification failed. Contact support.' })
+          } finally {
+            setUpgrading(null)
+          }
+        },
+        modal: { ondismiss: () => setUpgrading(null) },
+        theme: { color: '#4f46e5' },
+      })
+      rzp.open()
+    } catch (e) {
+      setMessage({ kind: 'err', text: e instanceof Error ? e.message : 'Could not start checkout.' })
+      setUpgrading(null)
+    }
+  }
 
   const isOwner = usage?.plan === 'owner'
   const pct = usage && usage.limit ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0
@@ -140,19 +200,25 @@ export default function PlanPage() {
                     </button>
                   ) : (
                     <button
-                      disabled
-                      title="Online payments coming soon"
-                      className="w-full px-3 py-2 rounded-lg border border-brand-300 text-sm text-brand-600 opacity-70 cursor-not-allowed"
+                      onClick={() => handleUpgrade(plan.id)}
+                      disabled={upgrading !== null}
+                      className="w-full px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
                     >
-                      Upgrade (coming soon)
+                      {upgrading === plan.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {upgrading === plan.id ? 'Opening…' : 'Upgrade'}
                     </button>
                   )}
                 </div>
               )
             })}
           </div>
+          {message && (
+            <p className={clsx('text-sm mt-3', message.kind === 'ok' ? 'text-green-700' : 'text-red-600')}>
+              {message.text}
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-3">
-            Online payments are being set up. To upgrade now, contact the app owner.
+            Secure payment via Razorpay. Prices in USD. Test mode — use a Razorpay test card.
           </p>
         </div>
       </div>

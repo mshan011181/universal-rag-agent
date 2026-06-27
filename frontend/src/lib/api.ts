@@ -312,6 +312,27 @@ export async function fetchUsage(): Promise<UsageInfo> {
   return request('/api/query/usage')
 }
 
+export interface CreateOrderResponse {
+  order_id: string
+  amount: number
+  currency: string
+  key_id: string
+  plan: string
+}
+
+export async function createOrder(plan: string): Promise<CreateOrderResponse> {
+  return request('/api/billing/create-order', { method: 'POST', body: JSON.stringify({ plan }) })
+}
+
+export async function verifyPayment(payload: {
+  razorpay_order_id: string
+  razorpay_payment_id: string
+  razorpay_signature: string
+  plan: string
+}): Promise<{ status: string; plan: string; expires_at: string }> {
+  return request('/api/billing/verify', { method: 'POST', body: JSON.stringify(payload) })
+}
+
 // ── Answer Evaluation ───────────────────────────────────────────────────────────
 
 export interface EvalItem {

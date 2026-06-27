@@ -67,6 +67,12 @@ OWNER_EMAILS = {
 }
 FREE_QUESTION_LIMIT = int(os.getenv("FREE_QUESTION_LIMIT", "5"))
 
+# Razorpay payments (Phase 3). Key secret/webhook secret come from Secret Manager.
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+RAZORPAY_CURRENCY = os.getenv("RAZORPAY_CURRENCY", "USD")
+
 # ── SSO / OIDC ─────────────────────────────────────────────────────────────────
 # Azure AD (Entra ID) — covers Active Directory / Microsoft 365
 # Register app at: https://portal.azure.com → App registrations

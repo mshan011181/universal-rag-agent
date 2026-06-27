@@ -46,11 +46,13 @@ def _enforce_free_limit(user: dict) -> None:
     Owners (OWNER_EMAILS) and paid plans bypass. Raises HTTP 402 when exceeded.
     """
     from src.config import OWNER_EMAILS, FREE_QUESTION_LIMIT
+    from api.routers.billing import get_user_plan
     email = _user_email(user["user_id"])
     if email in OWNER_EMAILS:
         return  # owner / co-owner → unlimited
-    if (user.get("plan") or "free").lower() != "free":
-        return  # paid plan → unlimited (when subscriptions are wired up)
+    plan, _ = get_user_plan(user["user_id"])
+    if plan != "free":
+        return  # active paid plan → unlimited
     used = _user_question_count(user["user_id"])
     if used >= FREE_QUESTION_LIMIT:
         raise HTTPException(
@@ -64,9 +66,10 @@ def _enforce_free_limit(user: dict) -> None:
 async def usage(user: dict = Depends(get_current_user_or_api_key)):
     """Return the current user's plan and free-trial usage for the Plan page."""
     from src.config import OWNER_EMAILS, FREE_QUESTION_LIMIT
+    from api.routers.billing import get_user_plan
     email = _user_email(user["user_id"])
     is_owner = email in OWNER_EMAILS
-    plan = (user.get("plan") or "free").lower()
+    plan, expires_at = get_user_plan(user["user_id"])
     unlimited = is_owner or plan != "free"
     used = _user_question_count(user["user_id"])
     return {
@@ -75,6 +78,7 @@ async def usage(user: dict = Depends(get_current_user_or_api_key)):
         "used": used,
         "limit": None if unlimited else FREE_QUESTION_LIMIT,
         "remaining": None if unlimited else max(0, FREE_QUESTION_LIMIT - used),
+        "expires_at": expires_at,
     }
 
 
