@@ -93,9 +93,17 @@ function LoginForm() {
         }
         router.push('/admin')
       } else {
-        // Brand-new users land on the plan/pricing screen first (free vs paid);
-        // returning users go straight to the app.
-        router.push(justRegistered ? '/plan?welcome=1' : '/query')
+        // Act on a plan chosen from the public landing page (if any).
+        let intended: string | null = null
+        try { intended = sessionStorage.getItem('intended_plan'); sessionStorage.removeItem('intended_plan') } catch {}
+        const paid = intended && ['monthly', 'quarterly', 'yearly'].includes(intended)
+        if (paid) {
+          router.push(`/plan?welcome=1&checkout=${intended}`)   // paid → straight to checkout
+        } else if (justRegistered || intended === 'free') {
+          router.push('/plan?welcome=1')                         // new/free → pricing screen
+        } else {
+          router.push('/query')                                 // returning user → app
+        }
       }
     } catch (err: unknown) {
       let detail = 'Invalid credentials'

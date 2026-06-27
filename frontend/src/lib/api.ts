@@ -312,6 +312,10 @@ export async function fetchUsage(): Promise<UsageInfo> {
   return request('/api/query/usage')
 }
 
+export async function deleteAccount(): Promise<{ deleted: boolean }> {
+  return request('/api/user/account', { method: 'DELETE' })
+}
+
 export interface CreateOrderResponse {
   order_id: string
   amount: number

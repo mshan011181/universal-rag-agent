@@ -3,7 +3,55 @@ from pydantic import BaseModel
 from api.auth_utils import get_current_user_or_api_key
 from src.memory.sqlite_store import get_conn
 
+import structlog
+
 router = APIRouter()
+logger = structlog.get_logger()
+
+
+@router.delete("/account")
+async def delete_my_account(user: dict = Depends(get_current_user_or_api_key)):
+    """Self-service account deletion: remove the user's documents (vectors +
+    figures + cache), history, audit entries, and the account row."""
+    from src.retrieval.vector_store import delete_by_source, delete_figures_by_source
+    from src.memory.sqlite_store import delete_cache_by_source
+    user_id = user["user_id"]
+    namespace = user.get("org_id") or "default"
+
+    # Remove the user's ingested content (vectors, figures, cache).
+    try:
+        with get_conn() as c:
+            rows = c.execute(
+                "SELECT source_name FROM ingest_history WHERE user_id=?", (user_id,)
+            ).fetchall()
+        sources = {r[0] for r in rows if r and r[0]}
+    except Exception:
+        sources = set()
+    for s in sources:
+        for fn in (lambda: delete_by_source(s, namespace=namespace),
+                   lambda: delete_figures_by_source(s),
+                   lambda: delete_cache_by_source(s)):
+            try:
+                fn()
+            except Exception:
+                pass
+
+    # Remove the user's DB records, then the account itself.
+    with get_conn() as c:
+        for stmt, params in (
+            ("DELETE FROM ingest_history WHERE user_id=?", (user_id,)),
+            ("DELETE FROM conversation_history WHERE session_id LIKE ?", (f"{user_id}:%",)),
+            ("DELETE FROM audit_log WHERE user_id=?", (user_id,)),
+            ("DELETE FROM users WHERE user_id=?", (user_id,)),
+        ):
+            try:
+                c.execute(stmt, params)
+            except Exception:
+                pass
+        c.commit()
+
+    logger.info("account_deleted", user_id=user_id)
+    return {"deleted": True}
 
 
 @router.get("/stats")

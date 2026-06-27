@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
-import { fetchUsage, createOrder, verifyPayment } from '@/lib/api'
+import { fetchUsage, createOrder, verifyPayment, deleteAccount, logout } from '@/lib/api'
 import type { UsageInfo } from '@/lib/api'
-import { CreditCard, Check, X, Crown, Sparkles, Loader2 } from 'lucide-react'
+import { CreditCard, Check, X, Crown, Sparkles, Loader2, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 
 declare global {
@@ -51,16 +52,38 @@ export default function PlanPage() {
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [welcome, setWelcome] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const router = useRouter()
+  const autoTriggered = useRef(false)
 
   function refresh() {
     fetchUsage().then(setUsage).catch(() => {})
   }
   useEffect(() => {
     fetchUsage().then(setUsage).catch(() => {}).finally(() => setLoading(false))
-    if (typeof window !== 'undefined' && window.location.search.includes('welcome=1')) {
-      setWelcome(true)
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('welcome') === '1') setWelcome(true)
+    // Auto-open checkout for a paid plan chosen on the landing page.
+    const co = params.get('checkout')
+    if (co && ['monthly', 'quarterly', 'yearly'].includes(co) && !autoTriggered.current) {
+      autoTriggered.current = true
+      handleUpgrade(co)
     }
   }, [])
+
+  async function deleteMyAccount() {
+    if (!confirm('This permanently deletes your account and all your data (documents, history, answers). This cannot be undone. Continue?')) return
+    setDeleting(true)
+    try {
+      await deleteAccount()
+      logout()
+      router.push('/login')
+    } catch (e) {
+      setMessage({ kind: 'err', text: e instanceof Error ? e.message : 'Could not delete account.' })
+      setDeleting(false)
+    }
+  }
 
   async function handleUpgrade(plan: string) {
     setMessage(null)
@@ -234,6 +257,23 @@ export default function PlanPage() {
           <p className="text-xs text-gray-400 mt-3">
             Secure payment via Razorpay. Prices in USD. Test mode — use a Razorpay test card.
           </p>
+        </div>
+
+        {/* Danger zone — delete account */}
+        <div className="card p-5 border-red-200">
+          <p className="text-sm font-semibold text-red-700">Danger zone</p>
+          <p className="text-xs text-gray-500 mt-1 mb-3">
+            Permanently delete your account and all your data — documents, history, answers, and
+            saved figures. This cannot be undone.
+          </p>
+          <button
+            onClick={deleteMyAccount}
+            disabled={deleting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-300 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-60"
+          >
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {deleting ? 'Deleting…' : 'Delete my account'}
+          </button>
         </div>
       </div>
     </AppShell>

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck, History, ClipboardCheck, CreditCard } from 'lucide-react'
 import clsx from 'clsx'
-import { logout } from '@/lib/api'
+import { logout, fetchUsage } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
 
 const NAV = [
@@ -28,11 +28,13 @@ export default function Sidebar() {
   const router = useRouter()
   const role = getUserRole()
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [plan, setPlan] = useState<string | null>(null)
 
   useEffect(() => {
     // Get user email from sessionStorage (set during login)
     const email = sessionStorage.getItem('user_email')
     setUserEmail(email)
+    fetchUsage().then(u => setPlan(u.plan)).catch(() => {})
   }, [])
 
   function handleLogout() {
@@ -103,6 +105,16 @@ export default function Sidebar() {
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Logged in as</p>
             <p className="text-sm text-white truncate font-medium">{userEmail || 'Loading...'}</p>
             <p className="text-xs text-gray-500 mt-1 capitalize">Role: {role || 'user'}</p>
+            {plan && (
+              <span className={clsx(
+                'inline-block mt-1 px-1.5 py-0.5 rounded text-xs font-medium capitalize',
+                plan === 'owner' ? 'bg-amber-900/40 text-amber-300'
+                  : plan === 'free' ? 'bg-gray-700 text-gray-300'
+                  : 'bg-brand-600/30 text-brand-300',
+              )}>
+                {plan === 'owner' ? 'Owner · Unlimited' : `${plan} plan`}
+              </span>
+            )}
           </div>
         </div>
         <button
