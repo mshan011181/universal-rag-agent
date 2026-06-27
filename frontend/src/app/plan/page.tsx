@@ -50,12 +50,16 @@ export default function PlanPage() {
   const [loading, setLoading] = useState(true)
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [welcome, setWelcome] = useState(false)
 
   function refresh() {
     fetchUsage().then(setUsage).catch(() => {})
   }
   useEffect(() => {
     fetchUsage().then(setUsage).catch(() => {}).finally(() => setLoading(false))
+    if (typeof window !== 'undefined' && window.location.search.includes('welcome=1')) {
+      setWelcome(true)
+    }
   }, [])
 
   async function handleUpgrade(plan: string) {
@@ -110,6 +114,16 @@ export default function PlanPage() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">Your current plan, usage, and upgrade options.</p>
         </div>
+
+        {welcome && (
+          <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-lg px-4 py-3 text-sm text-brand-700">
+            <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              Welcome to MaximAI! You&apos;re on the <strong>Free</strong> plan — <strong>5 free questions</strong> to try it out.
+              Continue free, or upgrade below anytime for unlimited access.
+            </span>
+          </div>
+        )}
 
         {/* Current plan / usage */}
         <div className="card p-5">

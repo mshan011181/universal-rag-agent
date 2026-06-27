@@ -93,7 +93,9 @@ function LoginForm() {
         }
         router.push('/admin')
       } else {
-        router.push('/query')
+        // Brand-new users land on the plan/pricing screen first (free vs paid);
+        // returning users go straight to the app.
+        router.push(justRegistered ? '/plan?welcome=1' : '/query')
       }
     } catch (err: unknown) {
       let detail = 'Invalid credentials'
