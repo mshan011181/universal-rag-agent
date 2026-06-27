@@ -60,6 +60,24 @@ def _enforce_free_limit(user: dict) -> None:
         )
 
 
+@router.get("/usage")
+async def usage(user: dict = Depends(get_current_user_or_api_key)):
+    """Return the current user's plan and free-trial usage for the Plan page."""
+    from src.config import OWNER_EMAILS, FREE_QUESTION_LIMIT
+    email = _user_email(user["user_id"])
+    is_owner = email in OWNER_EMAILS
+    plan = (user.get("plan") or "free").lower()
+    unlimited = is_owner or plan != "free"
+    used = _user_question_count(user["user_id"])
+    return {
+        "plan": "owner" if is_owner else plan,
+        "unlimited": unlimited,
+        "used": used,
+        "limit": None if unlimited else FREE_QUESTION_LIMIT,
+        "remaining": None if unlimited else max(0, FREE_QUESTION_LIMIT - used),
+    }
+
+
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=4000)
     session_id: Optional[str] = Field(default="default", max_length=64)

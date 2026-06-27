@@ -1,0 +1,161 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import AppShell from '@/components/layout/AppShell'
+import { fetchUsage } from '@/lib/api'
+import type { UsageInfo } from '@/lib/api'
+import { CreditCard, Check, X, Crown, Sparkles } from 'lucide-react'
+import clsx from 'clsx'
+
+const PLANS = [
+  {
+    id: 'free', name: 'Free', price: '₹0', period: 'forever', badge: 'Limit: 5 questions',
+    features: [['Free Llama 3.3 70B model', true], ['Documents & text', true], ['Claude, media, evaluation', false]] as [string, boolean][],
+    highlight: false,
+  },
+  {
+    id: 'monthly', name: 'Monthly', price: '₹299', period: '/month', badge: '',
+    features: [['Unlimited questions', true], ['All models incl. Claude', true], ['Media, podcast, evaluation', true]] as [string, boolean][],
+    highlight: false,
+  },
+  {
+    id: 'quarterly', name: 'Quarterly', price: '₹799', period: '/3 months', badge: 'Save ~11%',
+    features: [['Everything in Monthly', true], ['Lower effective rate', true]] as [string, boolean][],
+    highlight: false,
+  },
+  {
+    id: 'yearly', name: 'Yearly', price: '₹2,499', period: '/year', badge: 'Save ~30%',
+    features: [['Everything in Monthly', true], ['2 months free', true], ['Priority processing', true]] as [string, boolean][],
+    highlight: true,
+  },
+]
+
+export default function PlanPage() {
+  const [usage, setUsage] = useState<UsageInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchUsage().then(setUsage).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const isOwner = usage?.plan === 'owner'
+  const pct = usage && usage.limit ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0
+
+  return (
+    <AppShell>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <CreditCard className="w-6 h-6 text-brand-600" /> Plan &amp; Usage
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Your current plan, usage, and upgrade options.</p>
+        </div>
+
+        {/* Current plan / usage */}
+        <div className="card p-5">
+          {loading ? (
+            <p className="text-sm text-gray-400">Loading usage…</p>
+          ) : isOwner ? (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Owner — Unlimited access</p>
+                <p className="text-xs text-gray-500">No limits on questions or features.</p>
+              </div>
+            </div>
+          ) : usage?.unlimited ? (
+            <div>
+              <p className="text-sm font-semibold text-gray-900 capitalize">{usage.plan} plan — Unlimited</p>
+              <p className="text-xs text-gray-500 mt-1">{usage.used} questions asked.</p>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-gray-900">Free plan</p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold text-gray-900">{usage?.used ?? 0}</span> / {usage?.limit ?? 5} questions used
+                </p>
+              </div>
+              <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={clsx('h-full rounded-full transition-all', pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-brand-500')}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {(usage?.remaining ?? 0) > 0
+                  ? `${usage?.remaining} free question${usage?.remaining === 1 ? '' : 's'} remaining.`
+                  : 'You have used all your free questions. Upgrade to continue.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Pricing cards */}
+        <div>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Upgrade options</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {PLANS.map((plan) => {
+              const isCurrent = (usage?.plan === plan.id) || (plan.id === 'free' && usage?.plan === 'free')
+              return (
+                <div
+                  key={plan.id}
+                  className={clsx('rounded-xl border p-4 bg-white flex flex-col',
+                    plan.highlight ? 'border-2 border-brand-500' : 'border-gray-200')}
+                >
+                  {plan.highlight && (
+                    <span className="self-start mb-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-brand-50 text-brand-700 text-xs font-medium">
+                      <Sparkles className="w-3 h-3" /> Best value
+                    </span>
+                  )}
+                  <p className="text-sm font-semibold text-gray-900">{plan.name}</p>
+                  <p className="mt-0.5">
+                    <span className="text-2xl font-bold text-gray-900">{plan.price}</span>
+                    <span className="text-xs text-gray-500"> {plan.period}</span>
+                  </p>
+                  {plan.badge && (
+                    <span className="self-start my-2 px-2 py-0.5 rounded bg-green-50 text-green-700 text-xs font-medium">{plan.badge}</span>
+                  )}
+                  <ul className="space-y-1 mt-2 mb-4 flex-1">
+                    {plan.features.map(([label, ok], i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                        {ok ? <Check className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" /> : <X className="w-3.5 h-3.5 text-gray-300 mt-0.5 shrink-0" />}
+                        <span>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {isOwner ? (
+                    <button disabled className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-400 cursor-not-allowed">
+                      Owner — unlimited
+                    </button>
+                  ) : isCurrent ? (
+                    <button disabled className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-500 cursor-not-allowed">
+                      Current plan
+                    </button>
+                  ) : plan.id === 'free' ? (
+                    <button disabled className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-400 cursor-not-allowed">
+                      Free
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      title="Online payments coming soon"
+                      className="w-full px-3 py-2 rounded-lg border border-brand-300 text-sm text-brand-600 opacity-70 cursor-not-allowed"
+                    >
+                      Upgrade (coming soon)
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            Online payments are being set up. To upgrade now, contact the app owner.
+          </p>
+        </div>
+      </div>
+    </AppShell>
+  )
+}

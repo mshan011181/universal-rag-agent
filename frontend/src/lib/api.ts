@@ -298,6 +298,20 @@ export async function submitQueryFromImage(
   return request('/api/query/from-image', { method: 'POST', body: form })
 }
 
+// ── Plan & Usage ────────────────────────────────────────────────────────────────
+
+export interface UsageInfo {
+  plan: string          // 'owner' | 'free' | 'monthly' | ...
+  unlimited: boolean
+  used: number
+  limit: number | null  // null when unlimited
+  remaining: number | null
+}
+
+export async function fetchUsage(): Promise<UsageInfo> {
+  return request('/api/query/usage')
+}
+
 // ── Answer Evaluation ───────────────────────────────────────────────────────────
 
 export interface EvalItem {
