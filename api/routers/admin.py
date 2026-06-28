@@ -188,3 +188,15 @@ async def get_pattern_performance(user: dict = Depends(require_role("admin"))):
         return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+@router.post("/migrate-vectors")
+async def migrate_vectors(admin: dict = Depends(require_role("admin"))):
+    """One-time: copy all vectors from Pinecone into pgvector (Postgres).
+    Run this BEFORE switching VECTOR_BACKEND to pgvector."""
+    from src.retrieval.pgvector_store import migrate_from_pinecone
+    try:
+        result = migrate_from_pinecone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Migration failed: {e}")
+    return {"migrated": result, "total": sum(result.values())}

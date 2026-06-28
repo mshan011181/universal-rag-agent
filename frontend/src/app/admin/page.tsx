@@ -6,7 +6,7 @@ import AppShell from '@/components/layout/AppShell'
 import {
   fetchAdminStats, fetchHealth, fetchAdminUsers,
   fetchAdminQueries, fetchAdminDocuments,
-  createAdminUser, deleteAdminUser, updateUserQuota,
+  createAdminUser, deleteAdminUser, updateUserQuota, migrateVectors,
 } from '@/lib/api'
 import type { AdminStats, AdminUser, AdminQuery, AdminDocument } from '@/types'
 import {
@@ -363,6 +363,7 @@ export default function AdminPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [panel, setPanel] = useState<'queries' | 'documents' | null>(null)
+  const [migrateMsg, setMigrateMsg] = useState<string>('')
 
   useEffect(() => {
     const role = getUserRole()
@@ -508,6 +509,33 @@ export default function AdminPage() {
               </table>
             </div>
           )}
+        </div>
+
+        {/* Maintenance — one-time vector migration */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Info className="w-4 h-4 text-brand-600" />
+            <h2 className="text-sm font-semibold text-gray-700">Maintenance</h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Copy all vectors from Pinecone into pgvector (Postgres). Run this once, then switch the
+            backend to pgvector.
+          </p>
+          <button
+            onClick={async () => {
+              setMigrateMsg('Migrating…')
+              try {
+                const r = await migrateVectors()
+                setMigrateMsg(`Migrated ${r.total} vectors across ${Object.keys(r.migrated).length} namespace(s).`)
+              } catch (e) {
+                setMigrateMsg(e instanceof Error ? e.message : 'Migration failed')
+              }
+            }}
+            className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Migrate vectors → pgvector
+          </button>
+          {migrateMsg && <p className="text-xs text-gray-600 mt-2">{migrateMsg}</p>}
         </div>
 
         {/* Models & Patterns reference */}

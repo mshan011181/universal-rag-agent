@@ -316,6 +316,10 @@ export async function deleteAccount(): Promise<{ deleted: boolean }> {
   return request('/api/user/account', { method: 'DELETE' })
 }
 
+export async function migrateVectors(): Promise<{ migrated: Record<string, number>; total: number }> {
+  return request('/api/admin/migrate-vectors', { method: 'POST' })
+}
+
 export interface CreateOrderResponse {
   order_id: string
   amount: number

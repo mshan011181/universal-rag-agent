@@ -20,6 +20,10 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "universal-rag")
 
+# Vector backend: "pinecone" (managed) or "pgvector" (Postgres extension, free,
+# reuses Cloud SQL). Switched to pgvector after the one-time data migration.
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "pinecone").lower()
+
 # Anthropic Claude — direct API (recommended for production enterprise)
 # LLM_PROVIDER=anthropic  →  uses this key + model
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

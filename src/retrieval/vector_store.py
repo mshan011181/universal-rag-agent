@@ -78,7 +78,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.config import (
     EMBEDDING_MODEL, EMBEDDING_DIM, CHUNK_SIZE, CHUNK_OVERLAP, CHUNK_SIZES, TOP_K,
-    TABLE_MAX_CHUNK, PINECONE_API_KEY, PINECONE_INDEX_NAME,
+    TABLE_MAX_CHUNK, PINECONE_API_KEY, PINECONE_INDEX_NAME, VECTOR_BACKEND,
 )
 
 _PINECONE_CLOUD = "aws"
@@ -1032,6 +1032,15 @@ def _delete_source_vectors(id_prefix: str, namespace: str) -> int:
     Returns the number of vectors deleted.
     """
     try:
+        if VECTOR_BACKEND == "pgvector":
+            from src.retrieval import pgvector_store
+            conn = pgvector_store._get_conn()
+            with conn.cursor() as cur:
+                # id_prefix is a literal stem; escape LIKE wildcards then match "<prefix>_%"
+                esc = id_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                cur.execute("DELETE FROM doc_chunks WHERE namespace=%s AND id LIKE %s",
+                            (namespace, esc + "\\_%"))
+                return cur.rowcount or 0
         index = _get_index()
         ids_to_delete: list[str] = []
         for page in index.list(prefix=id_prefix, namespace=namespace):
@@ -1361,7 +1370,6 @@ def ingest_file(
             _prog(pct, f"Embedding chunk {done}/{total_chunks}")
 
         # Upsert in batches with per-batch progress (92% → 99%)
-        index = _get_index()
         vectors = [
             {
                 "id": f"{id_prefix}_{i}",
@@ -1380,11 +1388,19 @@ def ingest_file(
             for i, (chunk, emb) in enumerate(zip(text_chunks, embeddings))
         ]
         total_vectors = len(vectors)
-        for start in range(0, total_vectors, UPSERT_BATCH_SIZE):
-            index.upsert(vectors=vectors[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
-            done = min(start + UPSERT_BATCH_SIZE, total_vectors)
-            pct = 92 + int((done / total_vectors) * 7)  # 92→99
-            _prog(pct, f"Uploading batch {done}/{total_vectors} vectors")
+        if VECTOR_BACKEND == "pgvector":
+            from src.retrieval import pgvector_store
+            rows = [{"id": v["id"], "embedding": v["values"], "metadata": v["metadata"]} for v in vectors]
+            for start in range(0, total_vectors, UPSERT_BATCH_SIZE):
+                pgvector_store.upsert(rows[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
+                done = min(start + UPSERT_BATCH_SIZE, total_vectors)
+                _prog(92 + int((done / total_vectors) * 7), f"Uploading batch {done}/{total_vectors} vectors")
+        else:
+            index = _get_index()
+            for start in range(0, total_vectors, UPSERT_BATCH_SIZE):
+                index.upsert(vectors=vectors[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
+                done = min(start + UPSERT_BATCH_SIZE, total_vectors)
+                _prog(92 + int((done / total_vectors) * 7), f"Uploading batch {done}/{total_vectors} vectors")
 
         return len(vectors)
 
@@ -1458,6 +1474,12 @@ def retrieve_by_source(filename: str, namespace: str = "default", k: int = 20) -
         f"audio:{base}",
     ]
     try:
+        if VECTOR_BACKEND == "pgvector":
+            from src.retrieval import pgvector_store
+            zero_vec = [0.0] * _get_embedder().get_sentence_embedding_dimension()
+            rows = pgvector_store.query(zero_vec, k, namespace, source_filters=candidates)
+            return [{"content": r["content"], "metadata": r["metadata"], "score": 0.9}
+                    for r in rows if r["content"]]
         # Use a dummy zero-vector; filter does the real work
         dim = _get_embedder().get_sentence_embedding_dimension()
         zero_vec = [0.0] * dim
@@ -1502,17 +1524,23 @@ def retrieve(query: str, k: int = TOP_K, namespace: str = "default",
     emb = _embed([query])[0]
     # Over-fetch so re-ranking has candidates to work with.
     fetch_k = max(k * 3, k + 5)
-    results = _get_index().query(vector=emb, top_k=fetch_k, namespace=namespace,
-                                 include_metadata=True)
 
-    cands = []
-    for match in results.get("matches", []):
-        score = round(match.get("score", 0.0), 4)
-        if score < min_score:
-            continue
-        meta = dict(match.get("metadata", {}))
-        content = meta.pop("content", "")
-        cands.append({"content": content, "metadata": meta, "score": score})
+    if VECTOR_BACKEND == "pgvector":
+        from src.retrieval import pgvector_store
+        rows = pgvector_store.query(emb, fetch_k, namespace)
+        cands = [{"content": r["content"], "metadata": r["metadata"], "score": r["score"]}
+                 for r in rows if r["score"] >= min_score]
+    else:
+        results = _get_index().query(vector=emb, top_k=fetch_k, namespace=namespace,
+                                     include_metadata=True)
+        cands = []
+        for match in results.get("matches", []):
+            score = round(match.get("score", 0.0), 4)
+            if score < min_score:
+                continue
+            meta = dict(match.get("metadata", {}))
+            content = meta.pop("content", "")
+            cands.append({"content": content, "metadata": meta, "score": score})
 
     if not cands:
         return []
@@ -1541,6 +1569,9 @@ def retrieve(query: str, k: int = TOP_K, namespace: str = "default",
 
 def collection_count(namespace: str = "default") -> int:
     try:
+        if VECTOR_BACKEND == "pgvector":
+            from src.retrieval import pgvector_store
+            return pgvector_store.count(namespace)
         stats = _get_index().describe_index_stats()
         ns = stats.get("namespaces", {}).get(namespace, {})
         return ns.get("vector_count", 0)
