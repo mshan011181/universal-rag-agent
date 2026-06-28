@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels, fetchAnswerAudio } from '@/lib/api'
+import { submitQuery, getIngestHistory, submitQueryFromImage, fetchModels, fetchAnswerAudio, downloadAnswerSlides } from '@/lib/api'
 import { queryStore } from '@/lib/querySession'
 import type { ImageQueryItem, ImageQueryResponse, ModelOption } from '@/lib/api'
 import type { QueryResponse, IngestedItem } from '@/types'
-import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2, Music, Video, Globe, Youtube, Image as ImageIcon } from 'lucide-react'
+import { Send, ChevronDown, ChevronUp, Zap, BookOpen, AlertCircle, Gauge, BarChart3, ChevronRight, FileText, Volume2, VolumeX, Pause, Play, Square, Filter, X, Mic, MicOff, Copy, Download, Check, Sparkles, Keyboard, Loader2, Music, Video, Globe, Youtube, Image as ImageIcon, Presentation } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -228,6 +228,24 @@ export default function QueryPage() {
   function cancelQuery() {
     queryStore.cancel()
     tts.stop()
+  }
+
+  // Download the answer as PowerPoint slides.
+  const [slidesLoading, setSlidesLoading] = useState(false)
+  async function downloadSlides() {
+    if (!result) return
+    setSlidesLoading(true)
+    try {
+      const blob = await downloadAnswerSlides(qsess.label || query, result.answer)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `maximai-answer-${Date.now()}.pptx`; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Could not generate slides. Please try again.')
+    } finally {
+      setSlidesLoading(false)
+    }
   }
 
   // Download the Q&A as an MP3 (podcast) via server-side TTS.
@@ -945,6 +963,15 @@ export default function QueryPage() {
                     >
                       <Download className="w-3.5 h-3.5" />
                       Save
+                    </button>
+                    <button
+                      onClick={downloadSlides}
+                      disabled={slidesLoading}
+                      title="Download this answer as PowerPoint slides"
+                      className="flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-brand-400 hover:text-brand-600 transition-colors text-xs disabled:opacity-60"
+                    >
+                      {slidesLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Presentation className="w-3.5 h-3.5" />}
+                      {slidesLoading ? 'Building…' : 'Slides'}
                     </button>
                   </div>
                 </div>

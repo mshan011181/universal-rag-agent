@@ -427,6 +427,32 @@ export async function cancelIngest(ingestId: string): Promise<{ status: string; 
   return request(`/api/ingest/${ingestId}/cancel`, { method: 'POST' })
 }
 
+function _authHeaders(json = true): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (json) h['Content-Type'] = 'application/json'
+  const tok = getAccessToken()
+  if (tok) h['Authorization'] = `Bearer ${tok}`
+  return h
+}
+
+/** Download the answer-evaluation results as a single PDF. */
+export async function downloadEvalPdf(result: EvalResponse): Promise<Blob> {
+  const res = await fetch(`${BASE}/api/query/evaluate/pdf`, {
+    method: 'POST', headers: _authHeaders(), body: JSON.stringify(result),
+  })
+  if (!res.ok) throw new Error('PDF generation failed')
+  return res.blob()
+}
+
+/** Download a PowerPoint (.pptx) of a question + answer. */
+export async function downloadAnswerSlides(question: string, answer: string): Promise<Blob> {
+  const res = await fetch(`${BASE}/api/query/slides`, {
+    method: 'POST', headers: _authHeaders(), body: JSON.stringify({ question, answer }),
+  })
+  if (!res.ok) throw new Error('Slide generation failed')
+  return res.blob()
+}
+
 /** Generate a downloadable MP3 (podcast) of the supplied text via server TTS. */
 export async function fetchAnswerAudio(text: string, language = 'American English'): Promise<Blob> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }

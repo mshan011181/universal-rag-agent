@@ -832,3 +832,129 @@ async def tts_endpoint(body: TTSRequest, user: dict = Depends(get_current_user_o
         media_type="audio/mpeg",
         headers={"Content-Disposition": 'attachment; filename="maximai-answer.mp3"'},
     )
+
+
+# ── Downloads: evaluation PDF + answer slides (PPTX) ──────────────────────────
+
+def _latin1(s: str) -> str:
+    """fpdf2 core fonts are latin-1; replace unsupported chars so export never fails."""
+    return (s or "").encode("latin-1", "replace").decode("latin-1")
+
+
+def _build_eval_pdf(data: "EvalResponse") -> bytes:
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, _latin1("MaximAI — Answer Evaluation Report"), ln=1)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, _latin1(f"Overall Score: {data.overall_score}/100   |   {data.total_questions} question(s)"), ln=1)
+    if data.note:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.multi_cell(0, 6, _latin1(data.note))
+    pdf.ln(2)
+
+    for i, r in enumerate(data.results, 1):
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.multi_cell(0, 7, _latin1(f"Q{i}: {r.question}"))
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, _latin1(f"Score: {r.score}/100  ({r.verdict})"), ln=1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, _latin1(f"Student answer: {r.student_answer or '(no answer)'}"))
+        if r.mistakes:
+            pdf.set_font("Helvetica", "B", 10); pdf.cell(0, 6, _latin1("Mistakes:"), ln=1)
+            pdf.set_font("Helvetica", "", 10)
+            for m in r.mistakes:
+                pdf.multi_cell(0, 6, _latin1(f"  - {m}"))
+        if r.corrections:
+            pdf.set_font("Helvetica", "B", 10); pdf.cell(0, 6, _latin1("Corrections:"), ln=1)
+            pdf.set_font("Helvetica", "", 10)
+            for c in r.corrections:
+                pdf.multi_cell(0, 6, _latin1(f"  - {c}"))
+        if r.feedback:
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.multi_cell(0, 6, _latin1(f"Feedback: {r.feedback}"))
+        pdf.ln(4)
+    return bytes(pdf.output())
+
+
+@router.post("/evaluate/pdf")
+async def evaluate_pdf(body: "EvalResponse", user: dict = Depends(get_current_user_or_api_key)):
+    """Return the evaluation results as a single downloadable PDF."""
+    try:
+        data = _build_eval_pdf(body)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="maximai-evaluation.pdf"'})
+
+
+class SlidesRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=4000)
+    answer: str = Field(..., min_length=1, max_length=40000)
+
+
+def _build_slides_pptx(question: str, answer: str) -> bytes:
+    import io
+    import re
+    from pptx import Presentation
+    from pptx.util import Pt
+
+    prs = Presentation()
+    # Title slide
+    s = prs.slides.add_slide(prs.slide_layouts[0])
+    s.shapes.title.text = "MaximAI — Answer"
+    try:
+        s.placeholders[1].text = question[:250]
+    except Exception:
+        pass
+
+    # Plain-text lines from the (markdown) answer; '#' headings start new slides.
+    raw_lines = [ln.rstrip() for ln in answer.splitlines()]
+    sections: list[tuple[str, list[str]]] = []
+    cur_title, cur_body = "Answer", []
+    for ln in raw_lines:
+        h = re.match(r'^\s{0,3}#{1,6}\s+(.*)', ln)
+        if h:
+            if cur_body:
+                sections.append((cur_title, cur_body))
+            cur_title, cur_body = h.group(1).strip()[:80] or "Answer", []
+        else:
+            t = re.sub(r'[*`>]', '', ln).strip()
+            if t:
+                cur_body.append(t)
+    if cur_body:
+        sections.append((cur_title, cur_body))
+    if not sections:
+        sections = [("Answer", [re.sub(r'[*`>#]', '', answer).strip()[:1500] or " "])]
+
+    # Each section -> one or more content slides (cap bullets/slide to fit).
+    for title, body in sections:
+        for j in range(0, len(body), 10):
+            chunk = body[j:j + 10]
+            cs = prs.slides.add_slide(prs.slide_layouts[1])
+            cs.shapes.title.text = title if j == 0 else f"{title} (cont.)"
+            tf = cs.placeholders[1].text_frame
+            tf.text = chunk[0][:200]
+            for line in chunk[1:]:
+                p = tf.add_paragraph()
+                p.text = line[:200]
+                p.font.size = Pt(16)
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
+@router.post("/slides")
+async def answer_slides(body: SlidesRequest, user: dict = Depends(get_current_user_or_api_key)):
+    """Return a PowerPoint (.pptx) of the question + answer."""
+    try:
+        data = _build_slides_pptx(body.question, body.answer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Slide generation failed: {e}")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": 'attachment; filename="maximai-answer.pptx"'},
+    )

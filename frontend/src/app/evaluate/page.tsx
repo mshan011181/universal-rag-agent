@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { evaluateAnswers, getIngestHistory } from '@/lib/api'
+import { evaluateAnswers, getIngestHistory, downloadEvalPdf } from '@/lib/api'
 import { evalStore } from '@/lib/querySession'
 import type { EvalResponse } from '@/lib/api'
 import type { IngestedItem } from '@/types'
-import { ClipboardCheck, FileText, Send, Loader2, AlertCircle, CheckCircle2, XCircle, ChevronDown, ChevronUp, Filter, X } from 'lucide-react'
+import { ClipboardCheck, FileText, Send, Loader2, AlertCircle, CheckCircle2, XCircle, ChevronDown, ChevronUp, Filter, X, Download } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -107,6 +107,23 @@ export default function EvaluatePage() {
       questionsFile.name,
       () => evaluateAnswers(questionsFile, answersFile, language, selectedSources),
     )
+  }
+
+  const [pdfLoading, setPdfLoading] = useState(false)
+  async function downloadPdf() {
+    if (!result) return
+    setPdfLoading(true)
+    try {
+      const blob = await downloadEvalPdf(result)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `maximai-evaluation-${Date.now()}.pdf`; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Could not generate the PDF. Please try again.')
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   function toggle(i: number) {
@@ -238,6 +255,14 @@ export default function EvaluatePage() {
               <div className="text-right">
                 <p className="text-sm text-gray-500">{result.total_questions} question(s)</p>
                 <p className="text-xs text-gray-400 mt-1">{result.note}</p>
+                <button
+                  onClick={downloadPdf}
+                  disabled={pdfLoading}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-600 hover:border-brand-400 hover:text-brand-600 transition-colors disabled:opacity-60"
+                >
+                  {pdfLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  {pdfLoading ? 'Preparing…' : 'Download PDF'}
+                </button>
               </div>
             </div>
 
