@@ -32,6 +32,16 @@ def _require_admin(user: dict) -> None:
         raise HTTPException(status_code=403, detail="Admin access required.")
 
 
+def _user_email(user_id: str) -> str | None:
+    """Look up a user's email (the JWT carries only user_id, not email)."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT email FROM users WHERE user_id=?", (user_id,)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 def _get_org(org_id: str) -> dict:
     with get_conn() as conn:
         row = conn.execute(
@@ -110,6 +120,7 @@ async def invite_member(body: InviteRequest, user: dict = Depends(get_current_us
     """Send an email invite to a new member (admin only)."""
     _require_admin(user)
 
+    inviter_email = _user_email(user["user_id"]) or "A team admin"
     email = body.email.lower().strip()
 
     # Check not already a member
@@ -136,7 +147,7 @@ async def invite_member(body: InviteRequest, user: dict = Depends(get_current_us
         conn.execute(
             """INSERT INTO org_invites (token, org_id, invited_email, invited_by, expires_at)
                VALUES (?,?,?,?,?)""",
-            (token, user["org_id"], email, user["email"], expires_at)
+            (token, user["org_id"], email, inviter_email, expires_at)
         )
         conn.commit()
 
@@ -148,9 +159,9 @@ async def invite_member(body: InviteRequest, user: dict = Depends(get_current_us
     org_name = org.get("org_name", "your team")
 
     # Send email (falls back silently if Resend not configured)
-    sent = send_org_invite(email, user["email"], org_name, invite_link)
+    sent = send_org_invite(email, inviter_email, org_name, invite_link)
 
-    write_audit("invite_sent", user_id=user["user_id"], email=user["email"],
+    write_audit("invite_sent", user_id=user["user_id"], email=inviter_email,
                 org_id=user["org_id"], detail={"invited_email": email, "email_sent": sent})
     return {
         "message": f"Invite sent to {email}",
@@ -210,6 +221,6 @@ async def remove_member(target_user_id: str, user: dict = Depends(get_current_us
         )
         conn.commit()
 
-    write_audit("member_removed", user_id=user["user_id"], email=user["email"],
+    write_audit("member_removed", user_id=user["user_id"], email=_user_email(user["user_id"]),
                 org_id=user["org_id"], detail={"removed_email": target["email"], "removed_user_id": target_user_id})
     return {"message": f"Removed {target['email']} from your organisation."}
