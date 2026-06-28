@@ -581,20 +581,38 @@ def _evaluate_answer(question: str, student_answer: str, reference_answer: str) 
     """Grade a student's answer against a reference answer; return a structured report."""
     import json
     prompt = (
-        "You are a strict but fair examiner. Grade the STUDENT ANSWER against the "
-        "REFERENCE ANSWER (which is derived from the source material) for the given "
-        "QUESTION. Award marks out of 100 based on correctness, completeness, and "
-        "use of correct concepts/steps.\n\n"
+        "You are a fair, question-aware examiner. Grade the STUDENT ANSWER out of 100.\n\n"
+        "GOLDEN RULES:\n"
+        "1. QUESTION-AWARE: Grade ONLY against what the QUESTION explicitly asks. The "
+        "REFERENCE may contain extra detail beyond the question — IGNORE any part the "
+        "question did not request. NEVER deduct marks for omitting information that was "
+        "not asked for (e.g. examples, applications, or implications the question never "
+        "mentioned).\n"
+        "2. REWARD CORRECT CONCEPTS: A correct core concept should already score high "
+        "(~80+). Missing OPTIONAL detail is at most a small deduction, not a heavy one. "
+        "Only require an example/derivation if the question literally asks for it.\n"
+        "3. NUMERICAL QUESTIONS (asks to calculate/find a value): award partial credit by "
+        "step — correct formula/approach 30, correct substitution 30, correct final value "
+        "30, correct units 10. VERIFY THE ARITHMETIC YOURSELF, step by step, before "
+        "judging. Do NOT trust the reference's number blindly — recompute independently; if "
+        "the reference's value looks wrong, grade against your own correct computation. If "
+        "the question asks for an AMOUNT/MAGNITUDE, do NOT deduct for a missing +/- sign.\n"
+        "4. CONCEPTUAL QUESTIONS: core concept 40, correct formula/principle 20, "
+        "explanation 15, example (ONLY if requested) 10, units/symbols 5, plus any numeric "
+        "part 10.\n"
+        "5. GROUND in the reference/source for facts; if the reference is insufficient, say "
+        "so honestly and grade on correct domain knowledge — be consistent (never call it "
+        "'insufficient context' yet still award full marks, or vice versa).\n\n"
         f"QUESTION:\n{question}\n\n"
-        f"REFERENCE ANSWER (ground truth from the documents):\n{reference_answer}\n\n"
+        f"REFERENCE ANSWER (from the documents — may include extra, unrequested detail):\n{reference_answer}\n\n"
         f"STUDENT ANSWER:\n{student_answer}\n\n"
         "Return ONLY valid JSON with this exact shape:\n"
         '{"score": <int 0-100>, "verdict": "<correct|partially correct|incorrect>", '
-        '"mistakes": ["<specific mistake>", ...], '
+        '"mistakes": ["<specific mistake actually relevant to the question>", ...], '
         '"corrections": ["<the correction for each mistake>", ...], '
-        '"feedback": "<one-paragraph overall feedback>"}\n'
-        "If the student answer is missing or empty, score 0. Be specific in mistakes "
-        "and corrections; keep arrays empty if the answer is fully correct."
+        '"feedback": "<one short paragraph: the rubric-based justification of the score>"}\n'
+        "If the student answer is missing or empty, score 0. Keep mistakes/corrections "
+        "empty when the answer is fully correct. Do not list omissions that were not asked."
     )
     try:
         from groq import Groq
