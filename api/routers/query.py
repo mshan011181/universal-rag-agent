@@ -583,6 +583,12 @@ def _evaluate_answer(question: str, student_answer: str, reference_answer: str) 
     prompt = (
         "You are a fair, question-aware examiner. Grade the STUDENT ANSWER out of 100.\n\n"
         "GOLDEN RULES:\n"
+        "0. GRADE BY MEANING, NOT WORDING: Judge whether the student's answer is "
+        "CONCEPTUALLY correct. Award full credit for correct answers written in the "
+        "student's OWN WORDS, even if the phrasing, order, or vocabulary differ from the "
+        "reference. NEVER penalise for not matching the reference's exact words, sentences, "
+        "or structure. Reward paraphrases, synonyms, and equivalent explanations. Only the "
+        "correctness of the meaning matters.\n"
         "1. QUESTION-AWARE: Grade ONLY against what the QUESTION explicitly asks. The "
         "REFERENCE may contain extra detail beyond the question — IGNORE any part the "
         "question did not request. NEVER deduct marks for omitting information that was "
