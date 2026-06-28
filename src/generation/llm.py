@@ -68,7 +68,8 @@ MODEL_REGISTRY: dict[str, tuple[str, str]] = {
     "Claude Haiku 4.5 (Fast)":     ("anthropic", "claude-haiku-4-5-20251001"),
     "Llama 3.3 70B (Free/Fast)":   ("groq",      "llama-3.3-70b-versatile"),
     "Llama 3.1 8B (Fastest)":      ("groq",      "llama-3.1-8b-instant"),
-    "Gemini 2.0 Flash (Cheap)":    ("vertexai",  "gemini-2.0-flash"),
+    "Gemini 2.5 Flash-Lite (Cheapest)": ("vertexai", "gemini-2.5-flash-lite"),
+    "Gemini 2.5 Flash (Quality)":       ("vertexai", "gemini-2.5-flash"),
 }
 
 # Extended metadata: context window (tokens) and pricing (USD per million tokens)
@@ -78,7 +79,8 @@ MODEL_METADATA: dict[str, dict] = {
     "claude-haiku-4-5-20251001":   {"context_k": 200, "input_usd_per_mtok": 0.8,  "output_usd_per_mtok": 4.0,  "free": False},
     "llama-3.3-70b-versatile":     {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
     "llama-3.1-8b-instant":        {"context_k": 128, "input_usd_per_mtok": 0.0,  "output_usd_per_mtok": 0.0,  "free": True},
-    "gemini-2.0-flash":            {"context_k": 1000, "input_usd_per_mtok": 0.10, "output_usd_per_mtok": 0.40, "free": False},
+    "gemini-2.5-flash-lite":       {"context_k": 1000, "input_usd_per_mtok": 0.10, "output_usd_per_mtok": 0.40, "free": False},
+    "gemini-2.5-flash":            {"context_k": 1000, "input_usd_per_mtok": 0.30, "output_usd_per_mtok": 2.50, "free": False},
 }
 
 # Reverse lookup: api_model_id → provider
