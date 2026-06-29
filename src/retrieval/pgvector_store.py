@@ -64,7 +64,7 @@ def ensure_schema() -> None:
                 embedding vector({EMBEDDING_DIM}),
                 metadata  JSONB
             )
-        """)
+        """)  # nosec B608 — EMBEDDING_DIM is an int constant, not user input
         cur.execute("CREATE INDEX IF NOT EXISTS doc_chunks_ns_idx ON doc_chunks(namespace)")
         cur.execute("CREATE INDEX IF NOT EXISTS doc_chunks_src_idx ON doc_chunks(namespace, source)")
         cur.execute("CREATE INDEX IF NOT EXISTS doc_chunks_embed_idx "
@@ -113,7 +113,7 @@ def query(embedding: list[float], k: int, namespace: str,
         where += " AND source = ANY(%s)"
         args.append(list(source_filters))
     args += [vec, k]
-    sql = (f"SELECT content, metadata, 1 - (embedding <=> %s) AS score "
+    sql = (f"SELECT content, metadata, 1 - (embedding <=> %s) AS score "  # nosec B608 — {where} is constant; values are parameterized
            f"FROM doc_chunks WHERE {where} "
            f"ORDER BY embedding <=> %s LIMIT %s")
     with conn.cursor() as cur:
