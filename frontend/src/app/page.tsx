@@ -7,8 +7,8 @@ import { Database, Check, X, Sparkles } from 'lucide-react'
 
 const PLANS = [
   {
-    id: 'free', name: 'Free', price: '$0', period: 'forever', badge: 'Limit: 5 questions', cta: 'Start free',
-    features: [['5 free questions', true], ['Free Llama 3.3 70B model', true], ['Documents & text', true], ['Claude, media, evaluation', false]] as [string, boolean][],
+    id: 'free', name: 'Free', price: '$0', period: 'forever', badge: 'Limit: 10 questions', cta: 'Start free',
+    features: [['10 free questions', true], ['Free Llama 3.3 70B model', true], ['Documents & text', true], ['Claude, media, evaluation', false]] as [string, boolean][],
     highlight: false,
   },
   {

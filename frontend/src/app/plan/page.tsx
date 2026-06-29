@@ -25,7 +25,7 @@ function loadRazorpay(): Promise<boolean> {
 
 const PLANS = [
   {
-    id: 'free', name: 'Free', price: '₹0', period: 'forever', badge: 'Limit: 5 questions',
+    id: 'free', name: 'Free', price: '₹0', period: 'forever', badge: 'Limit: 10 questions',
     features: [['Free Llama 3.3 70B model', true], ['Documents & text', true], ['Claude, media, evaluation', false]] as [string, boolean][],
     highlight: false,
   },
@@ -142,7 +142,7 @@ export default function PlanPage() {
           <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-lg px-4 py-3 text-sm text-brand-700">
             <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
-              Welcome to MaximAI! You&apos;re on the <strong>Free</strong> plan — <strong>5 free questions</strong> to try it out.
+              Welcome to MaximAI! You&apos;re on the <strong>Free</strong> plan — <strong>10 free questions</strong> to try it out.
               Continue free, or upgrade below anytime for unlimited access.
             </span>
           </div>
@@ -172,7 +172,7 @@ export default function PlanPage() {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-semibold text-gray-900">Free plan</p>
                 <p className="text-sm text-gray-600">
-                  <span className="font-semibold text-gray-900">{usage?.used ?? 0}</span> / {usage?.limit ?? 5} questions used
+                  <span className="font-semibold text-gray-900">{usage?.used ?? 0}</span> / {usage?.limit ?? 10} questions used
                 </p>
               </div>
               <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">

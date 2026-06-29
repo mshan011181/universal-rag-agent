@@ -69,7 +69,7 @@ SMTP_PASSWORD   = os.getenv("SMTP_PASSWORD", "")
 OWNER_EMAILS = {
     e.strip().lower() for e in os.getenv("OWNER_EMAILS", "").split(",") if e.strip()
 }
-FREE_QUESTION_LIMIT = int(os.getenv("FREE_QUESTION_LIMIT", "5"))
+FREE_QUESTION_LIMIT = int(os.getenv("FREE_QUESTION_LIMIT", "10"))
 
 # Razorpay payments (Phase 3). Key secret/webhook secret come from Secret Manager.
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
