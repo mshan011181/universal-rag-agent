@@ -577,8 +577,11 @@ def _extract_items_from_file(file_bytes: bytes, filename: str, content_type: str
     return _extract_questions_from_text(_extract_text_from_upload(file_bytes, filename, ctype))
 
 
-def _evaluate_answer(question: str, student_answer: str, reference_answer: str) -> dict:
-    """Grade a student's answer against a reference answer; return a structured report."""
+def _evaluate_answer(question: str, student_answer: str, reference_answer: str,
+                     model_override: str | None = None) -> dict:
+    """Grade a student's answer against a reference answer; return a structured report.
+    Grading runs through the selected model (model_override) via the shared LLM
+    layer, so token usage is recorded and any provider works."""
     import json
     prompt = (
         "You are a fair, question-aware examiner. Grade the STUDENT ANSWER out of 100.\n\n"
@@ -621,15 +624,10 @@ def _evaluate_answer(question: str, student_answer: str, reference_answer: str) 
         "empty when the answer is fully correct. Do not list omissions that were not asked."
     )
     try:
-        from groq import Groq
-        client = Groq()
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=2048,
-            temperature=0.0,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = response.choices[0].message.content.strip()
+        from src.generation.llm import get_llm, safe_invoke
+        from langchain_core.messages import HumanMessage
+        llm = get_llm(temperature=0.0, model_override=model_override)
+        raw = safe_invoke(llm, [HumanMessage(content=prompt)]).strip()
         start, end = raw.find("{"), raw.rfind("}") + 1
         data = json.loads(raw[start:end])
     except Exception as e:
@@ -662,6 +660,9 @@ class EvalResponse(BaseModel):
     total_questions: int
     results: list[EvalItem]
     note: str = ""
+    token_usage: Optional[TokenUsage] = None
+    evaluation_confidence: int = 0   # avg grounding of the reference answers (0-100)
+    model_used: str = ""
 
 
 @router.post("/evaluate", response_model=EvalResponse)
@@ -672,6 +673,7 @@ async def evaluate_answers(
     language: str = Form(default="American English"),
     session_id: str = Form(default="default"),
     source_filters: str = Form(default=""),
+    model: str = Form(default=""),
     user: dict = Depends(get_current_user_or_api_key),
 ):
     _enforce_free_limit(user)
@@ -704,17 +706,35 @@ async def evaluate_answers(
     namespace = user.get("org_id") or "default"
     scoped_session = f"{user['user_id']}:{session_id}"
 
+    from src.generation.llm import get_token_usage
+    model_override = model or None
+    tok_in = tok_out = tok_total = tok_calls = 0
+    tok_cost = 0.0
+    tok_model = ""
+    confidences: list[float] = []
+
     results: list[EvalItem] = []
     for i, q in enumerate(questions):
         student_answer = answers[i] if i < len(answers) else ""
-        # Reference answer from the ingested documents (RAG)
+        # Reference answer from the ingested documents (RAG), using the chosen model
         try:
             ref_resp, _ = ask(q, scoped_session, namespace=namespace, language=language,
-                              source_filters=filters, user_id=user["user_id"])
+                              source_filters=filters, user_id=user["user_id"],
+                              model_override=model_override)
             reference = ref_resp.answer_text
+            confidences.append(float(getattr(ref_resp, "quality_score", 0.0) or 0.0))
         except Exception as e:
             reference = f"(Could not generate reference answer: {e})"
-        ev = _evaluate_answer(q, student_answer, reference)
+        ev = _evaluate_answer(q, student_answer, reference, model_override=model_override)
+        # Accumulate token usage for this question (ask resets internally, grading adds).
+        qu = get_token_usage()
+        tok_in += int(qu.get("input_tokens", 0) or 0)
+        tok_out += int(qu.get("output_tokens", 0) or 0)
+        tok_total += int(qu.get("total_tokens", 0) or 0)
+        tok_calls += int(qu.get("llm_calls", 0) or 0)
+        tok_cost += float(qu.get("estimated_cost_usd", 0.0) or 0.0)
+        if qu.get("model"):
+            tok_model = str(qu["model"])
         results.append(EvalItem(
             question=q,
             student_answer=student_answer,
@@ -733,11 +753,22 @@ async def evaluate_answers(
     # Count this evaluation run as one metered question toward the free-trial limit.
     write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
                 detail={"kind": "answer_evaluation", "questions": len(questions)})
+    confidence = round(sum(confidences) / len(confidences) * 100) if confidences else 0
     return EvalResponse(
         overall_score=overall,
         total_questions=len(questions),
         results=results,
         note=note,
+        token_usage=TokenUsage(
+            input_tokens=tok_in,
+            output_tokens=tok_out,
+            total_tokens=tok_total,
+            llm_calls=tok_calls,
+            estimated_cost_usd=round(tok_cost, 6),
+            model=tok_model,
+        ),
+        evaluation_confidence=confidence,
+        model_used=tok_model or (model or "default"),
     )
 
 
@@ -876,6 +907,20 @@ def _build_eval_pdf(data: "EvalResponse") -> bytes:
         if r.feedback:
             line(f"Feedback: {r.feedback}", style="I")
         pdf.ln(4)
+
+    # Report footer: evaluation accuracy + model + token usage
+    pdf.ln(2)
+    line("Evaluation Summary", h=8, style="B", size=12)
+    line(f"Evaluation accuracy (grounding of reference answers): {data.evaluation_confidence}%", style="B")
+    if data.model_used:
+        line(f"Model used: {data.model_used}")
+    tu = data.token_usage
+    if tu:
+        line(
+            f"Token usage: {tu.total_tokens} total "
+            f"({tu.input_tokens} in / {tu.output_tokens} out), "
+            f"{tu.llm_calls} LLM call(s), est. cost ${tu.estimated_cost_usd:.4f}"
+        )
     return bytes(pdf.output())
 
 

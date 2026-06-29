@@ -354,11 +354,23 @@ export interface EvalItem {
   feedback: string
 }
 
+export interface EvalTokenUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  llm_calls: number
+  estimated_cost_usd: number
+  model: string
+}
+
 export interface EvalResponse {
   overall_score: number
   total_questions: number
   results: EvalItem[]
   note: string
+  token_usage?: EvalTokenUsage | null
+  evaluation_confidence?: number
+  model_used?: string
 }
 
 export async function evaluateAnswers(
@@ -367,12 +379,14 @@ export async function evaluateAnswers(
   language = 'American English',
   sourceFilters: string[] = [],
   sessionId = 'default',
+  model = '',
 ): Promise<EvalResponse> {
   const form = new FormData()
   form.append('questions_file', questionsFile)
   form.append('answers_file', answersFile)
   form.append('language', language)
   form.append('session_id', sessionId)
+  if (model) form.append('model', model)
   if (sourceFilters.length > 0) form.append('source_filters', JSON.stringify(sourceFilters))
   return request('/api/query/evaluate', { method: 'POST', body: form })
 }

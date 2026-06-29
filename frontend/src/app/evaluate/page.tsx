@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { evaluateAnswers, getIngestHistory, downloadEvalPdf } from '@/lib/api'
+import { evaluateAnswers, getIngestHistory, downloadEvalPdf, fetchModels } from '@/lib/api'
 import { evalStore } from '@/lib/querySession'
-import type { EvalResponse } from '@/lib/api'
+import type { EvalResponse, ModelOption } from '@/lib/api'
 import type { IngestedItem } from '@/types'
 import { ClipboardCheck, FileText, Send, Loader2, AlertCircle, CheckCircle2, XCircle, ChevronDown, ChevronUp, Filter, X, Download } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -64,6 +64,8 @@ export default function EvaluatePage() {
   const [questionsFile, setQuestionsFile] = useState<File | null>(null)
   const [answersFile, setAnswersFile] = useState<File | null>(null)
   const [language, setLanguage] = useState('American English')
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [selectedModel, setSelectedModel] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<EvalResponse | null>(null)
@@ -95,6 +97,10 @@ export default function EvaluatePage() {
     }).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetchModels().then(setModels).catch(() => {})
+  }, [])
+
   const toggleSource = (name: string) =>
     setSelectedSources(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name])
 
@@ -105,7 +111,7 @@ export default function EvaluatePage() {
     // Run via the persistent store so the evaluation + result survive navigation.
     await evalStore.run(
       questionsFile.name,
-      () => evaluateAnswers(questionsFile, answersFile, language, selectedSources),
+      () => evaluateAnswers(questionsFile, answersFile, language, selectedSources, 'default', selectedModel),
     )
   }
 
@@ -153,15 +159,28 @@ export default function EvaluatePage() {
             <FilePicker label="1 · Upload Questions" file={questionsFile} onPick={setQuestionsFile} />
             <FilePicker label="2 · Upload Answers" file={answersFile} onPick={setAnswersFile} />
           </div>
-          <div className="md:w-1/2">
-            <label className="label">Answer Language</label>
-            <select className="input" value={language} onChange={(e) => setLanguage(e.target.value)}>
-              {LANGUAGE_OPTIONS.map(({ group, options }) => (
-                <optgroup key={group} label={group}>
-                  {options.map((l) => <option key={l} value={l}>{l}</option>)}
-                </optgroup>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Answer Language</label>
+              <select className="input" value={language} onChange={(e) => setLanguage(e.target.value)}>
+                {LANGUAGE_OPTIONS.map(({ group, options }) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Model</label>
+              <select className="input" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+                <option value="">Default (Llama 3.3 70B — Free)</option>
+                {models.map((m) => (
+                  <option key={m.model_id} value={m.model_id}>
+                    {m.label} · {m.context_k}K ctx · {m.free ? 'Free' : `$${m.input_usd_per_mtok}/$${m.output_usd_per_mtok} per M tok`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           {/* Source filter — scope evaluation to specific ingested files */}
           {allFiles.length > 0 && (
@@ -263,6 +282,36 @@ export default function EvaluatePage() {
                   {pdfLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   {pdfLoading ? 'Preparing…' : 'Download PDF'}
                 </button>
+              </div>
+            </div>
+
+            {/* Evaluation summary: accuracy, model, token usage */}
+            <div className="card p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Evaluation accuracy</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {result.evaluation_confidence ?? 0}<span className="text-base text-gray-400">%</span>
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">Grounding of the reference answers in your documents.</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Model</p>
+                <p className="text-sm font-medium text-gray-800 mt-1 break-all">{result.model_used || 'default'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Token usage</p>
+                {result.token_usage ? (
+                  <div className="text-sm text-gray-700 mt-1 space-y-0.5">
+                    <p>{result.token_usage.total_tokens.toLocaleString()} total
+                      <span className="text-gray-400"> ({result.token_usage.input_tokens.toLocaleString()} in / {result.token_usage.output_tokens.toLocaleString()} out)</span>
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {result.token_usage.llm_calls} LLM call(s) · est. ${result.token_usage.estimated_cost_usd.toFixed(4)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 mt-1">—</p>
+                )}
               </div>
             </div>
 
