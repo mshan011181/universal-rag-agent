@@ -842,45 +842,45 @@ def _latin1(s: str) -> str:
 
 
 def _build_eval_pdf(data: "EvalResponse") -> bytes:
+    # Explicit width (effective page width) + cursor control — robust on fpdf2 2.8+
+    # (where the deprecated `ln=` was removed and bare multi_cell(0,...) can misbehave).
     from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, _latin1("MaximAI — Answer Evaluation Report"), ln=1)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, _latin1(f"Overall Score: {data.overall_score}/100   |   {data.total_questions} question(s)"), ln=1)
+    W = pdf.epw  # effective page width (page minus margins)
+
+    def line(text: str, h: float = 6, style: str = "", size: int = 10):
+        pdf.set_font("Helvetica", style, size)
+        pdf.multi_cell(W, h, _latin1(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    line("MaximAI - Answer Evaluation Report", h=10, style="B", size=16)
+    line(f"Overall Score: {data.overall_score}/100   |   {data.total_questions} question(s)", h=8, style="B", size=12)
     if data.note:
-        pdf.set_font("Helvetica", "I", 10)
-        pdf.multi_cell(0, 6, _latin1(data.note))
+        line(data.note, style="I")
     pdf.ln(2)
 
     for i, r in enumerate(data.results, 1):
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.multi_cell(0, 7, _latin1(f"Q{i}: {r.question}"))
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, _latin1(f"Score: {r.score}/100  ({r.verdict})"), ln=1)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 6, _latin1(f"Student answer: {r.student_answer or '(no answer)'}"))
+        line(f"Q{i}: {r.question}", h=7, style="B", size=12)
+        line(f"Score: {r.score}/100  ({r.verdict})", h=7, style="B", size=11)
+        line(f"Student answer: {r.student_answer or '(no answer)'}")
         if r.mistakes:
-            pdf.set_font("Helvetica", "B", 10); pdf.cell(0, 6, _latin1("Mistakes:"), ln=1)
-            pdf.set_font("Helvetica", "", 10)
+            line("Mistakes:", style="B")
             for m in r.mistakes:
-                pdf.multi_cell(0, 6, _latin1(f"  - {m}"))
+                line(f"  - {m}")
         if r.corrections:
-            pdf.set_font("Helvetica", "B", 10); pdf.cell(0, 6, _latin1("Corrections:"), ln=1)
-            pdf.set_font("Helvetica", "", 10)
+            line("Corrections:", style="B")
             for c in r.corrections:
-                pdf.multi_cell(0, 6, _latin1(f"  - {c}"))
+                line(f"  - {c}")
         if r.feedback:
-            pdf.set_font("Helvetica", "I", 10)
-            pdf.multi_cell(0, 6, _latin1(f"Feedback: {r.feedback}"))
+            line(f"Feedback: {r.feedback}", style="I")
         pdf.ln(4)
     return bytes(pdf.output())
 
 
 @router.post("/evaluate/pdf")
-async def evaluate_pdf(body: "EvalResponse", user: dict = Depends(get_current_user_or_api_key)):
+async def evaluate_pdf(body: EvalResponse, user: dict = Depends(get_current_user_or_api_key)):
     """Return the evaluation results as a single downloadable PDF."""
     try:
         data = _build_eval_pdf(body)
