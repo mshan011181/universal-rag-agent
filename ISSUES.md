@@ -114,6 +114,7 @@ section. (Repo: `mshan011181/universal-rag-agent-enterprise`.)
 - **MCQ fix:** options (a/b/c/d) were treated as separate questions → bundle each question's options together (prompt + parser safety net). `fd9f7df`
 - **Evaluation quality (per ChatGPT feedback):** question-aware grading, structured rubric, careful numerics, sign/magnitude leniency. `debd7b0`
 - **Meaning-based grading:** full credit for correct answers in the student's own words; never penalise wording. `e6c19c3`
+- **Model selection + metrics:** model dropdown (same list as Ask Your Data) drives the reference answer and grading; report (on-screen + PDF) now shows **token usage** and **evaluation accuracy** (avg grounding of reference answers). `2d8149f`
 
 ---
 
