@@ -14,6 +14,27 @@ def _ensure_init():
         _initialized = True
 
 
+def _translate_to_english(query: str) -> str:
+    """Translate a non-English question to English for retrieval.
+
+    The embedder (all-MiniLM-L6-v2) is English-only, so a non-English query
+    won't match English content. Translating first lets users ask in any
+    language over English-ingested data. Best-effort: returns the original
+    query on any failure.
+    """
+    try:
+        from src.generation.llm import get_llm, safe_invoke
+        from langchain_core.messages import HumanMessage
+        prompt = (
+            "Translate the following question to English. Return ONLY the "
+            "translated question, with no preamble or quotes.\n\n" + query
+        )
+        out = safe_invoke(get_llm(temperature=0.0), [HumanMessage(content=prompt)]).strip()
+        return out or query
+    except Exception:
+        return query
+
+
 def ask(
     query: str,
     session_id: str = "default",
@@ -24,9 +45,15 @@ def ask(
     force_bi: bool = False,
     model_override: str | None = None,
     no_cache: bool = False,
+    question_language: str = "",
 ) -> RAGAgentResponse:
     _ensure_init()
     reset_token_usage()
+    # Non-English question over English content: translate to English so retrieval
+    # (English-only embedder) can find the right passages. The answer language is
+    # still controlled separately by `language`.
+    if question_language and question_language.strip().lower() not in ("", "auto", "english", "american english", "british english"):
+        query = _translate_to_english(query)
     analysis = analyze_query(query, session_id, force_bi=force_bi)
     analysis["namespace"] = namespace
     analysis["language"] = language

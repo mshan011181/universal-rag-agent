@@ -115,6 +115,13 @@ section. (Repo: `mshan011181/universal-rag-agent-enterprise`.)
 - **Evaluation quality (per ChatGPT feedback):** question-aware grading, structured rubric, careful numerics, sign/magnitude leniency. `debd7b0`
 - **Meaning-based grading:** full credit for correct answers in the student's own words; never penalise wording. `e6c19c3`
 - **Model selection + metrics:** model dropdown (same list as Ask Your Data) drives the reference answer and grading; report (on-screen + PDF) now shows **token usage** and **evaluation accuracy** (avg grounding of reference answers). `2d8149f`
+- **PDF showed `?` for math symbols:** core Helvetica font is latin-1, so Greek/subscripts/arrows (ε₀, q₁q₂, →, r̂) were replaced with `?`. **Fix:** bundle DejaVuSans (regular/bold/oblique) in `api/assets/fonts/` and embed it as a Unicode TTF in the evaluation PDF.
+
+---
+
+## 9. Multilingual questions (Ask Your Data)
+
+- **Question-language selector + cross-lingual retrieval:** added a "Question Language" dropdown on Ask Your Data. The embedder (`all-MiniLM-L6-v2`) is English-only, so a non-English question is **translated to English** (one LLM call in `agent.ask`) before retrieval; the answer language stays separately controlled. Lets users ask in Tamil/Hindi/etc. over English-ingested data without re-embedding.
 
 ---
 

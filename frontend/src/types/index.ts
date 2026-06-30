@@ -20,6 +20,7 @@ export interface QueryRequest {
   force_bi?: boolean
   model?: string              // api_model_id — e.g. "claude-sonnet-4-6"
   no_cache?: boolean          // force a fresh answer, bypassing the cache
+  question_language?: string  // language of the question (translated to English for retrieval)
 }
 
 export interface TokenUsage {

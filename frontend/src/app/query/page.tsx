@@ -205,6 +205,21 @@ export default function QueryPage() {
     }
   }
 
+  // Question language — the language you ask in. Non-English questions are
+  // translated to English for retrieval (the embedder is English-only).
+  const [questionLanguage, setQuestionLanguage] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('rag_question_language') || 'English'
+    }
+    return 'English'
+  })
+  const handleQuestionLanguageChange = (lang: string) => {
+    setQuestionLanguage(lang)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rag_question_language', lang)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
@@ -221,6 +236,7 @@ export default function QueryPage() {
       source_filters: selectedSources.length > 0 ? selectedSources : undefined,
       model: selectedModel || undefined,
       no_cache: forceFresh,
+      question_language: questionLanguage || undefined,
     }, signal))
   }
 
@@ -635,6 +651,34 @@ export default function QueryPage() {
                       </optgroup>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="label flex items-center gap-1.5">
+                    Question Language
+                    {questionLanguage !== 'English' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-brand-100 text-brand-700">
+                        {questionLanguage}
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    className="input"
+                    value={questionLanguage}
+                    onChange={(e) => handleQuestionLanguageChange(e.target.value)}
+                  >
+                    <option value="English">English (default)</option>
+                    {LANGUAGE_OPTIONS.map(({ group, options }) => (
+                      <optgroup key={group} label={group}>
+                        {options.map((lang) => (
+                          <option key={lang} value={lang}>{lang}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Ask in any language — non-English questions are translated to English to search your (English) data.
+                  </p>
                 </div>
               </div>
 

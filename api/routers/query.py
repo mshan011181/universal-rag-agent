@@ -91,6 +91,7 @@ class QueryRequest(BaseModel):
     force_bi: bool = False
     model: Optional[str] = Field(default=None, max_length=100)  # api_model_id from MODEL_REGISTRY
     no_cache: bool = False  # force a fresh answer, bypassing the verified-knowledge cache
+    question_language: str = Field(default="", max_length=50)  # language of the question (translated to English for retrieval)
 
 
 class TokenUsage(BaseModel):
@@ -208,6 +209,7 @@ async def query_endpoint(
             force_bi=body.force_bi,
             model_override=body.model or None,
             no_cache=body.no_cache,
+            question_language=body.question_language,
         )
     except Exception as e:
         err_str = str(e).lower()
@@ -867,9 +869,33 @@ async def tts_endpoint(body: TTSRequest, user: dict = Depends(get_current_user_o
 
 # ── Downloads: evaluation PDF + answer slides (PPTX) ──────────────────────────
 
+import os as _os
+
+_FONT_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "fonts")
+
+
 def _latin1(s: str) -> str:
     """fpdf2 core fonts are latin-1; replace unsupported chars so export never fails."""
     return (s or "").encode("latin-1", "replace").decode("latin-1")
+
+
+def _register_unicode_font(pdf) -> str:
+    """Register the bundled DejaVuSans (covers Greek, subscripts, arrows, math).
+
+    Returns the family name to use, or "Helvetica" if the font files are missing
+    (in which case text falls back to latin-1 replacement).
+    """
+    reg = _os.path.join(_FONT_DIR, "DejaVuSans.ttf")
+    bold = _os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
+    obl = _os.path.join(_FONT_DIR, "DejaVuSans-Oblique.ttf")
+    if not _os.path.exists(reg):
+        return "Helvetica"
+    pdf.add_font("DejaVu", "", reg)
+    if _os.path.exists(bold):
+        pdf.add_font("DejaVu", "B", bold)
+    if _os.path.exists(obl):
+        pdf.add_font("DejaVu", "I", obl)
+    return "DejaVu"
 
 
 def _build_eval_pdf(data: "EvalResponse") -> bytes:
@@ -881,10 +907,15 @@ def _build_eval_pdf(data: "EvalResponse") -> bytes:
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     W = pdf.epw  # effective page width (page minus margins)
+    family = _register_unicode_font(pdf)
+    # With a Unicode TTF, pass text through unchanged so math symbols (e0, subscripts,
+    # arrows, hats) render correctly; only sanitize when falling back to a core font.
+    unicode_ok = family != "Helvetica"
 
     def line(text: str, h: float = 6, style: str = "", size: int = 10):
-        pdf.set_font("Helvetica", style, size)
-        pdf.multi_cell(W, h, _latin1(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(family, style, size)
+        pdf.multi_cell(W, h, text if unicode_ok else _latin1(text),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     line("MaximAI - Answer Evaluation Report", h=10, style="B", size=16)
     line(f"Overall Score: {data.overall_score}/100   |   {data.total_questions} question(s)", h=8, style="B", size=12)
