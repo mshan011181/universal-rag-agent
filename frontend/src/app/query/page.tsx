@@ -55,6 +55,36 @@ const LANGUAGE_OPTIONS = [
 
 const ALL_LANGUAGES = LANGUAGE_OPTIONS.flatMap(g => g.options)
 
+// Languages supported by Google Input Tools phonetic transliteration
+// (type in Latin letters → native script). Maps language name → ITC code.
+const TRANSLIT_ITC: Record<string, string> = {
+  Tamil: 'ta-t-i0-und', Hindi: 'hi-t-i0-und', Telugu: 'te-t-i0-und',
+  Kannada: 'kn-t-i0-und', Malayalam: 'ml-t-i0-und', Marathi: 'mr-t-i0-und',
+  Bengali: 'bn-t-i0-und', Greek: 'el-t-i0-und', Russian: 'ru-t-i0-und',
+  Arabic: 'ar-t-i0-und',
+}
+
+// Transliterate one romanized token to the target script via Google Input Tools.
+// Best-effort: returns the original token on any failure (offline, blocked, etc.).
+async function transliterateWord(word: string, itc: string): Promise<string> {
+  try {
+    const url = `https://inputtools.google.com/request?text=${encodeURIComponent(word)}&itc=${itc}&num=1&cp=0&cs=1&ie=utf-8&oe=utf-8`
+    const res = await fetch(url)
+    const data = await res.json()
+    if (data[0] === 'SUCCESS' && data[1]?.[0]?.[1]?.[0]) return data[1][0][1][0]
+  } catch { /* keep original on failure */ }
+  return word
+}
+
+// Transliterate every Latin-letter token in a string, leaving punctuation and
+// already-native tokens untouched. Used as a safety pass on submit.
+async function transliterateText(text: string, itc: string): Promise<string> {
+  const parts = text.split(/(\s+)/)  // keep separators
+  const out = await Promise.all(parts.map(p =>
+    /^[A-Za-z][A-Za-z0-9']*$/.test(p) ? transliterateWord(p, itc) : Promise.resolve(p)))
+  return out.join('')
+}
+
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B'
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -220,13 +250,50 @@ export default function QueryPage() {
     }
   }
 
+  // In-app transliteration: type Latin letters → native script (e.g. Thanglish → Tamil).
+  const [translitOn, setTranslitOn] = useState(false)
+  const questionRef = useRef<HTMLTextAreaElement>(null)
+  const translitSupported = !!TRANSLIT_ITC[questionLanguage]
+  // Auto-enable when a supported question language is chosen; off otherwise.
+  useEffect(() => { setTranslitOn(!!TRANSLIT_ITC[questionLanguage]) }, [questionLanguage])
+
+  // Convert the word just before the caret when the user presses space.
+  async function handleQuestionKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    const itc = TRANSLIT_ITC[questionLanguage]
+    if (!translitOn || !itc || e.key !== ' ') return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((e.nativeEvent as any).isComposing) return
+    const ta = e.currentTarget
+    const pos = ta.selectionStart ?? ta.value.length
+    const before = ta.value.slice(0, pos)
+    const after = ta.value.slice(pos)
+    const m = before.match(/([A-Za-z][A-Za-z0-9']*)$/)
+    if (!m) return
+    e.preventDefault()
+    const native = await transliterateWord(m[1], itc)
+    const newBefore = before.slice(0, before.length - m[1].length) + native + ' '
+    setQuery(newBefore + after)
+    const caret = newBefore.length
+    requestAnimationFrame(() => {
+      const el = questionRef.current
+      if (el) { el.selectionStart = el.selectionEnd = caret; el.focus() }
+    })
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
     setError('')
     setShowSources(false)
     tts.stop()
-    const q = query.trim()
+    let q = query.trim()
+    // Safety pass: convert any remaining romanized tokens (e.g. the last word the
+    // user didn't end with a space) to the native script before sending.
+    const itc = TRANSLIT_ITC[questionLanguage]
+    if (translitOn && itc && /[A-Za-z]/.test(q)) {
+      q = (await transliterateText(q, itc)).trim()
+      setQuery(q)
+    }
     // Run via the persistent store so the request + result survive navigation.
     // Loading/result/error and history are mirrored back by the effect above.
     await queryStore.run(q, (signal) => submitQuery({
@@ -536,11 +603,15 @@ export default function QueryPage() {
                 <label className="label">Question</label>
                 <div className="relative">
                   <textarea
+                    ref={questionRef}
                     className={`input resize-none pr-36 ${voice.listening ? 'border-red-300 ring-1 ring-red-200' : ''}`}
                     rows={3}
-                    placeholder={voice.listening ? '🎤 Listening… speak your question…' : 'What would you like to know?'}
+                    placeholder={voice.listening ? '🎤 Listening… speak your question…'
+                      : translitOn ? `Type in English letters — ${questionLanguage} appears as you press space…`
+                      : 'What would you like to know?'}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleQuestionKeyDown}
                     required
                   />
                   {/* Mic button — pinned inside textarea top-right */}
@@ -679,6 +750,20 @@ export default function QueryPage() {
                   <p className="text-xs text-gray-400 mt-1">
                     Ask in any language — non-English questions are translated to English to search your (English) data.
                   </p>
+                  {translitSupported && (
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={translitOn}
+                        onChange={(e) => setTranslitOn(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <span>
+                        Type in {questionLanguage} using English letters; press space to convert.
+                        {questionLanguage === 'Tamil' && <> (e.g. <em>vanakkam</em> → வணக்கம்)</>}
+                      </span>
+                    </label>
+                  )}
                 </div>
               </div>
 
