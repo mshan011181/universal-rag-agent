@@ -66,6 +66,8 @@ export default function EvaluatePage() {
   const [language, setLanguage] = useState('American English')
   const [models, setModels] = useState<ModelOption[]>([])
   const [selectedModel, setSelectedModel] = useState('')
+  const [rubric, setRubric] = useState('')
+  const [showRubric, setShowRubric] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<EvalResponse | null>(null)
@@ -111,7 +113,7 @@ export default function EvaluatePage() {
     // Run via the persistent store so the evaluation + result survive navigation.
     await evalStore.run(
       questionsFile.name,
-      () => evaluateAnswers(questionsFile, answersFile, language, selectedSources, 'default', selectedModel),
+      () => evaluateAnswers(questionsFile, answersFile, language, selectedSources, 'default', selectedModel, rubric),
     )
   }
 
@@ -182,6 +184,39 @@ export default function EvaluatePage() {
               </select>
             </div>
           </div>
+
+          {/* Optional grading rubric — overrides the default point split */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowRubric(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+            >
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="w-4 h-4 text-brand-600" />
+                <span>Grading rubric (optional)</span>
+                {rubric.trim() && (
+                  <span className="px-2 py-0.5 rounded-full bg-brand-600 text-white text-xs font-semibold">set</span>
+                )}
+              </div>
+              {showRubric ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+            {showRubric && (
+              <div className="px-4 py-3 bg-white">
+                <p className="text-xs text-gray-500 mb-2">
+                  Paste your criteria and weights — grading will follow them instead of the default. Leave blank to use the default rubric.
+                </p>
+                <textarea
+                  className="input resize-none text-sm"
+                  rows={4}
+                  placeholder={"e.g.\nCorrect concept — 40\nFormula & derivation — 30\nWorked example — 20\nUnits & notation — 10"}
+                  value={rubric}
+                  onChange={(e) => setRubric(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Source filter — scope evaluation to specific ingested files */}
           {allFiles.length > 0 && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -314,6 +349,23 @@ export default function EvaluatePage() {
                 )}
               </div>
             </div>
+
+            {/* Learning-gap analysis */}
+            {result.gap_analysis && (
+              <div className="card p-5 border-l-4 border-l-amber-400">
+                <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500" /> Learning-Gap Analysis
+                </p>
+                {result.weak_questions && result.weak_questions.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Weakest questions: {result.weak_questions.map(n => `Q${n}`).join(', ')}
+                  </p>
+                )}
+                <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">
+                  {result.gap_analysis}
+                </div>
+              </div>
+            )}
 
             {/* Per-question report */}
             {result.results.map((r, i) => (

@@ -580,13 +580,23 @@ def _extract_items_from_file(file_bytes: bytes, filename: str, content_type: str
 
 
 def _evaluate_answer(question: str, student_answer: str, reference_answer: str,
-                     model_override: str | None = None) -> dict:
+                     model_override: str | None = None, rubric: str = "") -> dict:
     """Grade a student's answer against a reference answer; return a structured report.
     Grading runs through the selected model (model_override) via the shared LLM
-    layer, so token usage is recorded and any provider works."""
+    layer, so token usage is recorded and any provider works. If a rubric is
+    supplied, grading follows the teacher's criteria/weights instead of the
+    default rubric."""
     import json
+    rubric_block = ""
+    if rubric.strip():
+        rubric_block = (
+            "TEACHER'S RUBRIC (authoritative — grade strictly by these criteria and "
+            "weights; they OVERRIDE the default point split below):\n"
+            f"{rubric.strip()}\n\n"
+        )
     prompt = (
         "You are a fair, question-aware examiner. Grade the STUDENT ANSWER out of 100.\n\n"
+        + rubric_block +
         "GOLDEN RULES:\n"
         "0. GRADE BY MEANING, NOT WORDING: Judge whether the student's answer is "
         "CONCEPTUALLY correct. Award full credit for correct answers written in the "
@@ -665,6 +675,8 @@ class EvalResponse(BaseModel):
     token_usage: Optional[TokenUsage] = None
     evaluation_confidence: int = 0   # avg grounding of the reference answers (0-100)
     model_used: str = ""
+    gap_analysis: str = ""           # learning-gap summary: weak topics + recommendations
+    weak_questions: list[int] = []   # 1-based indices of the lowest-scoring questions
 
 
 @router.post("/evaluate", response_model=EvalResponse)
@@ -676,6 +688,7 @@ async def evaluate_answers(
     session_id: str = Form(default="default"),
     source_filters: str = Form(default=""),
     model: str = Form(default=""),
+    rubric: str = Form(default=""),
     user: dict = Depends(get_current_user_or_api_key),
 ):
     _enforce_free_limit(user)
@@ -727,7 +740,7 @@ async def evaluate_answers(
             confidences.append(float(getattr(ref_resp, "quality_score", 0.0) or 0.0))
         except Exception as e:
             reference = f"(Could not generate reference answer: {e})"
-        ev = _evaluate_answer(q, student_answer, reference, model_override=model_override)
+        ev = _evaluate_answer(q, student_answer, reference, model_override=model_override, rubric=rubric)
         # Accumulate token usage for this question (ask resets internally, grading adds).
         qu = get_token_usage()
         tok_in += int(qu.get("input_tokens", 0) or 0)
@@ -756,6 +769,10 @@ async def evaluate_answers(
     write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
                 detail={"kind": "answer_evaluation", "questions": len(questions)})
     confidence = round(sum(confidences) / len(confidences) * 100) if confidences else 0
+    # Learning-gap analysis: weakest questions + an LLM summary of common gaps.
+    weak = sorted(range(len(results)), key=lambda i: results[i].score)
+    weak_questions = [i + 1 for i in weak if results[i].score < 60][:5]
+    gap_analysis = _build_gap_analysis(results, model_override) if results else ""
     return EvalResponse(
         overall_score=overall,
         total_questions=len(questions),
@@ -771,7 +788,146 @@ async def evaluate_answers(
         ),
         evaluation_confidence=confidence,
         model_used=tok_model or (model or "default"),
+        gap_analysis=gap_analysis,
+        weak_questions=weak_questions,
     )
+
+
+def _build_gap_analysis(results: list, model_override: str | None) -> str:
+    """Summarize a class/student's weak areas and give targeted recommendations,
+    based on the per-question scores, mistakes, and feedback. Best-effort."""
+    weakish = [r for r in results if r.score < 70]
+    if not weakish:
+        return "Strong overall — no significant learning gaps detected across these questions."
+    lines = []
+    for r in weakish[:12]:
+        m = "; ".join(r.mistakes[:3]) if r.mistakes else r.feedback
+        lines.append(f"- Q: {r.question[:160]} | score {r.score} | issues: {m[:220]}")
+    body = "\n".join(lines)
+    prompt = (
+        "You are an experienced teacher analysing exam results to find LEARNING GAPS. "
+        "Below are the questions the student(s) struggled with, their scores, and the "
+        "mistakes. Identify the recurring weak TOPICS/CONCEPTS (grouped, not per-question) "
+        "and give concrete, prioritised teaching recommendations.\n\n"
+        f"{body}\n\n"
+        "Return a concise report with two short sections using these exact headings:\n"
+        "Weak areas:\n- <topic> — <why, 1 line>\n(3-6 bullets)\n\n"
+        "Recommendations:\n- <specific action a teacher can take>\n(3-6 bullets)\n"
+        "Keep it practical and under 220 words. Plain text, no markdown bold."
+    )
+    try:
+        from src.generation.llm import get_llm, safe_invoke
+        from langchain_core.messages import HumanMessage
+        llm = get_llm(temperature=0.2, model_override=model_override)
+        return safe_invoke(llm, [HumanMessage(content=prompt)]).strip()
+    except Exception:
+        topics = ", ".join(f"Q{results.index(r) + 1}" for r in weakish[:8])
+        return f"Weak areas concentrated in: {topics}. Review these topics with the class."
+
+
+# ── Teacher tools: quiz generation + teaching-material generators ──────────────
+# Both generate content grounded ONLY in the teacher's selected ingested sources,
+# reusing the RAG pipeline (retrieval + selected model + token accounting).
+
+def _current_token_usage() -> "TokenUsage":
+    from src.generation.llm import get_token_usage
+    q = get_token_usage()
+    return TokenUsage(
+        input_tokens=int(q.get("input_tokens", 0) or 0),
+        output_tokens=int(q.get("output_tokens", 0) or 0),
+        total_tokens=int(q.get("total_tokens", 0) or 0),
+        llm_calls=int(q.get("llm_calls", 0) or 0),
+        estimated_cost_usd=round(float(q.get("estimated_cost_usd", 0.0) or 0.0), 6),
+        model=str(q.get("model", "")),
+    )
+
+
+class GenerateResponse(BaseModel):
+    content: str
+    token_usage: Optional[TokenUsage] = None
+    model_used: str = ""
+
+
+class QuizRequest(BaseModel):
+    source_filters: list[str] = Field(default_factory=list)
+    num_questions: int = Field(default=5, ge=1, le=25)
+    question_type: str = Field(default="mixed", max_length=20)   # mcq|short|long|mixed
+    difficulty: str = Field(default="medium", max_length=20)     # easy|medium|hard
+    topic: str = Field(default="", max_length=300)
+    language: str = Field(default="English", max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+
+
+@router.post("/generate/quiz", response_model=GenerateResponse)
+async def generate_quiz(body: QuizRequest, user: dict = Depends(get_current_user_or_api_key)):
+    """Generate a quiz/question set from the teacher's selected ingested material."""
+    _enforce_free_limit(user)
+    namespace = user.get("org_id") or "default"
+    scoped_session = f"{user['user_id']}:quizgen"
+    type_map = {
+        "mcq": "multiple-choice questions (4 options a-d each, mark the correct option)",
+        "short": "short-answer questions",
+        "long": "long-answer/descriptive questions",
+        "mixed": "a mix of multiple-choice, short-answer, and descriptive questions",
+    }
+    qt = type_map.get(body.question_type, type_map["mixed"])
+    topic_txt = f" focusing on: {body.topic}." if body.topic.strip() else " covering the key concepts across the material."
+    prompt = (
+        f"Using ONLY the provided course material, create {body.num_questions} "
+        f"{body.difficulty}-level {qt}{topic_txt}\n"
+        "Number the questions. After all questions, add a clearly separated section "
+        "titled 'Answer Key' with the correct answer (and a one-line explanation) for "
+        "each question. Do not invent facts beyond the material."
+    )
+    resp, _ = ask(prompt, scoped_session, namespace=namespace, language=body.language,
+                  source_filters=body.source_filters or [], user_id=user["user_id"],
+                  model_override=body.model or None)
+    write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
+                detail={"kind": "quiz_generation", "num": body.num_questions})
+    tu = _current_token_usage()
+    return GenerateResponse(content=resp.answer_text, token_usage=tu,
+                            model_used=tu.model or (body.model or "default"))
+
+
+class TeachRequest(BaseModel):
+    source_filters: list[str] = Field(default_factory=list)
+    kind: str = Field(default="lesson_plan", max_length=20)  # rubric|lesson_plan|syllabus
+    topic: str = Field(default="", max_length=300)
+    language: str = Field(default="English", max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+
+
+@router.post("/generate/teaching", response_model=GenerateResponse)
+async def generate_teaching(body: TeachRequest, user: dict = Depends(get_current_user_or_api_key)):
+    """Generate a rubric, lesson plan, or syllabus outline from selected material."""
+    _enforce_free_limit(user)
+    namespace = user.get("org_id") or "default"
+    scoped_session = f"{user['user_id']}:teachgen"
+    topic_txt = f" on the topic: {body.topic}" if body.topic.strip() else " covering the material provided"
+    kind_map = {
+        "rubric": (
+            f"Create a grading RUBRIC{topic_txt}. List 4-7 assessment criteria; for each give "
+            "a weight (summing to 100) and short descriptors for excellent / adequate / poor. "
+            "Present as a clear table-like structure."),
+        "lesson_plan": (
+            f"Create a LESSON PLAN{topic_txt}. Include: learning objectives, prerequisites, a "
+            "time-broken session outline (intro, core concepts, worked examples, activity, "
+            "assessment), key points, and homework. Keep it practical for one class."),
+        "syllabus": (
+            f"Create a SYLLABUS / course outline{topic_txt}. Include: course description, "
+            "learning outcomes, a week-by-week / unit-by-unit topic breakdown, and suggested "
+            "assessments. Base the topics strictly on the material."),
+    }
+    instr = kind_map.get(body.kind, kind_map["lesson_plan"])
+    prompt = "Using ONLY the provided course material as the source of truth, " + instr
+    resp, _ = ask(prompt, scoped_session, namespace=namespace, language=body.language,
+                  source_filters=body.source_filters or [], user_id=user["user_id"],
+                  model_override=body.model or None)
+    write_audit(event_type="query", user_id=user["user_id"], org_id=user.get("org_id"),
+                detail={"kind": "teaching_generation", "type": body.kind})
+    tu = _current_token_usage()
+    return GenerateResponse(content=resp.answer_text, token_usage=tu,
+                            model_used=tu.model or (body.model or "default"))
 
 
 # ── Podcast audio (Text-to-Speech) ────────────────────────────────────────────
@@ -938,6 +1094,16 @@ def _build_eval_pdf(data: "EvalResponse") -> bytes:
         if r.feedback:
             line(f"Feedback: {r.feedback}", style="I")
         pdf.ln(4)
+
+    # Learning-gap analysis (weak topics + recommendations)
+    if data.gap_analysis:
+        pdf.ln(2)
+        line("Learning-Gap Analysis", h=8, style="B", size=12)
+        if data.weak_questions:
+            line("Weakest questions: " + ", ".join(f"Q{n}" for n in data.weak_questions), style="B")
+        for para in data.gap_analysis.split("\n"):
+            if para.strip():
+                line(para)
 
     # Report footer: evaluation accuracy + model + token usage
     pdf.ln(2)

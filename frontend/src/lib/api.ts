@@ -371,6 +371,8 @@ export interface EvalResponse {
   token_usage?: EvalTokenUsage | null
   evaluation_confidence?: number
   model_used?: string
+  gap_analysis?: string
+  weak_questions?: number[]
 }
 
 export async function evaluateAnswers(
@@ -380,6 +382,7 @@ export async function evaluateAnswers(
   sourceFilters: string[] = [],
   sessionId = 'default',
   model = '',
+  rubric = '',
 ): Promise<EvalResponse> {
   const form = new FormData()
   form.append('questions_file', questionsFile)
@@ -387,8 +390,49 @@ export async function evaluateAnswers(
   form.append('language', language)
   form.append('session_id', sessionId)
   if (model) form.append('model', model)
+  if (rubric) form.append('rubric', rubric)
   if (sourceFilters.length > 0) form.append('source_filters', JSON.stringify(sourceFilters))
   return request('/api/query/evaluate', { method: 'POST', body: form })
+}
+
+// ── Teacher tools: quiz + teaching-material generation ──────────────────────────
+export interface GenerateResponse {
+  content: string
+  token_usage?: EvalTokenUsage | null
+  model_used?: string
+}
+
+export async function generateQuiz(opts: {
+  sourceFilters?: string[]; numQuestions?: number; questionType?: string;
+  difficulty?: string; topic?: string; language?: string; model?: string
+}): Promise<GenerateResponse> {
+  return request('/api/query/generate/quiz', {
+    method: 'POST',
+    body: JSON.stringify({
+      source_filters: opts.sourceFilters || [],
+      num_questions: opts.numQuestions ?? 5,
+      question_type: opts.questionType || 'mixed',
+      difficulty: opts.difficulty || 'medium',
+      topic: opts.topic || '',
+      language: opts.language || 'English',
+      model: opts.model || undefined,
+    }),
+  })
+}
+
+export async function generateTeaching(opts: {
+  sourceFilters?: string[]; kind?: string; topic?: string; language?: string; model?: string
+}): Promise<GenerateResponse> {
+  return request('/api/query/generate/teaching', {
+    method: 'POST',
+    body: JSON.stringify({
+      source_filters: opts.sourceFilters || [],
+      kind: opts.kind || 'lesson_plan',
+      topic: opts.topic || '',
+      language: opts.language || 'English',
+      model: opts.model || undefined,
+    }),
+  })
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────

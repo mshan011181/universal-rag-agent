@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck, History, ClipboardCheck, CreditCard } from 'lucide-react'
+import { Home, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck, History, ClipboardCheck, CreditCard, GraduationCap } from 'lucide-react'
 import clsx from 'clsx'
 import { logout, fetchUsage } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
@@ -11,6 +11,7 @@ import { getUserRole } from '@/lib/auth'
 const NAV = [
   { href: '/query',    label: 'Ask Your Data',     icon: Home },
   { href: '/evaluate', label: 'Answer Evaluation', icon: ClipboardCheck },
+  { href: '/teacher-tools', label: 'Teacher Tools', icon: GraduationCap },
   { href: '/history',  label: 'My History',        icon: History },
   { href: '/bi',      label: 'BI / Analytics', icon: TableProperties },
   { href: '/ingest',  label: 'Ingest',         icon: Upload },

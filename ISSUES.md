@@ -122,6 +122,17 @@ section. (Repo: `mshan011181/universal-rag-agent-enterprise`.)
 ## 9. Multilingual questions (Ask Your Data)
 
 - **Question-language selector + cross-lingual retrieval:** added a "Question Language" dropdown on Ask Your Data. The embedder (`all-MiniLM-L6-v2`) is English-only, so a non-English question is **translated to English** (one LLM call in `agent.ask`) before retrieval; the answer language stays separately controlled. Lets users ask in Tamil/Hindi/etc. over English-ingested data without re-embedding.
+- **In-app transliteration:** type romanized ("Thanglish") and press space → native script via Google Input Tools (Tamil, Hindi, Telugu, Kannada, Malayalam, Marathi, Bengali, Greek, Russian, Arabic). No OS keyboard needed.
+
+---
+
+## 10. Education features (Google-for-Education parity)
+
+Built to strengthen the institutional wedge (grading + teaching workflow), not to clone an LMS.
+
+- **Rubric-aware grading:** optional rubric field on Answer Evaluation; when set, grading follows the teacher's criteria/weights instead of the default point split.
+- **Learning-gap analysis:** each evaluation now returns a grouped weak-topics summary + prioritised recommendations (LLM over the low-scoring questions) and the weakest-question indices; shown on-screen and in the PDF.
+- **Teacher Tools page (`/teacher-tools`):** (a) **Quiz generator** — N questions (MCQ/short/long/mixed), difficulty, topic, with answer key; (b) **Teaching-material generator** — rubric / lesson plan / syllabus outline. Both grounded only in selected ingested sources via the RAG pipeline (`/generate/quiz`, `/generate/teaching`), with model choice, language, token accounting.
 
 ---
 
