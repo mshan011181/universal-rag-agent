@@ -6,19 +6,23 @@ import {
   lmsListUsers, lmsCreateUser, lmsDeleteUser,
   lmsListParentLinks, lmsLinkParent, lmsUnlinkParent,
   lmsListTeacherSubjects, lmsAssignTeacher, lmsUnassignTeacher,
+  lmsListMaterials, lmsAddMaterial, lmsDeleteMaterial, getIngestHistory,
 } from '@/lib/api'
-import type { LmsUser, ParentLink, TeacherSubject } from '@/lib/api'
-import { GraduationCap, UserPlus, Trash2, Link2, Loader2, AlertCircle, Users, BookOpen } from 'lucide-react'
+import type { LmsUser, ParentLink, TeacherSubject, CourseMaterial } from '@/lib/api'
+import type { IngestedItem } from '@/types'
+import { GraduationCap, UserPlus, Trash2, Link2, Loader2, AlertCircle, Users, BookOpen, Library } from 'lucide-react'
 import clsx from 'clsx'
 
 const GRADES = ['9', '10', '11', '12']
 const ROLES = ['teacher', 'student', 'parent', 'admin']
 
 export default function LmsAdminPage() {
-  const [tab, setTab] = useState<'users' | 'parents' | 'teachers'>('users')
+  const [tab, setTab] = useState<'users' | 'parents' | 'teachers' | 'materials'>('users')
   const [users, setUsers] = useState<LmsUser[]>([])
   const [links, setLinks] = useState<ParentLink[]>([])
   const [tsubs, setTsubs] = useState<TeacherSubject[]>([])
+  const [materials, setMaterials] = useState<CourseMaterial[]>([])
+  const [docs, setDocs] = useState<{ name: string; chunks: number }[]>([])
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
 
@@ -26,6 +30,14 @@ export default function LmsAdminPage() {
     lmsListUsers().then(r => setUsers(r.users)).catch(e => setError(e.message))
     lmsListParentLinks().then(r => setLinks(r.links)).catch(() => {})
     lmsListTeacherSubjects().then(r => setTsubs(r.assignments)).catch(() => {})
+    lmsListMaterials().then(r => setMaterials(r.materials)).catch(() => {})
+    getIngestHistory().then(hist => {
+      const list: { name: string; chunks: number }[] = []
+      Object.values(hist.by_type || {}).forEach(items => {
+        ;(items as IngestedItem[]).forEach(it => { if (it.chunks > 0) list.push({ name: it.name, chunks: it.chunks }) })
+      })
+      setDocs(list)
+    }).catch(() => {})
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
@@ -64,6 +76,14 @@ export default function LmsAdminPage() {
     catch (e) { setError(e instanceof Error ? e.message : 'Link failed.') }
   }
 
+  // ── Material tagging ──
+  const [mat, setMat] = useState({ grade: '9', subject: '', source_name: '' })
+  async function tagMaterial(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setMsg('')
+    try { await lmsAddMaterial(mat.grade, mat.subject.trim(), mat.source_name); setMsg('Tagged.'); setMat({ grade: mat.grade, subject: mat.subject, source_name: '' }); refresh() }
+    catch (e) { setError(e instanceof Error ? e.message : 'Tag failed.') }
+  }
+
   // ── Teacher assignment ──
   const [ta, setTa] = useState({ teacher_id: '', grade: '9', subject: '' })
   async function assign(e: React.FormEvent) {
@@ -87,7 +107,7 @@ export default function LmsAdminPage() {
         </div>
 
         <div className="flex gap-2">
-          {([['users', 'Users', Users], ['parents', 'Parent links', Link2], ['teachers', 'Teacher subjects', BookOpen]] as const).map(([id, label, Icon]) => (
+          {([['users', 'Users', Users], ['parents', 'Parent links', Link2], ['teachers', 'Teacher subjects', BookOpen], ['materials', 'Content library', Library]] as const).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)}
               className={clsx('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
                 tab === id ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50')}>
@@ -219,6 +239,46 @@ export default function LmsAdminPage() {
                     </tr>
                   ))}
                   {tsubs.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">No assignments yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {tab === 'materials' && (
+          <>
+            <form onSubmit={tagMaterial} className="card p-5 space-y-4">
+              <p className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Library className="w-4 h-4 text-brand-600" /> Tag an ingested book to a grade + subject</p>
+              <p className="text-xs text-gray-500">Upload NCERT books on the <a href="/ingest" className="text-brand-600 hover:underline">Ingest</a> page first, then tag each one here so students see it under the right subject.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div><label className="label">Grade</label>
+                  <select className="input" value={mat.grade} onChange={e => setMat({ ...mat, grade: e.target.value })}>
+                    {GRADES.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                  </select>
+                </div>
+                <div><label className="label">Subject</label><input className="input" required placeholder="e.g. Physics" value={mat.subject} onChange={e => setMat({ ...mat, subject: e.target.value })} /></div>
+                <div><label className="label">Document</label>
+                  <select className="input" required value={mat.source_name} onChange={e => setMat({ ...mat, source_name: e.target.value })}>
+                    <option value="">Select an ingested document…</option>
+                    {docs.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button className="btn-primary flex items-center gap-2"><Library className="w-4 h-4" /> Tag material</button>
+            </form>
+            <div className="card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-2">Grade</th><th className="text-left px-4 py-2">Subject</th><th className="text-left px-4 py-2">Document</th><th className="px-4 py-2"></th></tr></thead>
+                <tbody>
+                  {materials.map(m => (
+                    <tr key={m.id} className="border-t border-gray-100">
+                      <td className="px-4 py-2 text-gray-600">{m.grade}</td>
+                      <td className="px-4 py-2 text-gray-800">{m.subject}</td>
+                      <td className="px-4 py-2 text-gray-600 truncate max-w-xs" title={m.source_name}>{m.source_name}</td>
+                      <td className="px-4 py-2 text-right"><button onClick={() => lmsDeleteMaterial(m.id).then(refresh)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>
+                    </tr>
+                  ))}
+                  {materials.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">No materials tagged yet.</td></tr>}
                 </tbody>
               </table>
             </div>

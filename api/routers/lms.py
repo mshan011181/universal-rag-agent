@@ -18,6 +18,48 @@ VALID_ROLES = {"admin", "teacher", "student", "parent"}
 VALID_GRADES = {"9", "10", "11", "12"}
 
 
+# ── LMS scoping helpers ───────────────────────────────────────────────────────
+
+def _resolve_sources(conn, org: str, grade: str, subject: str) -> list[str]:
+    rows = conn.execute(
+        "SELECT source_name FROM course_materials WHERE org_id=? AND grade=? AND subject=?",
+        (org, grade, subject)).fetchall()
+    return [r["source_name"] for r in rows]
+
+
+def _student_grade(conn, user_id: str) -> str:
+    row = conn.execute("SELECT grade FROM users WHERE user_id=?", (user_id,)).fetchone()
+    return (row["grade"] or "") if row else ""
+
+
+def _child_grades(conn, org: str, parent_id: str) -> set[str]:
+    rows = conn.execute(
+        """SELECT s.grade AS grade FROM parent_children pc
+           JOIN users s ON s.user_id = pc.student_id
+           WHERE pc.org_id=? AND pc.parent_id=?""", (org, parent_id)).fetchall()
+    return {r["grade"] for r in rows if r["grade"]}
+
+
+def _teacher_pairs(conn, org: str, teacher_id: str) -> set[tuple[str, str]]:
+    rows = conn.execute(
+        "SELECT grade, subject FROM teacher_subjects WHERE org_id=? AND teacher_id=?",
+        (org, teacher_id)).fetchall()
+    return {(r["grade"], r["subject"]) for r in rows}
+
+
+def _may_study(conn, user: dict, org: str, grade: str, subject: str) -> bool:
+    role = user.get("role")
+    if role in ("admin", "owner"):
+        return True
+    if role == "student":
+        return grade == _student_grade(conn, user["user_id"])
+    if role == "parent":
+        return grade in _child_grades(conn, org, user["user_id"])
+    if role == "teacher":
+        return (grade, subject) in _teacher_pairs(conn, org, user["user_id"])
+    return False
+
+
 def _org(user: dict) -> str:
     org = user.get("org_id")
     if not org:
@@ -214,3 +256,135 @@ async def my_profile(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found.")
     return {"user_id": user["user_id"], "email": row["email"], "full_name": row["full_name"] or "",
             "role": row["role"], "grade": row["grade"] or ""}
+
+
+# ── Content library: tag ingested books to a grade + subject (admin) ───────────
+# Admin uploads NCERT books via the existing Ingest page (handles large STEM PDFs
+# via Marker), then tags each ingested document here to a grade + subject.
+
+class MaterialRequest(BaseModel):
+    grade: str
+    subject: str
+    source_name: str
+    ingest_id: str = ""
+
+
+@router.get("/materials")
+async def list_materials(user: dict = Depends(require_role_in({"admin"}))):
+    org = _org(user)
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, grade, subject, source_name, ingest_id, created_at FROM course_materials "
+            "WHERE org_id=? ORDER BY grade, subject, source_name", (org,)).fetchall()
+    return {"materials": [dict(r) for r in rows]}
+
+
+@router.post("/materials", status_code=201)
+async def add_material(body: MaterialRequest, user: dict = Depends(require_role_in({"admin"}))):
+    org = _org(user)
+    if body.grade.strip() not in VALID_GRADES:
+        raise HTTPException(status_code=422, detail="Grade must be 9-12.")
+    if not body.subject.strip() or not body.source_name.strip():
+        raise HTTPException(status_code=422, detail="Subject and source document are required.")
+    with get_conn() as conn:
+        dup = conn.execute(
+            "SELECT 1 FROM course_materials WHERE org_id=? AND grade=? AND subject=? AND source_name=?",
+            (org, body.grade.strip(), body.subject.strip(), body.source_name.strip())).fetchone()
+        if dup:
+            raise HTTPException(status_code=409, detail="This document is already tagged for that grade+subject.")
+        conn.execute(
+            "INSERT INTO course_materials (org_id, grade, subject, source_name, ingest_id, uploaded_by) "
+            "VALUES (?,?,?,?,?,?)",
+            (org, body.grade.strip(), body.subject.strip(), body.source_name.strip(),
+             body.ingest_id.strip(), user["user_id"]))
+        conn.commit()
+    write_audit("lms_material_tagged", user_id=user["user_id"], org_id=org,
+                detail={"grade": body.grade, "subject": body.subject, "source": body.source_name})
+    return {"status": "tagged"}
+
+
+@router.delete("/materials/{material_id}")
+async def delete_material(material_id: int, user: dict = Depends(require_role_in({"admin"}))):
+    """Remove the grade+subject tag. Does NOT delete the ingested document itself."""
+    org = _org(user)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM course_materials WHERE id=? AND org_id=?", (material_id, org))
+        conn.commit()
+    return {"status": "removed"}
+
+
+# ── My courses: subjects the caller can study, per role ────────────────────────
+
+@router.get("/my-courses")
+async def my_courses(user: dict = Depends(get_current_user)):
+    org = user.get("org_id") or ""
+    role = user.get("role")
+    with get_conn() as conn:
+        if role == "student":
+            grade = _student_grade(conn, user["user_id"])
+            rows = conn.execute(
+                "SELECT DISTINCT subject FROM course_materials WHERE org_id=? AND grade=? ORDER BY subject",
+                (org, grade)).fetchall()
+            return {"grade": grade, "courses": [{"grade": grade, "subject": r["subject"]} for r in rows]}
+        if role == "teacher":
+            rows = conn.execute(
+                "SELECT grade, subject FROM teacher_subjects WHERE org_id=? AND teacher_id=? ORDER BY grade, subject",
+                (org, user["user_id"])).fetchall()
+            return {"courses": [{"grade": r["grade"], "subject": r["subject"]} for r in rows]}
+        if role == "parent":
+            rows = conn.execute(
+                """SELECT s.user_id AS student_id, s.full_name AS student_name, s.email AS student_email,
+                          s.grade AS grade, cm.subject AS subject
+                   FROM parent_children pc
+                   JOIN users s ON s.user_id = pc.student_id
+                   JOIN course_materials cm ON cm.org_id = pc.org_id AND cm.grade = s.grade
+                   WHERE pc.org_id=? AND pc.parent_id=?
+                   ORDER BY s.full_name, cm.subject""", (org, user["user_id"])).fetchall()
+            return {"courses": [dict(r) for r in rows]}
+        # admin / owner: everything with materials
+        rows = conn.execute(
+            "SELECT DISTINCT grade, subject FROM course_materials WHERE org_id=? ORDER BY grade, subject",
+            (org,)).fetchall()
+        return {"courses": [{"grade": r["grade"], "subject": r["subject"]} for r in rows]}
+
+
+# ── Scoped study Q&A ──────────────────────────────────────────────────────────
+
+class StudyRequest(BaseModel):
+    grade: str
+    subject: str
+    question: str
+    language: str = "English"
+    model: str = ""
+    question_language: str = ""
+
+
+@router.post("/study")
+async def study(body: StudyRequest, user: dict = Depends(get_current_user)):
+    org = user.get("org_id") or ""
+    grade, subject = body.grade.strip(), body.subject.strip()
+    if not body.question.strip():
+        raise HTTPException(status_code=422, detail="Question is required.")
+    with get_conn() as conn:
+        if not _may_study(conn, user, org, grade, subject):
+            raise HTTPException(status_code=403, detail="You do not have access to this grade/subject.")
+        sources = _resolve_sources(conn, org, grade, subject)
+    if not sources:
+        raise HTTPException(status_code=404, detail="No study material has been added for this grade/subject yet.")
+
+    from src.agent import ask
+    from src.generation.llm import get_token_usage
+    scoped_session = f"{user['user_id']}:lms:{grade}:{subject}"
+    resp, _ = ask(body.question.strip(), scoped_session, namespace=org, language=body.language,
+                  source_filters=sources, user_id=user["user_id"],
+                  model_override=(body.model or None), question_language=body.question_language)
+    write_audit("lms_study", user_id=user["user_id"], org_id=org,
+                detail={"grade": grade, "subject": subject})
+    tu = get_token_usage()
+    return {
+        "answer": resp.answer_text,
+        "figures": getattr(resp, "figures", []) or [],
+        "quality_score": getattr(resp, "quality_score", 0.0),
+        "model_used": tu.get("model", "") or (body.model or "default"),
+        "token_usage": tu,
+    }

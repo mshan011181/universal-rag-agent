@@ -17,6 +17,8 @@ const ITEMS = {
   ingest:   { href: '/ingest',   label: 'Ingest',           icon: Upload },
   plan:     { href: '/plan',     label: 'Plan & Usage',     icon: CreditCard },
   lmsAdmin: { href: '/lms/admin', label: 'LMS Admin',       icon: GraduationCap },
+  study:    { href: '/lms',       label: 'My Learning',      icon: GraduationCap },
+  children: { href: '/lms/children', label: 'My Children',   icon: Users },
 }
 
 // Default nav for the generic SaaS roles (admin/owner/user).
@@ -24,9 +26,9 @@ const NAV = [ITEMS.query, ITEMS.evaluate, ITEMS.teacher, ITEMS.history, ITEMS.bi
 
 // School-role navs (LMS). Dedicated role pages land in later phases.
 function navFor(role: string | null) {
-  if (role === 'teacher') return [ITEMS.query, ITEMS.evaluate, ITEMS.teacher, ITEMS.history]
-  if (role === 'student') return [ITEMS.query, ITEMS.history]
-  if (role === 'parent')  return [ITEMS.query, ITEMS.history]
+  if (role === 'teacher') return [ITEMS.study, ITEMS.query, ITEMS.evaluate, ITEMS.teacher, ITEMS.history]
+  if (role === 'student') return [ITEMS.study, ITEMS.query, ITEMS.history]
+  if (role === 'parent')  return [ITEMS.children, ITEMS.history]
   return NAV  // admin / owner / user
 }
 

@@ -498,6 +498,33 @@ export function lmsUnassignTeacher(assignId: number): Promise<{ status: string }
   return request(`/api/lms/teacher-subjects/${assignId}`, { method: 'DELETE' })
 }
 
+// ── LMS content + study ───────────────────────────────────────────────────────
+export interface CourseMaterial {
+  id: number; grade: string; subject: string; source_name: string; ingest_id: string; created_at: string
+}
+export function lmsListMaterials(): Promise<{ materials: CourseMaterial[] }> {
+  return request('/api/lms/materials', { method: 'GET' })
+}
+export function lmsAddMaterial(grade: string, subject: string, source_name: string, ingest_id = ''): Promise<{ status: string }> {
+  return request('/api/lms/materials', { method: 'POST', body: JSON.stringify({ grade, subject, source_name, ingest_id }) })
+}
+export function lmsDeleteMaterial(id: number): Promise<{ status: string }> {
+  return request(`/api/lms/materials/${id}`, { method: 'DELETE' })
+}
+
+export interface Course { grade: string; subject: string; student_id?: string; student_name?: string; student_email?: string }
+export function lmsMyCourses(): Promise<{ grade?: string; courses: Course[] }> {
+  return request('/api/lms/my-courses', { method: 'GET' })
+}
+
+export interface StudyAnswer {
+  answer: string; figures: string[]; quality_score: number; model_used: string
+  token_usage?: EvalTokenUsage | null
+}
+export function lmsStudy(body: { grade: string; subject: string; question: string; language?: string; model?: string; question_language?: string }): Promise<StudyAnswer> {
+  return request('/api/lms/study', { method: 'POST', body: JSON.stringify(body) })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {
