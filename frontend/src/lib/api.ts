@@ -525,6 +525,47 @@ export function lmsStudy(body: { grade: string; subject: string; question: strin
   return request('/api/lms/study', { method: 'POST', body: JSON.stringify(body) })
 }
 
+// ── LMS assignments + gradebook ───────────────────────────────────────────────
+export interface Assignment {
+  id: number; grade: string; subject: string; title: string; instructions: string
+  rubric?: string; model?: string; due_date?: string; num_questions?: number
+  questions?: string[]; submission_status?: string; submission_score?: number | null
+}
+export interface GradedResult {
+  question: string; student_answer: string; score: number; verdict: string
+  mistakes: string[]; corrections: string[]; feedback: string
+}
+export interface SubmissionRow {
+  id: number; student_id: string; student_name: string; student_email: string
+  score: number; status: string; gap_analysis: string; submitted_at: string; results: GradedResult[]
+}
+export interface ResultRow {
+  id: number; score: number; status: string; gap_analysis: string; submitted_at: string
+  title: string; subject: string; grade: string; results?: GradedResult[]
+}
+
+export function lmsCreateAssignment(body: { grade: string; subject: string; title: string; instructions?: string; questions: string[]; rubric?: string; model?: string; due_date?: string }): Promise<{ status: string }> {
+  return request('/api/lms/assignments', { method: 'POST', body: JSON.stringify(body) })
+}
+export function lmsListAssignments(): Promise<{ assignments: Assignment[] }> {
+  return request('/api/lms/assignments', { method: 'GET' })
+}
+export function lmsGetAssignment(id: number): Promise<Assignment> {
+  return request(`/api/lms/assignments/${id}`, { method: 'GET' })
+}
+export function lmsSubmitAssignment(id: number, answers: string[]): Promise<{ score: number; results: GradedResult[]; gap_analysis: string }> {
+  return request(`/api/lms/assignments/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) })
+}
+export function lmsAssignmentSubmissions(id: number): Promise<{ assignment: { id: number; title: string; grade: string; subject: string }; submissions: SubmissionRow[] }> {
+  return request(`/api/lms/assignments/${id}/submissions`, { method: 'GET' })
+}
+export function lmsMyResults(): Promise<{ results: ResultRow[] }> {
+  return request('/api/lms/my-results', { method: 'GET' })
+}
+export function lmsChildResults(studentId: string): Promise<{ results: ResultRow[] }> {
+  return request(`/api/lms/children/${studentId}/results`, { method: 'GET' })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {

@@ -388,3 +388,210 @@ async def study(body: StudyRequest, user: dict = Depends(get_current_user)):
         "model_used": tu.get("model", "") or (body.model or "default"),
         "token_usage": tu,
     }
+
+
+# ── Assignments: create (teacher) → submit (student) → grade → gradebook ───────
+
+class AssignmentRequest(BaseModel):
+    grade: str
+    subject: str
+    title: str
+    instructions: str = ""
+    questions: list[str] = []
+    rubric: str = ""
+    model: str = ""
+    due_date: str = ""
+
+
+class SubmitRequest(BaseModel):
+    answers: list[str] = []
+
+
+def _may_teach(conn, user: dict, org: str, grade: str, subject: str) -> bool:
+    role = user.get("role")
+    if role in ("admin", "owner"):
+        return True
+    if role == "teacher":
+        return (grade, subject) in _teacher_pairs(conn, org, user["user_id"])
+    return False
+
+
+@router.post("/assignments", status_code=201)
+async def create_assignment(body: AssignmentRequest, user: dict = Depends(require_role_in({"teacher", "admin"}))):
+    import json as _json
+    org = _org(user)
+    grade, subject = body.grade.strip(), body.subject.strip()
+    questions = [q.strip() for q in body.questions if q.strip()]
+    if grade not in VALID_GRADES or not subject or not body.title.strip() or not questions:
+        raise HTTPException(status_code=422, detail="grade, subject, title and at least one question are required.")
+    with get_conn() as conn:
+        if not _may_teach(conn, user, org, grade, subject):
+            raise HTTPException(status_code=403, detail="You are not assigned to this grade/subject.")
+        conn.execute(
+            "INSERT INTO assignments (org_id, teacher_id, grade, subject, title, instructions, "
+            "questions_json, rubric, model, due_date) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (org, user["user_id"], grade, subject, body.title.strip(), body.instructions.strip(),
+             _json.dumps(questions), body.rubric.strip(), body.model.strip(), body.due_date.strip()))
+        conn.commit()
+    write_audit("lms_assignment_created", user_id=user["user_id"], org_id=org,
+                detail={"grade": grade, "subject": subject, "questions": len(questions)})
+    return {"status": "created"}
+
+
+@router.get("/assignments")
+async def list_assignments(user: dict = Depends(get_current_user)):
+    import json as _json
+    org = user.get("org_id") or ""
+    role = user.get("role")
+    with get_conn() as conn:
+        if role == "teacher":
+            rows = conn.execute(
+                "SELECT * FROM assignments WHERE org_id=? AND teacher_id=? ORDER BY created_at DESC",
+                (org, user["user_id"])).fetchall()
+        elif role in ("admin", "owner"):
+            rows = conn.execute("SELECT * FROM assignments WHERE org_id=? ORDER BY created_at DESC", (org,)).fetchall()
+        elif role == "student":
+            grade = _student_grade(conn, user["user_id"])
+            rows = conn.execute(
+                "SELECT * FROM assignments WHERE org_id=? AND grade=? ORDER BY created_at DESC", (org, grade)).fetchall()
+        else:
+            rows = []
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["questions"] = _json.loads(d.pop("questions_json", "[]") or "[]")
+            d["num_questions"] = len(d["questions"])
+            if role == "student":
+                d.pop("questions", None)  # students fetch questions via detail on open
+                sub = conn.execute(
+                    "SELECT score, status FROM submissions WHERE assignment_id=? AND student_id=?",
+                    (d["id"], user["user_id"])).fetchone()
+                d["submission_status"] = sub["status"] if sub else "not_started"
+                d["submission_score"] = sub["score"] if sub else None
+            out.append(d)
+    return {"assignments": out}
+
+
+@router.get("/assignments/{aid}")
+async def get_assignment(aid: int, user: dict = Depends(get_current_user)):
+    import json as _json
+    org = user.get("org_id") or ""
+    with get_conn() as conn:
+        r = conn.execute("SELECT * FROM assignments WHERE id=? AND org_id=?", (aid, org)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Assignment not found.")
+        d = dict(r)
+        # Students may only open assignments for their own grade.
+        if user.get("role") == "student" and d["grade"] != _student_grade(conn, user["user_id"]):
+            raise HTTPException(status_code=403, detail="Not your grade.")
+    d["questions"] = _json.loads(d.pop("questions_json", "[]") or "[]")
+    return d
+
+
+@router.post("/assignments/{aid}/submit")
+async def submit_assignment(aid: int, body: SubmitRequest, user: dict = Depends(require_role_in({"student"}))):
+    import json as _json
+    from types import SimpleNamespace
+    from src.agent import ask
+    from api.routers.query import _evaluate_answer, _build_gap_analysis
+    org = user.get("org_id") or ""
+    with get_conn() as conn:
+        r = conn.execute("SELECT * FROM assignments WHERE id=? AND org_id=?", (aid, org)).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Assignment not found.")
+        grade = r["grade"]
+        if grade != _student_grade(conn, user["user_id"]):
+            raise HTTPException(status_code=403, detail="Not your grade.")
+        dup = conn.execute("SELECT 1 FROM submissions WHERE assignment_id=? AND student_id=?",
+                           (aid, user["user_id"])).fetchone()
+        if dup:
+            raise HTTPException(status_code=409, detail="You have already submitted this assignment.")
+        subject, rubric, model = r["subject"], r["rubric"] or "", r["model"] or ""
+        questions = _json.loads(r["questions_json"] or "[]")
+        sources = _resolve_sources(conn, org, grade, subject)
+
+    scoped_session = f"{user['user_id']}:lms:submit:{aid}"
+    results = []
+    for i, q in enumerate(questions):
+        student_ans = body.answers[i] if i < len(body.answers) else ""
+        try:
+            ref_resp, _ = ask(q, scoped_session, namespace=org, source_filters=sources,
+                              user_id=user["user_id"], model_override=(model or None))
+            reference = ref_resp.answer_text
+        except Exception as e:
+            reference = f"(reference unavailable: {e})"
+        ev = _evaluate_answer(q, student_ans, reference, model_override=(model or None), rubric=rubric)
+        results.append({"question": q, "student_answer": student_ans, "score": ev["score"],
+                        "verdict": ev["verdict"], "mistakes": ev["mistakes"],
+                        "corrections": ev["corrections"], "feedback": ev["feedback"]})
+    overall = round(sum(x["score"] for x in results) / len(results)) if results else 0
+    gap = _build_gap_analysis([SimpleNamespace(**x) for x in results], model or None) if results else ""
+
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO submissions (assignment_id, student_id, answers_json, score, results_json, "
+            "gap_analysis, status, graded_at) VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+            (aid, user["user_id"], _json.dumps(body.answers), overall, _json.dumps(results), gap, "graded"))
+        conn.commit()
+    write_audit("lms_submission_graded", user_id=user["user_id"], org_id=org,
+                detail={"assignment": aid, "score": overall})
+    return {"score": overall, "results": results, "gap_analysis": gap}
+
+
+@router.get("/assignments/{aid}/submissions")
+async def assignment_submissions(aid: int, user: dict = Depends(require_role_in({"teacher", "admin"}))):
+    import json as _json
+    org = user.get("org_id") or ""
+    with get_conn() as conn:
+        a = conn.execute("SELECT * FROM assignments WHERE id=? AND org_id=?", (aid, org)).fetchone()
+        if not a:
+            raise HTTPException(status_code=404, detail="Assignment not found.")
+        rows = conn.execute(
+            """SELECT sub.id, sub.student_id, sub.score, sub.status, sub.gap_analysis, sub.results_json,
+                      sub.submitted_at, s.full_name AS student_name, s.email AS student_email
+               FROM submissions sub JOIN users s ON s.user_id = sub.student_id
+               WHERE sub.assignment_id=? ORDER BY s.full_name""", (aid,)).fetchall()
+    subs = []
+    for r in rows:
+        d = dict(r)
+        d["results"] = _json.loads(d.pop("results_json", "[]") or "[]")
+        subs.append(d)
+    return {"assignment": {"id": a["id"], "title": a["title"], "grade": a["grade"], "subject": a["subject"]},
+            "submissions": subs}
+
+
+@router.get("/my-results")
+async def my_results(user: dict = Depends(require_role_in({"student"}))):
+    import json as _json
+    org = user.get("org_id") or ""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT sub.id, sub.score, sub.status, sub.gap_analysis, sub.results_json, sub.submitted_at,
+                      a.title AS title, a.subject AS subject, a.grade AS grade
+               FROM submissions sub JOIN assignments a ON a.id = sub.assignment_id
+               WHERE sub.student_id=? AND a.org_id=? ORDER BY sub.submitted_at DESC""",
+            (user["user_id"], org)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["results"] = _json.loads(d.pop("results_json", "[]") or "[]")
+        out.append(d)
+    return {"results": out}
+
+
+@router.get("/children/{student_id}/results")
+async def child_results(student_id: str, user: dict = Depends(require_role_in({"parent", "admin"}))):
+    org = user.get("org_id") or ""
+    with get_conn() as conn:
+        if user.get("role") == "parent":
+            linked = conn.execute("SELECT 1 FROM parent_children WHERE org_id=? AND parent_id=? AND student_id=?",
+                                  (org, user["user_id"], student_id)).fetchone()
+            if not linked:
+                raise HTTPException(status_code=403, detail="That student is not linked to your account.")
+        rows = conn.execute(
+            """SELECT sub.id, sub.score, sub.status, sub.gap_analysis, sub.submitted_at,
+                      a.title AS title, a.subject AS subject, a.grade AS grade
+               FROM submissions sub JOIN assignments a ON a.id = sub.assignment_id
+               WHERE sub.student_id=? AND a.org_id=? ORDER BY sub.submitted_at DESC""",
+            (student_id, org)).fetchall()
+    return {"results": [dict(r) for r in rows]}

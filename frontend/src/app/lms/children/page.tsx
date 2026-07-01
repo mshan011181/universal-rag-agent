@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
-import { lmsMyCourses, lmsStudy } from '@/lib/api'
-import type { Course, StudyAnswer } from '@/lib/api'
-import { Users, BookOpen, Send, Loader2, AlertCircle } from 'lucide-react'
+import { lmsMyCourses, lmsStudy, lmsChildResults } from '@/lib/api'
+import type { Course, StudyAnswer, ResultRow } from '@/lib/api'
+import { Users, BookOpen, Send, Loader2, AlertCircle, BarChart2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -21,6 +21,12 @@ export default function ChildrenPage() {
   const [question, setQuestion] = useState('')
   const [loading, setLoading] = useState(false)
   const [answer, setAnswer] = useState<StudyAnswer | null>(null)
+  const [results, setResults] = useState<Record<string, ResultRow[]>>({})
+
+  async function loadResults(studentId: string) {
+    try { const r = await lmsChildResults(studentId); setResults(prev => ({ ...prev, [studentId]: r.results })) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not load results.') }
+  }
 
   useEffect(() => {
     lmsMyCourses().then(r => {
@@ -70,6 +76,21 @@ export default function ChildrenPage() {
                 </button>
               ))}
             </div>
+            <button onClick={() => loadResults(child.student_id)} className="mt-3 flex items-center gap-1.5 text-xs text-brand-600 hover:underline">
+              <BarChart2 className="w-3.5 h-3.5" /> View results & progress
+            </button>
+            {results[child.student_id] && (
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                {results[child.student_id].length === 0 ? (
+                  <p className="text-xs text-gray-400">No graded assignments yet.</p>
+                ) : results[child.student_id].map(r => (
+                  <div key={r.id} className="flex items-center justify-between py-1 text-sm">
+                    <span className="text-gray-700">{r.title} <span className="text-gray-400">· {r.subject}</span></span>
+                    <span className={clsx('font-semibold', r.score >= 80 ? 'text-green-600' : r.score >= 50 ? 'text-yellow-600' : 'text-red-600')}>{r.score}/100</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
 
