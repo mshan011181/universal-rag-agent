@@ -595,3 +595,72 @@ async def child_results(student_id: str, user: dict = Depends(require_role_in({"
                WHERE sub.student_id=? AND a.org_id=? ORDER BY sub.submitted_at DESC""",
             (student_id, org)).fetchall()
     return {"results": [dict(r) for r in rows]}
+
+
+# ── Phase D: role dashboards + progress analytics ─────────────────────────────
+
+def _scalar(conn, sql: str, params: tuple) -> int:
+    row = conn.execute(sql, params).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+@router.get("/dashboard")
+async def dashboard(user: dict = Depends(get_current_user)):
+    org = user.get("org_id") or ""
+    role = user.get("role")
+    with get_conn() as conn:
+        if role in ("admin", "owner"):
+            counts = {r["role"]: 0 for r in conn.execute(
+                "SELECT DISTINCT role FROM users WHERE org_id=?", (org,)).fetchall()}
+            for r in conn.execute("SELECT role, COUNT(*) AS n FROM users WHERE org_id=? GROUP BY role", (org,)).fetchall():
+                counts[r["role"]] = r["n"]
+            return {"role": "admin", "summary": {
+                "students": counts.get("student", 0), "teachers": counts.get("teacher", 0),
+                "parents": counts.get("parent", 0),
+                "materials": _scalar(conn, "SELECT COUNT(*) FROM course_materials WHERE org_id=?", (org,)),
+                "assignments": _scalar(conn, "SELECT COUNT(*) FROM assignments WHERE org_id=?", (org,)),
+                "submissions": _scalar(conn,
+                    "SELECT COUNT(*) FROM submissions sub JOIN assignments a ON a.id=sub.assignment_id WHERE a.org_id=?", (org,)),
+            }}
+        if role == "teacher":
+            rows = conn.execute(
+                """SELECT a.id, a.title, a.grade, a.subject,
+                          COUNT(sub.id) AS submissions, AVG(sub.score) AS avg_score
+                   FROM assignments a LEFT JOIN submissions sub ON sub.assignment_id=a.id
+                   WHERE a.org_id=? AND a.teacher_id=? GROUP BY a.id, a.title, a.grade, a.subject
+                   ORDER BY a.created_at DESC""", (org, user["user_id"])).fetchall()
+            assignments = [{"id": r["id"], "title": r["title"], "grade": r["grade"], "subject": r["subject"],
+                            "submissions": int(r["submissions"] or 0),
+                            "avg_score": round(r["avg_score"]) if r["avg_score"] is not None else None} for r in rows]
+            scored = [a["avg_score"] for a in assignments if a["avg_score"] is not None]
+            return {"role": "teacher", "summary": {
+                "assignments": len(assignments),
+                "class_avg": round(sum(scored) / len(scored)) if scored else None,
+            }, "assignments": assignments}
+        if role == "student":
+            grade = _student_grade(conn, user["user_id"])
+            total = _scalar(conn, "SELECT COUNT(*) FROM assignments WHERE org_id=? AND grade=?", (org, grade))
+            done = _scalar(conn, "SELECT COUNT(*) FROM submissions WHERE student_id=?", (user["user_id"],))
+            avg = conn.execute("SELECT AVG(score) AS a FROM submissions WHERE student_id=?", (user["user_id"],)).fetchone()
+            recent = conn.execute(
+                """SELECT sub.score, sub.submitted_at, a.title AS title, a.subject AS subject
+                   FROM submissions sub JOIN assignments a ON a.id=sub.assignment_id
+                   WHERE sub.student_id=? ORDER BY sub.submitted_at DESC LIMIT 10""", (user["user_id"],)).fetchall()
+            return {"role": "student", "summary": {
+                "grade": grade, "assignments_total": total, "completed": done, "pending": max(0, total - done),
+                "avg_score": round(avg["a"]) if avg and avg["a"] is not None else None,
+            }, "recent": [dict(r) for r in recent]}
+        if role == "parent":
+            kids = conn.execute(
+                """SELECT s.user_id AS student_id, s.full_name AS name, s.grade AS grade
+                   FROM parent_children pc JOIN users s ON s.user_id=pc.student_id
+                   WHERE pc.org_id=? AND pc.parent_id=?""", (org, user["user_id"])).fetchall()
+            children = []
+            for k in kids:
+                avg = conn.execute("SELECT AVG(score) AS a, COUNT(*) AS n FROM submissions WHERE student_id=?",
+                                   (k["student_id"],)).fetchone()
+                children.append({"student_id": k["student_id"], "name": k["name"] or "Child", "grade": k["grade"],
+                                 "completed": int(avg["n"] or 0),
+                                 "avg_score": round(avg["a"]) if avg and avg["a"] is not None else None})
+            return {"role": "parent", "children": children}
+    return {"role": role or "user", "summary": {}}

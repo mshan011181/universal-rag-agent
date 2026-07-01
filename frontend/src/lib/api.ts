@@ -566,6 +566,17 @@ export function lmsChildResults(studentId: string): Promise<{ results: ResultRow
   return request(`/api/lms/children/${studentId}/results`, { method: 'GET' })
 }
 
+export interface LmsDashboard {
+  role: string
+  summary?: Record<string, number | string | null>
+  assignments?: { id: number; title: string; grade: string; subject: string; submissions: number; avg_score: number | null }[]
+  recent?: { score: number; submitted_at: string; title: string; subject: string }[]
+  children?: { student_id: string; name: string; grade: string; completed: number; avg_score: number | null }[]
+}
+export function lmsDashboard(): Promise<LmsDashboard> {
+  return request('/api/lms/dashboard', { method: 'GET' })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {

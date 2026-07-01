@@ -136,6 +136,16 @@ Built to strengthen the institutional wedge (grading + teaching workflow), not t
 
 ---
 
+## 11. School LMS (grade/subject platform with roles)
+
+Built on top of the RAG/grading engines to close the LMS gap vs Google for Education. Four phases, each independently deployed.
+
+- **Phase A — foundation:** roles (admin/teacher/student/parent); `require_role_in` guard; tables `course_materials`, `teacher_subjects`, `parent_children`, `assignments`, `submissions` (pg + sqlite); `users.full_name`/`grade`. `/api/lms` admin user management + parent/teacher linking; role-aware sidebar; `/lms/admin` page.
+- **Phase B — content + study:** admin tags ingested NCERT books to grade+subject; `/lms/study` runs RAG scoped to those sources with per-role access checks; student/teacher "My Learning" and parent "My Children" study pages.
+- **Phase C — assignments:** teacher creates assignments (questions + optional rubric/model); student submits → auto-graded per question via `_evaluate_answer` + learning-gap analysis, stored in `submissions`; teacher submissions view, student results, parent child results.
+- **Phase D — dashboards:** `/lms/dashboard` role-aware overview (admin counts; teacher class averages per assignment; student completed/pending/average + recent; parent per-child averages).
+- **Note:** LMS study/submit intentionally skip the free-tier meter (school use); accounts are admin-provisioned (no self-signup).
+
 ## 8. Subscriptions & accounts (new)
 
 - **Phase 1 — Free trial limit:** lifetime free questions per user (initially 5, **raised to 10**); **owner allowlist** (`OWNER_EMAILS`) for unlimited (you + co-owner). Metered across query, image-batch, and evaluation. `3d6f5d4`
