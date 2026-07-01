@@ -86,3 +86,13 @@ def require_role(required_role: str):
             raise HTTPException(status_code=403, detail=f"Role '{required_role}' required")
         return user
     return checker
+
+
+def require_role_in(allowed: set[str]):
+    """Allow any user whose role is in `allowed`. Owner/admin always pass so the
+    account owner is never locked out of LMS management."""
+    async def checker(user=Depends(get_current_user)):
+        if user.get("role") in allowed or user.get("role") in ("admin", "owner"):
+            return user
+        raise HTTPException(status_code=403, detail="Not permitted for your role")
+    return checker

@@ -314,9 +314,79 @@ def init_db() -> None:
         conversation_days INTEGER DEFAULT 90,
         updated_at TIMESTAMP DEFAULT NOW()
     );
+
+    -- ── LMS tables ────────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS course_materials (
+        id BIGSERIAL PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        source_name TEXT NOT NULL,
+        ingest_id TEXT,
+        uploaded_by TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_cm_org_grade ON course_materials(org_id, grade, subject);
+
+    CREATE TABLE IF NOT EXISTS teacher_subjects (
+        id BIGSERIAL PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        teacher_id TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ts_teacher ON teacher_subjects(teacher_id);
+
+    CREATE TABLE IF NOT EXISTS parent_children (
+        id BIGSERIAL PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        parent_id TEXT NOT NULL,
+        student_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_pc_parent ON parent_children(parent_id);
+
+    CREATE TABLE IF NOT EXISTS assignments (
+        id BIGSERIAL PRIMARY KEY,
+        org_id TEXT NOT NULL,
+        teacher_id TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        title TEXT NOT NULL,
+        instructions TEXT DEFAULT '',
+        questions_json TEXT DEFAULT '[]',
+        rubric TEXT DEFAULT '',
+        model TEXT DEFAULT '',
+        due_date TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_asg_org_grade ON assignments(org_id, grade, subject);
+
+    CREATE TABLE IF NOT EXISTS submissions (
+        id BIGSERIAL PRIMARY KEY,
+        assignment_id BIGINT NOT NULL,
+        student_id TEXT NOT NULL,
+        answers_json TEXT DEFAULT '[]',
+        score INTEGER DEFAULT 0,
+        results_json TEXT DEFAULT '[]',
+        gap_analysis TEXT DEFAULT '',
+        status TEXT DEFAULT 'submitted',
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        graded_at TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_assignment ON submissions(assignment_id);
+    CREATE INDEX IF NOT EXISTS idx_sub_student ON submissions(student_id);
     """
     with get_conn() as conn:
         conn.executescript(ddl)
+        # Add LMS columns to the existing users table (idempotent).
+        for col, definition in [("full_name", "TEXT DEFAULT ''"), ("grade", "TEXT DEFAULT ''")]:
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
+                conn.commit()
+            except Exception:
+                conn.rollback()
     logger.info("PostgreSQL schema initialised")
 
 

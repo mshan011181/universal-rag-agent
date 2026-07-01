@@ -24,16 +24,18 @@ export function decodeToken(token: string): Record<string, unknown> | null {
   }
 }
 
-export function getUserRole(): 'admin' | 'user' | null {
+export type UserRole = 'admin' | 'owner' | 'user' | 'teacher' | 'student' | 'parent'
+
+export function getUserRole(): UserRole | null {
   const token = getAccessToken()
   if (token) {
     const payload = decodeToken(token)
-    return (payload?.role as 'admin' | 'user') ?? 'user'
+    return (payload?.role as UserRole) ?? 'user'
   }
   // Fallback to sessionStorage (persists across page reload)
   if (typeof window !== 'undefined') {
     const r = sessionStorage.getItem('user_role')
-    if (r === 'admin' || r === 'user') return r
+    if (r) return r as UserRole
   }
   return null
 }

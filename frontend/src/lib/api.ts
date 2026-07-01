@@ -435,6 +435,69 @@ export async function generateTeaching(opts: {
   })
 }
 
+// ── LMS ─────────────────────────────────────────────────────────────────────
+export interface LmsUser {
+  user_id: string
+  email: string
+  full_name: string
+  role: string
+  grade: string
+}
+
+export interface LmsProfile {
+  user_id: string
+  email: string
+  full_name: string
+  role: string
+  grade: string
+}
+
+export function lmsMyProfile(): Promise<LmsProfile> {
+  return request('/api/lms/me', { method: 'GET' })
+}
+
+export function lmsListUsers(role = ''): Promise<{ users: LmsUser[] }> {
+  return request(`/api/lms/users${role ? `?role=${encodeURIComponent(role)}` : ''}`, { method: 'GET' })
+}
+
+export function lmsCreateUser(body: { email: string; full_name: string; role: string; grade?: string; password?: string }):
+  Promise<{ user_id: string; email: string; role: string; grade: string; temp_password: string | null }> {
+  return request('/api/lms/users', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function lmsDeleteUser(userId: string): Promise<{ status: string }> {
+  return request(`/api/lms/users/${userId}`, { method: 'DELETE' })
+}
+
+export interface ParentLink {
+  id: number; parent_id: string; student_id: string
+  parent_email: string; parent_name: string
+  student_email: string; student_name: string; grade: string
+}
+export function lmsListParentLinks(): Promise<{ links: ParentLink[] }> {
+  return request('/api/lms/parent-links', { method: 'GET' })
+}
+export function lmsLinkParent(parent_id: string, student_id: string): Promise<{ status: string }> {
+  return request('/api/lms/parent-links', { method: 'POST', body: JSON.stringify({ parent_id, student_id }) })
+}
+export function lmsUnlinkParent(linkId: number): Promise<{ status: string }> {
+  return request(`/api/lms/parent-links/${linkId}`, { method: 'DELETE' })
+}
+
+export interface TeacherSubject {
+  id: number; teacher_id: string; grade: string; subject: string
+  teacher_email: string; teacher_name: string
+}
+export function lmsListTeacherSubjects(): Promise<{ assignments: TeacherSubject[] }> {
+  return request('/api/lms/teacher-subjects', { method: 'GET' })
+}
+export function lmsAssignTeacher(teacher_id: string, grade: string, subject: string): Promise<{ status: string }> {
+  return request('/api/lms/teacher-subjects', { method: 'POST', body: JSON.stringify({ teacher_id, grade, subject }) })
+}
+export function lmsUnassignTeacher(assignId: number): Promise<{ status: string }> {
+  return request(`/api/lms/teacher-subjects/${assignId}`, { method: 'DELETE' })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {

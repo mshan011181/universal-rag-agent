@@ -8,17 +8,30 @@ import clsx from 'clsx'
 import { logout, fetchUsage } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
 
-const NAV = [
-  { href: '/query',    label: 'Ask Your Data',     icon: Home },
-  { href: '/evaluate', label: 'Answer Evaluation', icon: ClipboardCheck },
-  { href: '/teacher-tools', label: 'Teacher Tools', icon: GraduationCap },
-  { href: '/history',  label: 'My History',        icon: History },
-  { href: '/bi',      label: 'BI / Analytics', icon: TableProperties },
-  { href: '/ingest',  label: 'Ingest',         icon: Upload },
-  { href: '/plan',    label: 'Plan & Usage',   icon: CreditCard },
-]
+const ITEMS = {
+  query:    { href: '/query',    label: 'Ask Your Data',    icon: Home },
+  evaluate: { href: '/evaluate', label: 'Answer Evaluation', icon: ClipboardCheck },
+  teacher:  { href: '/teacher-tools', label: 'Teacher Tools', icon: GraduationCap },
+  history:  { href: '/history',  label: 'My History',       icon: History },
+  bi:       { href: '/bi',       label: 'BI / Analytics',   icon: TableProperties },
+  ingest:   { href: '/ingest',   label: 'Ingest',           icon: Upload },
+  plan:     { href: '/plan',     label: 'Plan & Usage',     icon: CreditCard },
+  lmsAdmin: { href: '/lms/admin', label: 'LMS Admin',       icon: GraduationCap },
+}
+
+// Default nav for the generic SaaS roles (admin/owner/user).
+const NAV = [ITEMS.query, ITEMS.evaluate, ITEMS.teacher, ITEMS.history, ITEMS.bi, ITEMS.ingest, ITEMS.plan]
+
+// School-role navs (LMS). Dedicated role pages land in later phases.
+function navFor(role: string | null) {
+  if (role === 'teacher') return [ITEMS.query, ITEMS.evaluate, ITEMS.teacher, ITEMS.history]
+  if (role === 'student') return [ITEMS.query, ITEMS.history]
+  if (role === 'parent')  return [ITEMS.query, ITEMS.history]
+  return NAV  // admin / owner / user
+}
 
 const ADMIN_NAV = [
+  { href: '/lms/admin',    label: 'LMS Admin', icon: GraduationCap },
   { href: '/admin',        label: 'Dashboard', icon: BarChart2 },
   { href: '/team',         label: 'Team',      icon: Users },
   { href: '/admin/audit',  label: 'Audit Log', icon: ShieldCheck },
@@ -58,7 +71,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {NAV.map(({ href, label, icon: Icon }) => (
+        {navFor(role).map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
@@ -74,7 +87,7 @@ export default function Sidebar() {
           </Link>
         ))}
 
-        {role === 'admin' && (
+        {(role === 'admin' || role === 'owner') && (
           <>
             <div className="pt-4 pb-1 px-3">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Admin</span>

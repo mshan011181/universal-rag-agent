@@ -34,6 +34,10 @@ def _ensure_users_table() -> None:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
         if "storage_quota_bytes" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN storage_quota_bytes INTEGER DEFAULT 524288000")
+        if "full_name" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT ''")
+        if "grade" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN grade TEXT DEFAULT ''")
         conn.commit()
 
 

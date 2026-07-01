@@ -103,6 +103,62 @@ def init_db():
             conversation_days   INTEGER DEFAULT 90,
             updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS course_materials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id TEXT NOT NULL,
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            ingest_id TEXT,
+            uploaded_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS teacher_subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id TEXT NOT NULL,
+            teacher_id TEXT NOT NULL,
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS parent_children (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id TEXT NOT NULL,
+            parent_id TEXT NOT NULL,
+            student_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id TEXT NOT NULL,
+            teacher_id TEXT NOT NULL,
+            grade TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            title TEXT NOT NULL,
+            instructions TEXT DEFAULT '',
+            questions_json TEXT DEFAULT '[]',
+            rubric TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            due_date TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assignment_id INTEGER NOT NULL,
+            student_id TEXT NOT NULL,
+            answers_json TEXT DEFAULT '[]',
+            score INTEGER DEFAULT 0,
+            results_json TEXT DEFAULT '[]',
+            gap_analysis TEXT DEFAULT '',
+            status TEXT DEFAULT 'submitted',
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            graded_at TIMESTAMP
+        );
         """)
     # Schema migrations — safe to run on existing databases
     with get_conn() as conn:

@@ -8,7 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 import structlog
 
-from api.routers import auth, query, ingest, admin, health, user, org, audit, sso, billing
+from api.routers import auth, query, ingest, admin, health, user, org, audit, sso, billing, lms
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.audit import AuditMiddleware
 from src.memory.sqlite_store import init_db
@@ -77,3 +77,4 @@ app.include_router(org.router, prefix="/api/org", tags=["Organisation"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
 app.include_router(sso.router, prefix="/api/auth/sso", tags=["SSO"])
 app.include_router(billing.router, prefix="/api/billing", tags=["Billing"])
+app.include_router(lms.router, prefix="/api/lms", tags=["LMS"])
