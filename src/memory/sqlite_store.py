@@ -159,6 +159,20 @@ def init_db():
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             graded_at TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS student_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id TEXT NOT NULL DEFAULT '',
+            parent_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            grade TEXT NOT NULL,
+            pin TEXT DEFAULT '',
+            teaching_style TEXT DEFAULT '',
+            plan TEXT DEFAULT 'trial',
+            valid_till TEXT DEFAULT '',
+            study_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         """)
     # Schema migrations — safe to run on existing databases
     with get_conn() as conn:

@@ -577,6 +577,44 @@ export function lmsDashboard(): Promise<LmsDashboard> {
   return request('/api/lms/dashboard', { method: 'GET' })
 }
 
+// ── MaximAI Edu: parent-owned student profiles (TutorBottle-style) ────────────
+export interface EduProfile {
+  id: number; name: string; grade: string; plan: string; valid_till: string
+  teaching_style: string; has_pin: boolean; study_count: number; belt: string
+}
+export interface EduProfilesResponse {
+  parent: { name: string; has_pin: boolean }
+  profiles: EduProfile[]
+}
+export function eduListProfiles(): Promise<EduProfilesResponse> {
+  return request('/api/edu/profiles', { method: 'GET' })
+}
+export function eduCreateProfile(body: { name: string; grade: string; pin?: string; teaching_style?: string; plan?: string; valid_till?: string }): Promise<{ status: string }> {
+  return request('/api/edu/profiles', { method: 'POST', body: JSON.stringify(body) })
+}
+export function eduUpdateProfile(id: number, body: { name?: string; grade?: string; pin?: string; teaching_style?: string }): Promise<{ status: string }> {
+  return request(`/api/edu/profiles/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+export function eduDeleteProfile(id: number): Promise<{ status: string }> {
+  return request(`/api/edu/profiles/${id}`, { method: 'DELETE' })
+}
+export function eduVerifyParentPin(pin: string): Promise<{ ok: boolean; status: string }> {
+  return request('/api/edu/parent/verify-pin', { method: 'POST', body: JSON.stringify({ pin }) })
+}
+export function eduVerifyProfilePin(id: number, pin: string): Promise<{ ok: boolean; status: string }> {
+  return request(`/api/edu/profiles/${id}/verify-pin`, { method: 'POST', body: JSON.stringify({ pin }) })
+}
+export function eduProfileCourses(id: number): Promise<{ name: string; grade: string; subjects: string[] }> {
+  return request(`/api/edu/profiles/${id}/courses`, { method: 'GET' })
+}
+export function eduProfileStudy(id: number, body: { subject: string; question: string; language?: string; model?: string; question_language?: string }): Promise<{ answer: string; figures: string[]; model_used: string }> {
+  return request(`/api/edu/profiles/${id}/study`, { method: 'POST', body: JSON.stringify(body) })
+}
+export interface EduBadges { name: string; study_count: number; belt: string; belts: { name: string; at: number; earned: boolean }[] }
+export function eduProfileBadges(id: number): Promise<EduBadges> {
+  return request(`/api/edu/profiles/${id}/badges`, { method: 'GET' })
+}
+
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export async function ingestFile(file: File, namespace = 'default', useMarker = false): Promise<IngestResponse> {

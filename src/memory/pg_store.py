@@ -377,11 +377,28 @@ def init_db() -> None:
     );
     CREATE INDEX IF NOT EXISTS idx_sub_assignment ON submissions(assignment_id);
     CREATE INDEX IF NOT EXISTS idx_sub_student ON submissions(student_id);
+
+    -- Parent-owned student profiles (TutorBottle-style /edu experience).
+    CREATE TABLE IF NOT EXISTS student_profiles (
+        id BIGSERIAL PRIMARY KEY,
+        org_id TEXT NOT NULL DEFAULT '',
+        parent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        pin TEXT DEFAULT '',
+        teaching_style TEXT DEFAULT '',
+        plan TEXT DEFAULT 'trial',
+        valid_till TEXT DEFAULT '',
+        study_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_sp_parent ON student_profiles(parent_id);
     """
     with get_conn() as conn:
         conn.executescript(ddl)
         # Add LMS columns to the existing users table (idempotent).
-        for col, definition in [("full_name", "TEXT DEFAULT ''"), ("grade", "TEXT DEFAULT ''")]:
+        for col, definition in [("full_name", "TEXT DEFAULT ''"), ("grade", "TEXT DEFAULT ''"),
+                                ("parent_pin", "TEXT DEFAULT ''")]:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {definition}")
                 conn.commit()

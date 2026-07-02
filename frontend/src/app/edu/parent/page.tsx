@@ -8,7 +8,7 @@ const CARDS = [
   { label: 'Test Results',     icon: Trophy,        href: '/edu/parent/students', color: 'text-amber-500' },
   { label: 'Feedback Reports', icon: BarChart3,     href: '/edu/parent/students', color: 'text-indigo-500' },
   { label: 'Chat with Tutor',  icon: MessageCircle, href: '/edu/study',           color: 'text-sky-500' },
-  { label: 'Student Profiles', icon: Users,         href: '/edu/parent/students', color: 'text-violet-600' },
+  { label: 'Student Profiles', icon: Users,         href: '/edu/profiles',        color: 'text-violet-600' },
   { label: 'Subscriptions',    icon: Gem,           href: '/plan',                color: 'text-cyan-500' },
   { label: 'Account',          icon: Settings,      href: '/plan',                color: 'text-gray-500' },
   { label: 'Help & Support',   icon: HelpCircle,    href: '/edu/help',            color: 'text-rose-500' },

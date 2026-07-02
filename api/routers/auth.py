@@ -38,6 +38,8 @@ def _ensure_users_table() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT DEFAULT ''")
         if "grade" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN grade TEXT DEFAULT ''")
+        if "parent_pin" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN parent_pin TEXT DEFAULT ''")
         conn.commit()
 
 
