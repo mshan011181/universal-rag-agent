@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Upload, BarChart2, LogOut, Database, User, TableProperties, Users, ShieldCheck, History, ClipboardCheck, CreditCard, GraduationCap } from 'lucide-react'
+import { Home, Upload, BarChart2, LogOut, User, TableProperties, Users, ShieldCheck, History, ClipboardCheck, CreditCard, GraduationCap } from 'lucide-react'
 import clsx from 'clsx'
 import { logout, fetchUsage } from '@/lib/api'
 import { getUserRole } from '@/lib/auth'
@@ -64,13 +64,10 @@ export default function Sidebar() {
   return (
     <aside className="w-56 h-screen shrink-0 bg-gray-900 flex flex-col">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <Database className="w-6 h-6 text-brand-500" />
-          <span className="text-white font-semibold text-sm leading-tight">
-            MaximAI<br />
-            <span className="text-gray-400 font-normal text-xs">your data, distilled into answers</span>
-          </span>
+      <div className="px-4 py-4 border-b border-gray-700">
+        <div className="bg-white rounded-xl px-3 py-2 flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/maximai-edu-logo.png" alt="MaximAI Edu" className="h-9 w-auto" />
         </div>
       </div>
 

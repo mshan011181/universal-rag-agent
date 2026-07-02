@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Database, CheckCircle, ShieldCheck, AlertCircle } from 'lucide-react'
+import { CheckCircle, ShieldCheck, AlertCircle } from 'lucide-react'
 import { login } from '@/lib/api'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -158,16 +158,18 @@ function LoginForm() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4
-            ${isAdminMode ? 'bg-gray-800' : 'bg-brand-600'}`}>
-            {isAdminMode
-              ? <ShieldCheck className="w-6 h-6 text-white" />
-              : <Database className="w-6 h-6 text-white" />}
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">MaximAI</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {isAdminMode ? 'Administrator Access' : 'your data, distilled into answers'}
-          </p>
+          {isAdminMode ? (
+            <>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 bg-gray-800">
+                <ShieldCheck className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900">MaximAI Edu</h1>
+              <p className="text-sm text-gray-500 mt-1">Administrator Access</p>
+            </>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/maximai-edu-logo.png" alt="MaximAI Edu" className="h-14 w-auto mx-auto" />
+          )}
         </div>
 
         {ssoError && (

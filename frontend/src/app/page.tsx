@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { isAuthenticated } from '@/lib/auth'
-import { Database, Check, X, Sparkles } from 'lucide-react'
+import { Check, X, Sparkles } from 'lucide-react'
 
 const PLANS = [
   {
@@ -47,11 +47,8 @@ export default function Landing() {
     <div className="min-h-screen bg-gray-50 px-4 py-12">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-600 mb-4">
-            <Database className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">MaximAI</h1>
-          <p className="text-gray-500 mt-1">your data, distilled into answers</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/maximai-edu-logo.png" alt="MaximAI Edu" className="h-16 w-auto mx-auto mb-4" />
           <p className="text-sm text-gray-500 mt-4 max-w-xl mx-auto">
             Ask anything across your documents, audio, video, YouTube and images — RAG with
             auto-selected patterns. Choose a plan to get started.
