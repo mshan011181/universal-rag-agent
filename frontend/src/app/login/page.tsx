@@ -83,7 +83,10 @@ function LoginForm() {
 
       sessionStorage.setItem('user_email', email)
 
-      if (isAdminMode) {
+      // School roles use the MaximAI Edu experience (separate from the main app).
+      if (!isAdminMode && (role === 'student' || role === 'parent')) {
+        router.push(role === 'student' ? '/edu/student' : '/edu/role-selection')
+      } else if (isAdminMode) {
         if (role !== 'admin') {
           setEmailError('')
           setPasswordError('')
